@@ -22,8 +22,9 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Force clamp to keep movement smooth and contained.")]
         [SerializeField] private float maxForceClamp = 3.5f;
 
-        [Tooltip("Instant push strength for a single stationary tap (frame-rate independent, unlike the drag force).")]
-        [SerializeField] private float tapPushImpulse = 2.2f;
+        [Header("Tap vs Rummage Classification")]
+        [Tooltip("If the finger moves less than this many screen pixels before release, the gesture counts as a TAP (collect the item under it). Moving more than this turns the gesture into a DRAG (rummage the pile). This is what lets a single press-and-hold rummage AND a quick tap collect coexist.")]
+        [SerializeField] private float tapMaxScreenMovePixels = 20f;
 
         [Tooltip("Layer mask for physics objects.")]
         [SerializeField] private LayerMask interactableLayer = ~0;
@@ -42,6 +43,8 @@ namespace MechaFind3D.PhysicsInteraction
         private Vector3 lastTouchWorldPos;
         private Vector3 currentTouchVelocity;
         private bool isTouching = false;
+        private bool isDragging = false;
+        private Vector2 touchStartScreenPos;
         private Plane groundPlane;
 
         private void Awake()
@@ -94,7 +97,10 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void FixedUpdate()
         {
-            if (isTouching)
+            // Only rummage once the gesture is classified as a DRAG. A stationary press-and-hold
+            // (or the first moments of a tap) must NOT push the pile, otherwise tapping to collect
+            // feels like it "scatters again" instead of picking the item up.
+            if (isTouching && isDragging)
             {
                 ApplyMatchFactoryFluidForces(lastTouchWorldPos, currentTouchVelocity);
             }
@@ -147,7 +153,7 @@ namespace MechaFind3D.PhysicsInteraction
             }
             else if (inputUp || (!activeInput && isTouching))
             {
-                OnTouchEnded();
+                OnTouchEnded(screenPos);
             }
         }
 
@@ -158,12 +164,37 @@ namespace MechaFind3D.PhysicsInteraction
 
             Ray ray = mainCamera.ScreenPointToRay(screenPos);
 
-            if (Physics.Raycast(ray, out RaycastHit hit, 200f, interactableLayer))
+            // RaycastAll instead of a single Raycast: the invisible Ceiling_Barrier collider (and the
+            // tray walls/floor) sit between the top-down camera and the pile, so a plain Raycast keeps
+            // returning one of THOSE — a collider with no FindTargetObject — and taps never resolve to
+            // a block. We scan every hit and keep the NEAREST one that is an interactable, un-docked item.
+            RaycastHit[] hits = Physics.RaycastAll(ray, 200f, interactableLayer, QueryTriggerInteraction.Ignore);
+
+            float nearest = float.MaxValue;
+            Vector3 itemHitPoint = Vector3.zero;
+            bool foundItem = false;
+
+            foreach (RaycastHit h in hits)
             {
-                hitTargetObject = hit.collider.GetComponentInParent<FindTargetObject>();
-                return hit.point;
+                FindTargetObject item = h.collider.GetComponentInParent<FindTargetObject>();
+                if (item == null || item.isDocked) continue;
+
+                if (h.distance < nearest)
+                {
+                    nearest = h.distance;
+                    hitTargetObject = item;
+                    itemHitPoint = h.point;
+                    foundItem = true;
+                }
             }
 
+            if (foundItem)
+            {
+                return itemHitPoint;
+            }
+
+            // No interactable item under the finger (e.g. an empty-space drag): fall back to the
+            // ground plane so rummage forces still have a valid center point.
             if (groundPlane.Raycast(ray, out float enter))
             {
                 return ray.GetPoint(enter);
@@ -175,7 +206,10 @@ namespace MechaFind3D.PhysicsInteraction
         private void OnTouchBegan(Vector2 screenPos)
         {
             isTouching = true;
-            Vector3 worldPos = GetTouchWorldPosition(screenPos, out FindTargetObject targetItem);
+            isDragging = false;
+            touchStartScreenPos = screenPos;
+
+            Vector3 worldPos = GetTouchWorldPosition(screenPos, out _);
             lastTouchWorldPos = worldPos;
             currentTouchVelocity = Vector3.zero;
 
@@ -185,15 +219,10 @@ namespace MechaFind3D.PhysicsInteraction
                 indicatorObject.SetActive(true);
             }
 
-            // Collect item to CanvasUIDesignManager Dock! Fall back to a push if it couldn't be
-            // docked (e.g. dock full or mid-match), so the tap still feels responsive.
-            bool docked = targetItem != null && CanvasUIDesignManager.Instance != null
-                && CanvasUIDesignManager.Instance.TryCollectItemToDock(targetItem);
-
-            if (!docked)
-            {
-                ApplyInstantTapPush(worldPos);
-            }
+            // Deliberately do NOT collect or push on touch-down: at this instant we can't tell a
+            // quick tap (collect) from the start of a rummage drag. The gesture is classified in
+            // OnTouchMoved (becomes a drag past the movement threshold) and resolved in OnTouchEnded
+            // (a tap collects the item under the finger).
         }
 
         private void OnTouchMoved(Vector2 screenPos)
@@ -204,12 +233,31 @@ namespace MechaFind3D.PhysicsInteraction
             currentTouchVelocity = Vector3.ClampMagnitude(rawVelocity, 18.0f);
             lastTouchWorldPos = newWorldPos;
 
+            // Once the finger has travelled past the tap threshold, this gesture is a rummage drag
+            // for the rest of its lifetime (it can never revert to a collect-tap).
+            if (!isDragging)
+            {
+                float movedPixels = Vector2.Distance(screenPos, touchStartScreenPos);
+                float threshold = Mathf.Max(tapMaxScreenMovePixels, Screen.height * 0.02f);
+                if (movedPixels > threshold)
+                {
+                    isDragging = true;
+                }
+            }
+
             if (indicatorObject != null)
             {
                 indicatorObject.transform.position = newWorldPos + Vector3.up * 0.05f;
             }
 
-            ApplyMatchFactoryFluidForces(newWorldPos, currentTouchVelocity);
+            // Apply the rummage push right here on every move frame (in addition to the FixedUpdate
+            // pass) once the gesture is a drag. This restores the punchy, responsive stir the tuned
+            // scene values (pushForceMultiplier/maxForceClamp) were balanced around — applying it only
+            // in FixedUpdate made rummaging feel nearly forceless.
+            if (isDragging)
+            {
+                ApplyMatchFactoryFluidForces(newWorldPos, currentTouchVelocity);
+            }
         }
 
         /// Continuous drag push, called every FixedUpdate while the touch is held. Uses
@@ -240,33 +288,6 @@ namespace MechaFind3D.PhysicsInteraction
 
                     rb.AddForce(force, ForceMode.Force);
                     rb.AddTorque(Random.insideUnitSphere * (force.magnitude * 0.15f), ForceMode.Force);
-                }
-            }
-        }
-
-        /// One-shot nudge for a stationary tap. Needs ForceMode.Impulse (frame-rate independent)
-        /// instead of the drag path's ForceMode.Force, which only integrates a meaningful amount
-        /// of motion when called every FixedUpdate over a sustained drag.
-        private void ApplyInstantTapPush(Vector3 centerPoint)
-        {
-            Collider[] hits = Physics.OverlapSphere(centerPoint, interactionRadius, interactableLayer);
-
-            foreach (Collider col in hits)
-            {
-                Rigidbody rb = col.attachedRigidbody;
-                if (rb != null && !rb.isKinematic)
-                {
-                    Vector3 diff = rb.transform.position - centerPoint;
-                    diff.y = 0f;
-
-                    float dist = diff.magnitude;
-                    float proximityFactor = Mathf.Clamp01(1.0f - (dist / interactionRadius));
-
-                    Vector3 impulse = diff.normalized * tapPushImpulse * proximityFactor;
-                    impulse.y = 0f;
-
-                    rb.AddForce(impulse, ForceMode.Impulse);
-                    rb.AddTorque(Random.insideUnitSphere * (impulse.magnitude * 0.15f), ForceMode.Impulse);
                 }
             }
         }
@@ -312,13 +333,29 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
-        private void OnTouchEnded()
+        private void OnTouchEnded(Vector2 screenPos)
         {
+            // A gesture that never crossed the movement threshold is a TAP: collect the item under
+            // the release point. A drag was a rummage and collects nothing.
+            bool wasTap = isTouching && !isDragging;
+
             isTouching = false;
+            isDragging = false;
 
             if (indicatorObject != null)
             {
                 indicatorObject.SetActive(false);
+            }
+
+            if (!wasTap) return;
+
+            GetTouchWorldPosition(screenPos, out FindTargetObject targetItem);
+            if (targetItem != null && CanvasUIDesignManager.Instance != null)
+            {
+                // If the dock is full or a match is mid-flight the collect is refused. We intentionally
+                // do nothing in that case rather than shoving the pile, which is exactly the "it scattered
+                // instead of collecting" behaviour we're fixing.
+                CanvasUIDesignManager.Instance.TryCollectItemToDock(targetItem);
             }
         }
     }
