@@ -3607,7 +3607,7 @@ MonoBehaviour:
   - {fileID: 919132149155446097, guid: 0201d60daf66a74ec827d0cf3099e057, type: 3}
   - {fileID: 919132149155446097, guid: ab15684566942bc52a719adb904c3b03, type: 3}
   - {fileID: 919132149155446097, guid: fd24a91b881dc1bf3b8d914d8c2fb52b, type: 3}
-  foodScale: 4
+  foodTargetSize: 1
 --- !u!114 &1276484861
 MonoBehaviour:
   m_ObjectHideFlags: 0
