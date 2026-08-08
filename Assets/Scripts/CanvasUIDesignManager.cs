@@ -27,9 +27,9 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("Mini 3D Object Slot Holder Alignment")]
         [Tooltip("Fallback world scale used only if the slot's on-screen size can't be measured yet.")]
-        [SerializeField] private float miniObjectDockScale = 0.055f;
+        [SerializeField] private float miniObjectDockScale = 0.08f;
         [Tooltip("Fraction of the slot's shorter on-screen dimension the docked item should visually fill. Computed live from the slot's actual rect, so it stays correctly sized/centered on any resolution.")]
-        [SerializeField] private float dockItemFillRatio = 0.62f;
+        [SerializeField] private float dockItemFillRatio = 0.45f;
         [SerializeField] private float dockCameraDepth = 1.6f;       // Near depth in front of camera
 
         [Header("UI Compositing (keeps docked 3D objects visible over the slot art)")]
@@ -46,9 +46,34 @@ namespace MechaFind3D.PhysicsInteraction
         private readonly List<DockItemData> dockedItems = new List<DockItemData>();
         private readonly HashSet<GameObject> tweeningDockObjects = new HashSet<GameObject>();
 
-        private const int MAX_SLOTS = 7;
+        private const int MAX_SLOTS = 5;
         private Camera mainCamera;
         private bool isProcessingMatch = false;
+
+        // ---- Violet Theme UI sprite loading (Assets/Violet Theme Ui/Resources) ----
+        private static readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
+        private static readonly string[] GoalCardPalette = { "Pink", "Yellow", "Green", "Blue" };
+
+        private static Sprite LoadUISprite(string resourcesPath)
+        {
+            if (!spriteCache.TryGetValue(resourcesPath, out Sprite sprite))
+            {
+                sprite = Resources.Load<Sprite>(resourcesPath);
+                spriteCache[resourcesPath] = sprite;
+            }
+            return sprite;
+        }
+
+        private static Sprite ButtonSprite(string colorName) => LoadUISprite($"Buttons/Button {colorName}");
+        private static Sprite IconSprite(string iconName) => LoadUISprite($"Icons/{iconName}");
+
+        private static void ApplySlicedSprite(Image img, Sprite sprite)
+        {
+            if (sprite == null) return;
+            img.sprite = sprite;
+            img.type = Image.Type.Sliced;
+            img.color = Color.white;
+        }
 
         private void Awake()
         {
@@ -170,7 +195,7 @@ namespace MechaFind3D.PhysicsInteraction
             headerRect.sizeDelta = new Vector2(980, 160);
 
             Image bg = headerObj.AddComponent<Image>();
-            bg.color = new Color(0.10f, 0.14f, 0.20f, 0.92f);
+            ApplySlicedSprite(bg, ButtonSprite("Purple"));
 
             GameObject titleObj = new GameObject("Level_Badge");
             titleObj.transform.SetParent(headerObj.transform, false);
@@ -179,13 +204,31 @@ namespace MechaFind3D.PhysicsInteraction
             titleRect.anchorMin = new Vector2(0.5f, 1f);
             titleRect.anchorMax = new Vector2(0.5f, 1f);
             titleRect.pivot = new Vector2(0.5f, 0.5f);
-            titleRect.anchoredPosition = new Vector2(0, 0);
-            titleRect.sizeDelta = new Vector2(240, 45);
+            titleRect.anchoredPosition = new Vector2(0, 20);
+            titleRect.sizeDelta = new Vector2(170, 136);
 
             Image titleBg = titleObj.AddComponent<Image>();
-            titleBg.color = new Color(0.9f, 0.65f, 0.15f, 0.95f);
+            titleBg.sprite = LoadUISprite("Panels/Ribbon Yellow");
+            titleBg.type = Image.Type.Simple;
+            titleBg.preserveAspect = true;
+            titleBg.color = Color.white;
 
-            Text titleTxt = CreateTextNode(titleObj.transform, "SEVİYE 1", 22, FontStyle.Bold, Color.black);
+            GameObject titleTextObj = new GameObject("TextNode");
+            titleTextObj.transform.SetParent(titleObj.transform, false);
+
+            RectTransform titleTextRect = titleTextObj.AddComponent<RectTransform>();
+            // Inset to the ribbon banner's flat readable band (the art has a large decorative
+            // top flap and side ribbon tails, so a full-rect fill would overlap them).
+            titleTextRect.anchorMin = new Vector2(0.17f, 0.10f);
+            titleTextRect.anchorMax = new Vector2(0.83f, 0.68f);
+            titleTextRect.sizeDelta = Vector2.zero;
+
+            Text titleTxt = titleTextObj.AddComponent<Text>();
+            titleTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            titleTxt.fontSize = 20;
+            titleTxt.fontStyle = FontStyle.Bold;
+            titleTxt.color = new Color(0.35f, 0.18f, 0.02f);
+            titleTxt.text = "SEVİYE 1";
             titleTxt.alignment = TextAnchor.MiddleCenter;
 
             GameObject goalsContainer = new GameObject("Goals_Container");
@@ -213,11 +256,11 @@ namespace MechaFind3D.PhysicsInteraction
             dockRect.anchorMin = new Vector2(0.5f, 0f);
             dockRect.anchorMax = new Vector2(0.5f, 0f);
             dockRect.pivot = new Vector2(0.5f, 0f);
-            dockRect.anchoredPosition = new Vector2(0, 80);
-            dockRect.sizeDelta = new Vector2(1000, 200);
+            dockRect.anchoredPosition = new Vector2(0, 65);
+            dockRect.sizeDelta = new Vector2(920, 185);
 
             Image bg = dockObj.AddComponent<Image>();
-            bg.color = new Color(0.12f, 0.16f, 0.24f, 0.94f);
+            ApplySlicedSprite(bg, ButtonSprite("Violet"));
 
             GameObject slotsContainerObj = new GameObject("Slots_Container");
             slotsContainerObj.transform.SetParent(dockObj.transform, false);
@@ -225,11 +268,11 @@ namespace MechaFind3D.PhysicsInteraction
             bottomDockContainer = slotsContainerObj.AddComponent<RectTransform>();
             bottomDockContainer.anchorMin = Vector2.zero;
             bottomDockContainer.anchorMax = Vector2.one;
-            bottomDockContainer.sizeDelta = new Vector2(-40, 0);
+            bottomDockContainer.sizeDelta = new Vector2(-30, 0);
 
             HorizontalLayoutGroup layout = slotsContainerObj.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(15, 15, 15, 15);
-            layout.spacing = 15;
+            layout.padding = new RectOffset(16, 16, 14, 14);
+            layout.spacing = 18;
             layout.childAlignment = TextAnchor.MiddleCenter;
             layout.childControlWidth = true;
             layout.childControlHeight = true;
@@ -245,19 +288,10 @@ namespace MechaFind3D.PhysicsInteraction
 
                 RectTransform slotRect = slotObj.AddComponent<RectTransform>();
                 Image slotBg = slotObj.AddComponent<Image>();
-                slotBg.color = new Color(0.22f, 0.28f, 0.38f, 0.85f);
-
-                // Slot Inset Border Frame
-                GameObject borderObj = new GameObject("BorderFrame");
-                borderObj.transform.SetParent(slotObj.transform, false);
-
-                RectTransform borderRect = borderObj.AddComponent<RectTransform>();
-                borderRect.anchorMin = Vector2.zero;
-                borderRect.anchorMax = Vector2.one;
-                borderRect.sizeDelta = new Vector2(-6, -6);
-
-                Image borderImg = borderObj.AddComponent<Image>();
-                borderImg.color = new Color(0.35f, 0.45f, 0.60f, 0.5f);
+                slotBg.sprite = LoadUISprite("Buttons/Misc/Small Square Button Blue");
+                slotBg.type = Image.Type.Simple;
+                slotBg.preserveAspect = false;
+                slotBg.color = Color.white;
 
                 GameObject labelObj = new GameObject("LabelText");
                 labelObj.transform.SetParent(slotObj.transform, false);
@@ -269,10 +303,10 @@ namespace MechaFind3D.PhysicsInteraction
 
                 Text labelTxt = labelObj.AddComponent<Text>();
                 labelTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                labelTxt.fontSize = 20;
+                labelTxt.fontSize = 24;
                 labelTxt.fontStyle = FontStyle.Bold;
                 labelTxt.alignment = TextAnchor.MiddleCenter;
-                labelTxt.color = new Color(0.6f, 0.7f, 0.85f, 0.4f);
+                labelTxt.color = new Color(1f, 1f, 1f, 0.55f);
                 labelTxt.text = $"{i + 1}";
 
                 slotRects.Add(slotRect);
@@ -286,14 +320,25 @@ namespace MechaFind3D.PhysicsInteraction
             rightDeliveryBoxRect.anchorMin = new Vector2(1f, 0.5f);
             rightDeliveryBoxRect.anchorMax = new Vector2(1f, 0.5f);
             rightDeliveryBoxRect.pivot = new Vector2(0.5f, 0.5f);
-            rightDeliveryBoxRect.anchoredPosition = new Vector2(170, 0);
+            rightDeliveryBoxRect.anchoredPosition = new Vector2(150, 0);
             rightDeliveryBoxRect.sizeDelta = new Vector2(130, 130);
 
             Image boxImg = boxObj.AddComponent<Image>();
-            boxImg.color = new Color(0.95f, 0.65f, 0.2f, 0.95f);
+            ApplySlicedSprite(boxImg, ButtonSprite("Orange"));
 
-            Text boxTxt = CreateTextNode(boxObj.transform, "📦", 48, FontStyle.Bold, Color.white);
-            boxTxt.alignment = TextAnchor.MiddleCenter;
+            GameObject boxIconObj = new GameObject("BoxIcon");
+            boxIconObj.transform.SetParent(boxObj.transform, false);
+
+            RectTransform boxIconRect = boxIconObj.AddComponent<RectTransform>();
+            boxIconRect.anchorMin = new Vector2(0.5f, 0.5f);
+            boxIconRect.anchorMax = new Vector2(0.5f, 0.5f);
+            boxIconRect.pivot = new Vector2(0.5f, 0.5f);
+            boxIconRect.sizeDelta = new Vector2(64, 46);
+
+            Image boxIconImg = boxIconObj.AddComponent<Image>();
+            boxIconImg.sprite = IconSprite("Box");
+            boxIconImg.type = Image.Type.Simple;
+            boxIconImg.preserveAspect = true;
         }
 
         private void BuildShuffleButton(Transform parent)
@@ -302,23 +347,53 @@ namespace MechaFind3D.PhysicsInteraction
             btnObj.transform.SetParent(parent, false);
 
             RectTransform btnRect = btnObj.AddComponent<RectTransform>();
-            btnRect.anchorMin = new Vector2(0f, 0f);
-            btnRect.anchorMax = new Vector2(0f, 0f);
-            btnRect.pivot = new Vector2(0f, 0f);
-            btnRect.anchoredPosition = new Vector2(30, 290);
-            btnRect.sizeDelta = new Vector2(220, 60);
+            btnRect.anchorMin = new Vector2(0.5f, 0f);
+            btnRect.anchorMax = new Vector2(0.5f, 0f);
+            btnRect.pivot = new Vector2(0.5f, 0f);
+            btnRect.anchoredPosition = new Vector2(-330, 260);
+            btnRect.sizeDelta = new Vector2(230, 65);
 
             Image btnBg = btnObj.AddComponent<Image>();
-            btnBg.color = new Color(0.18f, 0.55f, 0.9f, 0.9f);
+            ApplySlicedSprite(btnBg, ButtonSprite("Cyan"));
 
             Button btn = btnObj.AddComponent<Button>();
+            btn.targetGraphic = btnBg;
             btn.onClick.AddListener(() =>
             {
                 PhysicsObjectSpawner spawner = Object.FindFirstObjectByType<PhysicsObjectSpawner>();
                 if (spawner != null) spawner.GatherAndReshuffleRemaining();
             });
 
-            Text btnTxt = CreateTextNode(btnObj.transform, "🔄 KARIŞTIR", 20, FontStyle.Bold, Color.white);
+            GameObject btnIconObj = new GameObject("Icon");
+            btnIconObj.transform.SetParent(btnObj.transform, false);
+
+            RectTransform btnIconRect = btnIconObj.AddComponent<RectTransform>();
+            btnIconRect.anchorMin = new Vector2(0f, 0.5f);
+            btnIconRect.anchorMax = new Vector2(0f, 0.5f);
+            btnIconRect.pivot = new Vector2(0f, 0.5f);
+            btnIconRect.anchoredPosition = new Vector2(22, 0);
+            btnIconRect.sizeDelta = new Vector2(30, 30);
+
+            Image btnIconImg = btnIconObj.AddComponent<Image>();
+            btnIconImg.sprite = IconSprite("Cycle");
+            btnIconImg.type = Image.Type.Simple;
+            btnIconImg.preserveAspect = true;
+
+            GameObject btnTextObj = new GameObject("TextNode");
+            btnTextObj.transform.SetParent(btnObj.transform, false);
+
+            RectTransform btnTextRect = btnTextObj.AddComponent<RectTransform>();
+            btnTextRect.anchorMin = new Vector2(0f, 0f);
+            btnTextRect.anchorMax = new Vector2(1f, 1f);
+            btnTextRect.offsetMin = new Vector2(46, 0);
+            btnTextRect.offsetMax = new Vector2(-10, 0);
+
+            Text btnTxt = btnTextObj.AddComponent<Text>();
+            btnTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            btnTxt.fontSize = 22;
+            btnTxt.fontStyle = FontStyle.Bold;
+            btnTxt.color = Color.white;
+            btnTxt.text = "KARIŞTIR";
             btnTxt.alignment = TextAnchor.MiddleCenter;
         }
 
@@ -334,8 +409,9 @@ namespace MechaFind3D.PhysicsInteraction
             List<MatchGoal> goals = MatchGoalManager.Instance.levelGoals;
             if (goals == null || goals.Count == 0) return;
 
-            foreach (MatchGoal goal in goals)
+            for (int i = 0; i < goals.Count; i++)
             {
+                MatchGoal goal = goals[i];
                 GameObject cardObj = new GameObject($"GoalCard_{goal.colorName}_{goal.shapeType}");
                 cardObj.transform.SetParent(topGoalContainer, false);
 
@@ -343,7 +419,7 @@ namespace MechaFind3D.PhysicsInteraction
                 cardRect.sizeDelta = new Vector2(400, 90);
 
                 Image cardBg = cardObj.AddComponent<Image>();
-                cardBg.color = new Color(goal.targetColor.r * 0.5f, goal.targetColor.g * 0.5f, goal.targetColor.b * 0.5f, 0.9f);
+                ApplySlicedSprite(cardBg, ButtonSprite(GoalCardPalette[i % GoalCardPalette.Length]));
 
                 GameObject iconObj = new GameObject("Icon");
                 iconObj.transform.SetParent(cardObj.transform, false);
@@ -356,7 +432,18 @@ namespace MechaFind3D.PhysicsInteraction
                 iconRect.sizeDelta = new Vector2(60, 60);
 
                 Image iconImg = iconObj.AddComponent<Image>();
-                iconImg.color = goal.targetColor;
+                Sprite foodIcon = string.IsNullOrEmpty(goal.colorName) ? null : IconSprite(goal.colorName);
+                if (foodIcon != null)
+                {
+                    iconImg.sprite = foodIcon;
+                    iconImg.type = Image.Type.Simple;
+                    iconImg.preserveAspect = true;
+                    iconImg.color = Color.white;
+                }
+                else
+                {
+                    iconImg.color = goal.targetColor;
+                }
 
                 GameObject textObj = new GameObject("Text");
                 textObj.transform.SetParent(cardObj.transform, false);
@@ -395,6 +482,15 @@ namespace MechaFind3D.PhysicsInteraction
                 rb.isKinematic = true;
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
+            }
+
+            foreach (Renderer r in item.GetComponentsInChildren<Renderer>())
+            {
+                if (r != null)
+                {
+                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    r.receiveShadows = false;
+                }
             }
 
             Collider col = item.GetComponent<Collider>();
@@ -452,7 +548,10 @@ namespace MechaFind3D.PhysicsInteraction
         /// Measures the slot's actual on-screen size and reprojects it into world units at
         /// dockCameraDepth, so the docked item's scale always visually fits the slot art,
         /// regardless of resolution, device aspect ratio, or slot size tuning.
-        private float ComputeFitScaleForSlot(int slotIndex)
+        /// Normalizes by the object's unscaled local mesh dimensions so all models visually fill the slot.
+        private static readonly Dictionary<int, float> unscaledExtentCache = new Dictionary<int, float>();
+
+        private float ComputeFitScaleForSlot(int slotIndex, GameObject obj3D = null)
         {
             if (slotIndex < 0 || slotIndex >= slotRects.Count || mainCamera == null) return miniObjectDockScale;
 
@@ -473,12 +572,67 @@ namespace MechaFind3D.PhysicsInteraction
             Vector3 worldEdgeB = mainCamera.ScreenToWorldPoint(new Vector3(screenCenter.x + slotScreenSize * 0.5f, screenCenter.y, dockCameraDepth));
 
             float slotWorldSize = Vector3.Distance(worldEdgeA, worldEdgeB);
-            return slotWorldSize * dockItemFillRatio;
+            float targetWorldSize = slotWorldSize * dockItemFillRatio;
+
+            if (obj3D != null)
+            {
+                float localMax = GetObjectStaticUnscaledMaxExtent(obj3D);
+                if (localMax > 1e-4f)
+                {
+                    return targetWorldSize / localMax;
+                }
+            }
+
+            return targetWorldSize;
+        }
+
+        private static float GetObjectStaticUnscaledMaxExtent(GameObject obj)
+        {
+            if (obj == null) return 1f;
+
+            int instanceId = obj.GetInstanceID();
+            if (unscaledExtentCache.TryGetValue(instanceId, out float cachedExtent) && cachedExtent > 1e-4f)
+            {
+                return cachedExtent;
+            }
+
+            Renderer[] rends = obj.GetComponentsInChildren<Renderer>();
+            if (rends == null || rends.Length == 0) return 1f;
+
+            Vector3 origScale = obj.transform.localScale;
+            Quaternion origRot = obj.transform.rotation;
+
+            obj.transform.localScale = Vector3.one;
+            obj.transform.rotation = Quaternion.identity;
+
+            Bounds combined = rends[0].bounds;
+            for (int i = 1; i < rends.Length; i++)
+            {
+                if (rends[i] != null && rends[i].enabled)
+                {
+                    combined.Encapsulate(rends[i].bounds);
+                }
+            }
+
+            obj.transform.localScale = origScale;
+            obj.transform.rotation = origRot;
+
+            float maxExtent = Mathf.Max(combined.size.x, combined.size.y, combined.size.z);
+            float finalExtent = maxExtent > 1e-4f ? maxExtent : 1f;
+
+            unscaledExtentCache[instanceId] = finalExtent;
+            return finalExtent;
         }
 
         private Camera CanvasEventCamera()
         {
             return (mainCanvas != null && mainCanvas.renderMode != RenderMode.ScreenSpaceOverlay) ? mainCanvas.worldCamera : null;
+        }
+
+        private Quaternion GetDockItemSidewaysRotation()
+        {
+            // Clean 3D perspective orientation (22° pitch forward, 35° yaw)
+            return Quaternion.Euler(22f, 35f, 0f);
         }
 
         private void Animate3DObjectToSlot(GameObject obj3D, int targetSlotIndex, System.Action onComplete)
@@ -487,17 +641,16 @@ namespace MechaFind3D.PhysicsInteraction
 
             const float duration = 0.42f;
             Vector3 targetPos = GetSlotWorldPosition(targetSlotIndex);
-            Vector3 targetScale = Vector3.one * ComputeFitScaleForSlot(targetSlotIndex);
+            Vector3 targetScale = Vector3.one * ComputeFitScaleForSlot(targetSlotIndex, obj3D);
+            Quaternion targetRot = GetDockItemSidewaysRotation();
 
             tweeningDockObjects.Add(obj3D);
             obj3D.transform.DOKill();
 
             Sequence seq = DOTween.Sequence();
-            // Falling feel: accelerate into the slot like gravity (Ease.InQuad), then a small
-            // squash-bounce on the landing scale instead of an up-and-over toss arc.
             seq.Join(obj3D.transform.DOMove(targetPos, duration).SetEase(Ease.InQuad));
             seq.Join(obj3D.transform.DOScale(targetScale, duration).SetEase(Ease.OutBounce));
-            seq.Join(obj3D.transform.DORotateQuaternion(Quaternion.Euler(15f, 25f, 0f), duration).SetEase(Ease.OutQuad));
+            seq.Join(obj3D.transform.DORotateQuaternion(targetRot, duration).SetEase(Ease.OutQuad));
             seq.OnComplete(() =>
             {
                 tweeningDockObjects.Remove(obj3D);
@@ -514,8 +667,11 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     Vector3 targetWorldPos = GetSlotWorldPosition(i);
                     data.targetObject.transform.position = Vector3.Lerp(data.targetObject.transform.position, targetWorldPos, Time.deltaTime * 22f);
-                    data.targetObject.transform.localScale = Vector3.one * ComputeFitScaleForSlot(i);
-                    data.targetObject.transform.Rotate(Vector3.up, 25f * Time.deltaTime, Space.Self);
+                    data.targetObject.transform.localScale = Vector3.one * ComputeFitScaleForSlot(i, data.targetObject.gameObject);
+                    
+                    // Stand upright facing sideways profile (90 degrees)
+                    Quaternion targetRot = GetDockItemSidewaysRotation();
+                    data.targetObject.transform.rotation = Quaternion.Slerp(data.targetObject.transform.rotation, targetRot, Time.deltaTime * 15f);
                 }
             }
         }
@@ -602,26 +758,6 @@ namespace MechaFind3D.PhysicsInteraction
                 isProcessingMatch = false;
                 CheckAndProcessDockMatches();
             });
-        }
-
-        private Text CreateTextNode(Transform parent, string defaultContent, int fontSize, FontStyle style, Color textColor)
-        {
-            GameObject txtObj = new GameObject("TextNode");
-            txtObj.transform.SetParent(parent, false);
-
-            RectTransform rect = txtObj.AddComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.sizeDelta = Vector2.zero;
-
-            Text txt = txtObj.AddComponent<Text>();
-            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            txt.fontSize = fontSize;
-            txt.fontStyle = style;
-            txt.color = textColor;
-            txt.text = defaultContent;
-
-            return txt;
         }
     }
 }

@@ -14,13 +14,13 @@ namespace MechaFind3D.PhysicsInteraction
     {
         [Header("Match Factory Fluid Touch Settings")]
         [Tooltip("Fluid force multiplier for effortless Match Factory style rummaging.")]
-        [SerializeField] private float pushForceMultiplier = 1.8f;
+        [SerializeField] private float pushForceMultiplier = 0.8f;
 
         [Tooltip("Radius around touch point that pushes nearby items aside.")]
-        [SerializeField] private float interactionRadius = 1.6f;
+        [SerializeField] private float interactionRadius = 1.4f;
 
         [Tooltip("Force clamp to keep movement smooth and contained.")]
-        [SerializeField] private float maxForceClamp = 3.5f;
+        [SerializeField] private float maxForceClamp = 1.2f;
 
         [Header("Tap vs Rummage Classification")]
         [Tooltip("If the finger moves less than this many screen pixels before release, the gesture counts as a TAP (collect the item under it). Moving more than this turns the gesture into a DRAG (rummage the pile). This is what lets a single press-and-hold rummage AND a quick tap collect coexist.")]
@@ -29,9 +29,9 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Layer mask for physics objects.")]
         [SerializeField] private LayerMask interactableLayer = ~0;
 
-        [Header("Container Bounds Safety")]
-        [Tooltip("Safety-net bounds only, kept outside the real container walls so it doesn't fight normal physics containment (which is what actually keeps items off the corners).")]
-        [SerializeField] private Vector2 boxInnerBounds = new Vector2(8.2f, 8.2f);
+        [Header("Custom Line Boundary Constraint (Editable in Inspector)")]
+        [Tooltip("Adjustable boundary line dimensions. Objects cannot cross outside this area.")]
+        [SerializeField] private Vector2 boundaryAreaSize = new Vector2(6.35f, 6.35f);
 
         [Header("Visual Feedback")]
         [Tooltip("Create a visible touch indicator sphere at touch point.")]
@@ -97,15 +97,71 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void FixedUpdate()
         {
-            // Only rummage once the gesture is classified as a DRAG. A stationary press-and-hold
-            // (or the first moments of a tap) must NOT push the pile, otherwise tapping to collect
-            // feels like it "scatters again" instead of picking the item up.
             if (isTouching && isDragging)
             {
                 ApplyMatchFactoryFluidForces(lastTouchWorldPos, currentTouchVelocity);
             }
 
-            ClampObjectsInsideContainer();
+            EnforceLineBoundaryConstraint();
+        }
+
+        private void EnforceLineBoundaryConstraint()
+        {
+            float halfX = boundaryAreaSize.x * 0.5f;
+            float halfZ = boundaryAreaSize.y * 0.5f;
+
+            Collider[] cols = Physics.OverlapSphere(transform.position, 15f, interactableLayer);
+            foreach (Collider c in cols)
+            {
+                FindTargetObject item = c.GetComponentInParent<FindTargetObject>();
+                if (item == null || item.isDocked) continue;
+
+                Rigidbody rb = item.GetComponent<Rigidbody>();
+                if (rb == null || rb.isKinematic) continue;
+
+                Vector3 pos = rb.position;
+                Vector3 vel = rb.linearVelocity;
+                bool clamped = false;
+
+                if (pos.x < -halfX)
+                {
+                    pos.x = -halfX;
+                    if (vel.x < 0f) vel.x = 0f;
+                    clamped = true;
+                }
+                else if (pos.x > halfX)
+                {
+                    pos.x = halfX;
+                    if (vel.x > 0f) vel.x = 0f;
+                    clamped = true;
+                }
+
+                if (pos.z < -halfZ)
+                {
+                    pos.z = -halfZ;
+                    if (vel.z < 0f) vel.z = 0f;
+                    clamped = true;
+                }
+                else if (pos.z > halfZ)
+                {
+                    pos.z = halfZ;
+                    if (vel.z > 0f) vel.z = 0f;
+                    clamped = true;
+                }
+
+                if (pos.y < -0.05f)
+                {
+                    pos.y = 0.02f;
+                    if (vel.y < 0f) vel.y = 0f;
+                    clamped = true;
+                }
+
+                if (clamped)
+                {
+                    rb.position = pos;
+                    rb.linearVelocity = vel;
+                }
+            }
         }
 
         private void HandleUniversalInput()
@@ -266,71 +322,41 @@ namespace MechaFind3D.PhysicsInteraction
         {
             Collider[] hits = Physics.OverlapSphere(centerPoint, interactionRadius, interactableLayer);
 
+            Vector3 dragDir = new Vector3(swipeVelocity.x, 0f, swipeVelocity.z);
+            float speed = dragDir.magnitude;
+            if (speed > 1e-4f) dragDir /= speed;
+            else dragDir = Vector3.forward;
+
+            float uniformForceMagnitude = Mathf.Clamp(speed * pushForceMultiplier * 0.04f, 0.08f, 0.45f);
+
             foreach (Collider col in hits)
             {
                 Rigidbody rb = col.attachedRigidbody;
                 if (rb != null && !rb.isKinematic)
                 {
                     Vector3 diff = rb.transform.position - centerPoint;
-                    diff.y = 0.02f;
+                    diff.y = 0f;
 
                     float dist = diff.magnitude;
-                    float proximityFactor = Mathf.Clamp01(1.0f - (dist / interactionRadius));
+                    float proximity = Mathf.Clamp01(1.0f - (dist / interactionRadius));
 
-                    Vector3 pushDir = diff.normalized * 0.65f + swipeVelocity.normalized * 0.35f;
-                    pushDir.y = 0f;
+                    Vector3 radialDir = dist > 1e-4f ? diff / dist : dragDir;
+                    Vector3 finalPushDir = (radialDir * 0.5f + dragDir * 0.5f).normalized;
+                    finalPushDir.y = 0f;
 
-                    float velocityMag = Mathf.Max(swipeVelocity.magnitude, 1.5f);
-                    Vector3 force = pushDir * velocityMag * pushForceMultiplier * proximityFactor;
-                    force.y = 0f;
+                    Vector3 force = finalPushDir * uniformForceMagnitude * proximity;
+                    rb.AddForce(force, ForceMode.Impulse);
 
-                    force = Vector3.ClampMagnitude(force, maxForceClamp);
-
-                    rb.AddForce(force, ForceMode.Force);
-                    rb.AddTorque(Random.insideUnitSphere * (force.magnitude * 0.15f), ForceMode.Force);
+                    Vector3 torque = Vector3.up * ((finalPushDir.x - finalPushDir.z) * 0.05f * proximity);
+                    rb.AddTorque(torque, ForceMode.Impulse);
                 }
             }
         }
 
         private void ClampObjectsInsideContainer()
         {
-            float halfX = boxInnerBounds.x * 0.5f;
-            float halfZ = boxInnerBounds.y * 0.5f;
-
-            Collider[] objects = Physics.OverlapBox(transform.position + Vector3.up * 1f, new Vector3(20f, 10f, 20f), Quaternion.identity, interactableLayer);
-
-            foreach (Collider col in objects)
-            {
-                Rigidbody rb = col.attachedRigidbody;
-                if (rb != null && !rb.isKinematic)
-                {
-                    Vector3 pos = rb.position - transform.position;
-                    bool clamped = false;
-
-                    if (Mathf.Abs(pos.x) > halfX)
-                    {
-                        pos.x = Mathf.Sign(pos.x) * halfX;
-                        clamped = true;
-                    }
-                    if (Mathf.Abs(pos.z) > halfZ)
-                    {
-                        pos.z = Mathf.Sign(pos.z) * halfZ;
-                        clamped = true;
-                    }
-                    if (pos.y < 0.0f || pos.y > 2.5f)
-                    {
-                        pos.y = Mathf.Clamp(pos.y, 0.1f, 2.2f);
-                        clamped = true;
-                    }
-
-                    if (clamped)
-                    {
-                        // Only snap position back inside; don't kill velocity, or objects that
-                        // reach this safety-net boundary lose momentum and pile up at the edges.
-                        rb.position = transform.position + pos;
-                    }
-                }
-            }
+            // Disabled: Physical border walls (Border_North/South/East/West) handle containment cleanly.
+            // Manual position clamping was forcing rigidbodies into wall colliders, causing violent physics jitter and floating.
         }
 
         private void OnTouchEnded(Vector2 screenPos)

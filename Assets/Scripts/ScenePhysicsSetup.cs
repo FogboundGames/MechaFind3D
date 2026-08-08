@@ -17,14 +17,15 @@ namespace MechaFind3D.PhysicsInteraction
     [ExecuteAlways]
     public class ScenePhysicsSetup : MonoBehaviour
     {
-        [Header("Match Factory Container Box Dimensions")]
-        [SerializeField] private Vector3 containerSize = new Vector3(8.0f, 0.4f, 8.0f);
-        [SerializeField] private float borderWallHeight = 3.5f;
-        [SerializeField] private float borderWallThickness = 0.5f;
+        [Header("Play Area Line Boundary (Adjustable in Inspector)")]
+        [Tooltip("Adjustable boundary line dimensions. Objects are strictly kept inside this line by code constraint.")]
+        [SerializeField] private Vector2 boundaryAreaSize = new Vector2(6.35f, 6.35f);
+        [SerializeField] private Color boundaryLineColor = new Color(0f, 0f, 0f, 0f);
+        [SerializeField] private float boundaryLineWidth = 0.0f;
 
-        [Header("Match Factory Visual Colors")]
+        [Header("Match Factory Floor Tray Dimensions")]
+        [SerializeField] private Vector3 containerSize = new Vector3(8.5f, 0.1f, 8.5f);
         [SerializeField] private Color trayFloorColor = new Color(0.12f, 0.15f, 0.20f);
-        [SerializeField] private Color borderWallColor = new Color(0.22f, 0.26f, 0.35f);
 
         private void Start()
         {
@@ -61,9 +62,9 @@ namespace MechaFind3D.PhysicsInteraction
         {
             SetupCamera();
             SetupLighting();
-            GameObject trayObj = CreateContainerTrayFloor();
-            CreateContainerBorderWalls(trayObj.transform);
-            CreateTopCeilingBarrier(trayObj.transform);
+            GameObject floorObj = CreateContainerTrayFloor();
+            RemoveOldWallsAndCeiling();
+            CreateVisualBoundaryLineFrame(floorObj.transform);
             SetupInteractionAndSpawner();
         }
 
@@ -82,7 +83,7 @@ namespace MechaFind3D.PhysicsInteraction
                 camObj.AddComponent<AudioListener>();
             }
 
-            cam.transform.position = new Vector3(0f, 9.5f, -6.5f);
+            cam.transform.position = new Vector3(0f, 11.2f, -7.6f);
             cam.transform.rotation = Quaternion.Euler(58f, 0f, 0f);
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.06f, 0.08f, 0.12f);
@@ -91,6 +92,12 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void SetupLighting()
         {
+            Light[] lights = Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
+            foreach (Light l in lights)
+            {
+                if (l != null) l.shadows = LightShadows.None;
+            }
+
             Light dirLight = Object.FindFirstObjectByType<Light>();
             if (dirLight == null)
             {
@@ -102,7 +109,7 @@ namespace MechaFind3D.PhysicsInteraction
             dirLight.transform.rotation = Quaternion.Euler(55f, -25f, 0f);
             dirLight.color = new Color(1f, 0.97f, 0.92f);
             dirLight.intensity = 1.4f;
-            dirLight.shadows = LightShadows.Soft;
+            dirLight.shadows = LightShadows.None;
         }
 
         private GameObject CreateContainerTrayFloor()
@@ -144,10 +151,10 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 boxCol.sharedMaterial = new PhysicsMaterial("TrayFloorPhysics")
                 {
-                    dynamicFriction = 0.18f,
-                    staticFriction = 0.22f,
-                    bounciness = 0.1f,
-                    frictionCombine = PhysicsMaterialCombine.Minimum,
+                    dynamicFriction = 0.35f,
+                    staticFriction = 0.40f,
+                    bounciness = 0.0f,
+                    frictionCombine = PhysicsMaterialCombine.Maximum,
                     bounceCombine = PhysicsMaterialCombine.Minimum
                 };
             }
@@ -155,111 +162,70 @@ namespace MechaFind3D.PhysicsInteraction
             return floorObj;
         }
 
-        private void CreateContainerBorderWalls(Transform parent)
+        private void RemoveOldWallsAndCeiling()
         {
-            Transform existingWalls = transform.Find("Container_Border_Walls");
-            if (existingWalls != null)
+            Transform walls = transform.Find("Container_Border_Walls");
+            if (walls != null)
             {
 #if UNITY_EDITOR
-                DestroyImmediate(existingWalls.gameObject);
+                DestroyImmediate(walls.gameObject);
 #else
-                Destroy(existingWalls.gameObject);
+                Destroy(walls.gameObject);
 #endif
             }
 
-            GameObject wallsContainer = new GameObject("Container_Border_Walls");
-            wallsContainer.transform.SetParent(transform);
-
-            float halfX = containerSize.x * 0.5f;
-            float halfZ = containerSize.z * 0.5f;
-            float posY = borderWallHeight * 0.5f;
-
-            CreateWallNode(wallsContainer.transform, "Border_North", 
-                new Vector3(0, posY, halfZ + borderWallThickness * 0.5f), 
-                new Vector3(containerSize.x + borderWallThickness * 2, borderWallHeight, borderWallThickness));
-
-            CreateWallNode(wallsContainer.transform, "Border_South", 
-                new Vector3(0, posY, -halfZ - borderWallThickness * 0.5f), 
-                new Vector3(containerSize.x + borderWallThickness * 2, borderWallHeight, borderWallThickness));
-
-            CreateWallNode(wallsContainer.transform, "Border_East", 
-                new Vector3(halfX + borderWallThickness * 0.5f, posY, 0), 
-                new Vector3(borderWallThickness, borderWallHeight, containerSize.z));
-
-            CreateWallNode(wallsContainer.transform, "Border_West", 
-                new Vector3(-halfX - borderWallThickness * 0.5f, posY, 0), 
-                new Vector3(borderWallThickness, borderWallHeight, containerSize.z));
-        }
-
-        private void CreateTopCeilingBarrier(Transform parent)
-        {
-            Transform existingRoof = transform.Find("Ceiling_Barrier");
-            if (existingRoof != null)
+            Transform ceiling = transform.Find("Ceiling_Barrier");
+            if (ceiling != null)
             {
 #if UNITY_EDITOR
-                DestroyImmediate(existingRoof.gameObject);
+                DestroyImmediate(ceiling.gameObject);
 #else
-                Destroy(existingRoof.gameObject);
+                Destroy(ceiling.gameObject);
+#endif
+            }
+        }
+
+        private void CreateVisualBoundaryLineFrame(Transform parent)
+        {
+            Transform existingFrame = transform.Find("Boundary_Line_Frame");
+            if (existingFrame != null)
+            {
+#if UNITY_EDITOR
+                DestroyImmediate(existingFrame.gameObject);
+#else
+                Destroy(existingFrame.gameObject);
 #endif
             }
 
-            GameObject roof = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            roof.name = "Ceiling_Barrier";
-            roof.transform.SetParent(transform);
-            roof.transform.localPosition = new Vector3(0, borderWallHeight, 0);
-            roof.transform.localScale = new Vector3(containerSize.x + 2f, 0.2f, containerSize.z + 2f);
+            GameObject lineObj = new GameObject("Boundary_Line_Frame");
+            lineObj.transform.SetParent(transform);
+            lineObj.transform.position = Vector3.zero;
 
-            Renderer rend = roof.GetComponent<Renderer>();
-            if (rend != null) rend.enabled = false;
+            LineRenderer line = lineObj.AddComponent<LineRenderer>();
+            line.enabled = false;
+            line.useWorldSpace = true;
+            line.loop = true;
+            line.positionCount = 4;
+            line.startWidth = boundaryLineWidth;
+            line.endWidth = boundaryLineWidth;
 
-            BoxCollider col = roof.GetComponent<BoxCollider>();
-            if (col != null)
-            {
-                col.sharedMaterial = new PhysicsMaterial("RoofPhysics")
-                {
-                    bounciness = 0.0f,
-                    bounceCombine = PhysicsMaterialCombine.Minimum
-                };
-            }
+            Shader lineShader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            Material lineMat = new Material(lineShader);
+            if (lineMat.HasProperty("_BaseColor")) lineMat.SetColor("_BaseColor", boundaryLineColor);
+            if (lineMat.HasProperty("_Color")) lineMat.SetColor("_Color", boundaryLineColor);
+            line.sharedMaterial = lineMat;
+
+            float halfX = boundaryAreaSize.x * 0.5f;
+            float halfZ = boundaryAreaSize.y * 0.5f;
+            float yPos = 0.02f;
+
+            line.SetPosition(0, new Vector3(-halfX, yPos, -halfZ));
+            line.SetPosition(1, new Vector3(halfX, yPos, -halfZ));
+            line.SetPosition(2, new Vector3(halfX, yPos, halfZ));
+            line.SetPosition(3, new Vector3(-halfX, yPos, halfZ));
         }
 
-        private void CreateWallNode(Transform parent, string wallName, Vector3 localPos, Vector3 scale)
-        {
-            GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            wall.name = wallName;
-            wall.transform.SetParent(parent);
-            wall.transform.localPosition = localPos;
-            wall.transform.localScale = scale;
 
-            Renderer rend = wall.GetComponent<Renderer>();
-            if (rend != null)
-            {
-                Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-                Material mat = new Material(shader)
-                {
-                    name = "BorderWallMaterial"
-                };
-
-                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", borderWallColor);
-                if (mat.HasProperty("_Color")) mat.SetColor("_Color", borderWallColor);
-                if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.6f);
-
-                rend.sharedMaterial = mat;
-            }
-
-            BoxCollider col = wall.GetComponent<BoxCollider>();
-            if (col != null)
-            {
-                col.sharedMaterial = new PhysicsMaterial("BorderWallPhysics")
-                {
-                    dynamicFriction = 0.18f,
-                    staticFriction = 0.22f,
-                    bounciness = 0.1f,
-                    frictionCombine = PhysicsMaterialCombine.Minimum,
-                    bounceCombine = PhysicsMaterialCombine.Minimum
-                };
-            }
-        }
 
         private void SetupInteractionAndSpawner()
         {
