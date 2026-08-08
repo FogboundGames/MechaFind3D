@@ -37,22 +37,24 @@ namespace MechaFind3D.PhysicsInteraction
             levelGoals.Clear();
             isLevelComplete = false;
 
-            // 5 Mavi Küp, 3 Kırmızı Küre
+            // Food-type goals. colorName holds the food item id (must match a spawned food model
+            // name); shapeType stays Cube because identity now comes from the food type, not shape.
+            // totalRequired is a multiple of 3 so a whole number of match-3s completes it.
             levelGoals.Add(new MatchGoal
             {
                 shapeType = ObjectShapeType.Cube,
-                colorName = "Mavi",
-                targetColor = new Color(0.2f, 0.55f, 0.95f),
-                totalRequired = 5,
+                colorName = "apple",
+                targetColor = new Color(0.90f, 0.20f, 0.20f),
+                totalRequired = 6,
                 currentCount = 0
             });
 
             levelGoals.Add(new MatchGoal
             {
-                shapeType = ObjectShapeType.Sphere,
-                colorName = "Kırmızı",
-                targetColor = new Color(0.95f, 0.2f, 0.2f),
-                totalRequired = 3,
+                shapeType = ObjectShapeType.Cube,
+                colorName = "banana",
+                targetColor = new Color(0.95f, 0.85f, 0.20f),
+                totalRequired = 6,
                 currentCount = 0
             });
         }

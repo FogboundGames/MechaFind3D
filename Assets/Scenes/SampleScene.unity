@@ -3054,6 +3054,92 @@ Material:
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
+--- !u!1 &1126946677
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1126946679}
+  - component: {fileID: 1126946678}
+  m_Layer: 0
+  m_Name: Mecha_Ragdoll_Spawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1126946678
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1126946677}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c18d6785ce2b0256a2583c782496536, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaRagdollSpawner
+  characterModels:
+  - {fileID: 919132149155446097, guid: a07a9ab0b5d6f9ec58cefceaa6d500fc, type: 3}
+  - {fileID: 919132149155446097, guid: 77227d983a3771cb0a90f6d6ae2e940a, type: 3}
+  - {fileID: 919132149155446097, guid: e08adb091db50379e966302860a92bd6, type: 3}
+  - {fileID: 919132149155446097, guid: 662b230126d89c50398236c9373f8f56, type: 3}
+  - {fileID: 919132149155446097, guid: 82cdcd0eccff739a98b739c2386725e8, type: 3}
+  - {fileID: 919132149155446097, guid: df6c96883a186be9f8aea492b8761b43, type: 3}
+  - {fileID: 919132149155446097, guid: ec11922f1bd28b8dbbcbed6a41a1ce91, type: 3}
+  - {fileID: 919132149155446097, guid: 68fd1f3acebbd3ab4b5f359e03e66109, type: 3}
+  - {fileID: 919132149155446097, guid: b5e963dbac0b38aebb60b0c942c9f4fb, type: 3}
+  - {fileID: 919132149155446097, guid: 0d90286ba2af07141a41c85888611e64, type: 3}
+  - {fileID: 919132149155446097, guid: d0b5b80ec9c4ce62cbd7023c6466b3d8, type: 3}
+  - {fileID: 919132149155446097, guid: fd712d735153e1377996113b5602e45e, type: 3}
+  - {fileID: 919132149155446097, guid: cffb582442c91b0c4bc00d8f386590c6, type: 3}
+  - {fileID: 919132149155446097, guid: 1ae7c130a52900f42a08fc736d574511, type: 3}
+  - {fileID: 919132149155446097, guid: b28ed51f816248abab96701f9084f434, type: 3}
+  - {fileID: 919132149155446097, guid: bfced4d5ca5b266c3aa56ec067450d53, type: 3}
+  - {fileID: 919132149155446097, guid: 30c48c7038654d4d8bf3bdae175bf1d5, type: 3}
+  - {fileID: 919132149155446097, guid: 58242f8165f64ee6d8bb1fd5f3935edf, type: 3}
+  spawnPosition: {x: 0, y: 3, z: 0}
+  spawnTiltEuler: {x: 20, y: 180, z: 15}
+  spawnOnStart: 1
+  ragdollSettings:
+    torsoMass: 3
+    headMass: 1
+    armMass: 0.6
+    legMass: 1
+    swingLimit: 45
+    twistLimit: 25
+  camouflage: 1
+  matchTextures: 1
+  perPartColor: 1
+  sampleColorsFromPile: 1
+  camouflagePalette:
+  - {r: 0.95, g: 0.2, b: 0.2, a: 1}
+  - {r: 0.2, g: 0.55, b: 0.95, a: 1}
+  - {r: 0.2, g: 0.85, b: 0.35, a: 1}
+  - {r: 0.98, g: 0.85, b: 0.15, a: 1}
+  - {r: 0.65, g: 0.25, b: 0.9, a: 1}
+  - {r: 0.98, g: 0.5, b: 0.15, a: 1}
+  - {r: 0.15, g: 0.85, b: 0.85, a: 1}
+  - {r: 0.95, g: 0.4, b: 0.7, a: 1}
+--- !u!4 &1126946679
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1126946677}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1153309385
 GameObject:
   m_ObjectHideFlags: 0
@@ -3480,7 +3566,7 @@ MonoBehaviour:
   pushForceMultiplier: 4
   interactionRadius: 2
   maxForceClamp: 8
-  tapPushImpulse: 2.2
+  tapMaxScreenMovePixels: 20
   interactableLayer:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -3510,6 +3596,18 @@ MonoBehaviour:
   bounciness: 0.05
   friction: 0.85
   objectShader: {fileID: 0}
+  useTexturedAppearance: 1
+  useFoodModels: 1
+  foodModels:
+  - {fileID: 919132149155446097, guid: 3d5b1fd126e3fc17db741cbedcb3944c, type: 3}
+  - {fileID: 919132149155446097, guid: 3d73883be52eabcc88970c7054c12ba8, type: 3}
+  - {fileID: 919132149155446097, guid: af893c9380a3a427b93ab22a0f73f377, type: 3}
+  - {fileID: 919132149155446097, guid: 18dda8bfdaf0fb3bcb6c486ff2938049, type: 3}
+  - {fileID: 919132149155446097, guid: e8b4cdd108a372c1c86a40946c6bd3b9, type: 3}
+  - {fileID: 919132149155446097, guid: 0201d60daf66a74ec827d0cf3099e057, type: 3}
+  - {fileID: 919132149155446097, guid: ab15684566942bc52a719adb904c3b03, type: 3}
+  - {fileID: 919132149155446097, guid: fd24a91b881dc1bf3b8d914d8c2fb52b, type: 3}
+  foodScale: 4
 --- !u!114 &1276484861
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5374,3 +5472,4 @@ SceneRoots:
   - {fileID: 832575519}
   - {fileID: 1276484862}
   - {fileID: 75400690}
+  - {fileID: 1126946679}

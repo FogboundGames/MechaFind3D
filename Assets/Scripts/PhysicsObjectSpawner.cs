@@ -34,6 +34,15 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("Material & Visuals")]
         [SerializeField] private Shader objectShader;
+        [Tooltip("Give pile objects procedural pattern textures from AppearanceLibrary (color/match-3 identity is preserved). Turn off for plain flat colors. Ignored when food models are used.")]
+        [SerializeField] private bool useTexturedAppearance = true;
+
+        [Header("Food Models (Match Factory items)")]
+        [Tooltip("When on, the pile spawns these food models instead of primitive cubes/spheres. Match-3 identity becomes the food TYPE. Keep the set small (~6-10) so 3-of-a-kind matches happen.")]
+        [SerializeField] private bool useFoodModels = true;
+        [SerializeField] private GameObject[] foodModels;
+        [Tooltip("Every food is scaled so its largest dimension is about this many world units, so wildly different source sizes (a berry vs a cake) become a consistent pile.")]
+        [SerializeField] private float foodTargetSize = 1.0f;
 
         private struct NamedColor
         {
@@ -124,46 +133,80 @@ namespace MechaFind3D.PhysicsInteraction
             Transform container = new GameObject("Spawned_Physics_Objects").transform;
             container.SetParent(transform);
 
+            bool spawnFood = useFoodModels && foodModels != null && foodModels.Length > 0;
+
             for (int i = 0; i < totalObjectCount; i++)
             {
-                bool isCube = (i % 2 == 0);
-                PrimitiveType type = isCube ? PrimitiveType.Cube : PrimitiveType.Sphere;
+                GameObject obj;
+                ObjectShapeType shapeType;
+                string itemId;
+                Color itemColor;
+                float scale;
+                float massSize;   // final VISUAL size, used for mass (not the normalization scale)
 
-                GameObject obj = GameObject.CreatePrimitive(type);
-                obj.name = isCube ? $"PhysicsCube_{i}" : $"PhysicsSphere_{i}";
-                obj.transform.SetParent(container);
+                if (spawnFood)
+                {
+                    GameObject model = foodModels[Random.Range(0, foodModels.Length)];
+                    obj = Instantiate(model);
+                    obj.name = $"Food_{model.name}_{i}";
+                    obj.transform.SetParent(container);
+                    // Collider must be added while the object is still at its imported scale/rotation.
+                    AddRootBoxCollider(obj);
+
+                    shapeType = ObjectShapeType.Cube;   // constant: identity is the food TYPE below
+                    itemId = model.name;                // e.g. "apple", "banana"
+                    itemColor = Color.white;
+                    // Normalize each food to a consistent size regardless of its source dimensions.
+                    // The resulting localScale can be large (source meshes are tiny), so mass must be
+                    // based on the final VISUAL size instead, or heavy objects won't respond to drags.
+                    float rand = Random.Range(0.9f, 1.1f);
+                    float localMax = LocalMaxDimension(obj);
+                    float norm = localMax > 1e-4f ? foodTargetSize / localMax : foodTargetSize;
+                    scale = norm * rand;
+                    massSize = foodTargetSize * rand;
+                }
+                else
+                {
+                    bool isCube = (i % 2 == 0);
+                    obj = GameObject.CreatePrimitive(isCube ? PrimitiveType.Cube : PrimitiveType.Sphere);
+                    obj.name = isCube ? $"PhysicsCube_{i}" : $"PhysicsSphere_{i}";
+                    obj.transform.SetParent(container);
+
+                    int colorIdx = Random.Range(0, namedColors.Count);
+                    NamedColor chosenColor = namedColors[colorIdx];
+                    shapeType = isCube ? ObjectShapeType.Cube : ObjectShapeType.Sphere;
+                    itemId = chosenColor.name;
+                    itemColor = chosenColor.color;
+                    scale = Random.Range(minScale, maxScale);
+                    massSize = scale;
+
+                    Renderer rend = obj.GetComponent<Renderer>();
+                    if (rend != null)
+                    {
+                        if (useTexturedAppearance)
+                            rend.sharedMaterial = AppearanceLibrary.RandomForColor(chosenColor.color);
+                        else if (colorIdx < colorMaterials.Count)
+                            rend.sharedMaterial = colorMaterials[colorIdx];
+                    }
+                }
 
                 float posX = Random.Range(-spawnAreaSize.x * 0.45f, spawnAreaSize.x * 0.45f);
                 float posZ = Random.Range(-spawnAreaSize.y * 0.45f, spawnAreaSize.y * 0.45f);
                 float posY = Random.Range(spawnHeightMin, spawnHeightMax);
                 obj.transform.position = transform.position + new Vector3(posX, posY, posZ);
-
                 obj.transform.rotation = Random.rotation;
-
-                float scale = Random.Range(minScale, maxScale);
                 obj.transform.localScale = Vector3.one * scale;
 
-                int colorIdx = Random.Range(0, namedColors.Count);
-                NamedColor chosenColor = namedColors[colorIdx];
+                foreach (Collider c in obj.GetComponentsInChildren<Collider>())
+                    c.sharedMaterial = physicsMaterial;
 
-                Renderer rend = obj.GetComponent<Renderer>();
-                if (rend != null && colorIdx < colorMaterials.Count)
-                {
-                    rend.sharedMaterial = colorMaterials[colorIdx];
-                }
+                FindTargetObject targetComp = obj.GetComponent<FindTargetObject>();
+                if (targetComp == null) targetComp = obj.AddComponent<FindTargetObject>();
+                targetComp.Initialize(shapeType, itemColor, itemId);
 
-                Collider col = obj.GetComponent<Collider>();
-                if (col != null)
-                {
-                    col.sharedMaterial = physicsMaterial;
-                }
-
-                ObjectShapeType shapeType = isCube ? ObjectShapeType.Cube : ObjectShapeType.Sphere;
-                FindTargetObject targetComp = obj.AddComponent<FindTargetObject>();
-                targetComp.Initialize(shapeType, chosenColor.color, chosenColor.name);
-
-                Rigidbody rb = obj.AddComponent<Rigidbody>();
-                rb.mass = objectMass * Mathf.Pow(scale, 3);
+                Rigidbody rb = obj.GetComponent<Rigidbody>();
+                if (rb == null) rb = obj.AddComponent<Rigidbody>();
+                rb.mass = objectMass * Mathf.Pow(massSize, 3);
                 rb.linearDamping = linearDrag;
                 rb.angularDamping = angularDrag;
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
@@ -171,6 +214,45 @@ namespace MechaFind3D.PhysicsInteraction
 
                 spawnedObjects.Add(obj);
             }
+        }
+
+        /// Food FBX ship without colliders. Add a single BoxCollider on the ROOT (so docking, which
+        /// disables one collider, and tap-raycast both work) sized from the combined renderer bounds.
+        /// Called while the object is at its imported transform, so bounds map cleanly to local space.
+        private static void AddRootBoxCollider(GameObject obj)
+        {
+            Renderer[] rends = obj.GetComponentsInChildren<Renderer>();
+            if (rends.Length == 0) return;
+
+            Bounds worldBounds = rends[0].bounds;
+            for (int k = 1; k < rends.Length; k++) worldBounds.Encapsulate(rends[k].bounds);
+
+            BoxCollider box = obj.GetComponent<BoxCollider>();
+            if (box == null) box = obj.AddComponent<BoxCollider>();
+
+            box.center = obj.transform.InverseTransformPoint(worldBounds.center);
+            Vector3 ls = obj.transform.lossyScale;
+            box.size = new Vector3(
+                worldBounds.size.x / Mathf.Max(1e-4f, ls.x),
+                worldBounds.size.y / Mathf.Max(1e-4f, ls.y),
+                worldBounds.size.z / Mathf.Max(1e-4f, ls.z));
+        }
+
+        /// Largest renderer dimension in the object's LOCAL space (independent of its current scale),
+        /// used to normalize differently-sized food models to one consistent pile size.
+        private static float LocalMaxDimension(GameObject obj)
+        {
+            Renderer[] rends = obj.GetComponentsInChildren<Renderer>();
+            if (rends.Length == 0) return 0f;
+
+            Bounds wb = rends[0].bounds;
+            for (int k = 1; k < rends.Length; k++) wb.Encapsulate(rends[k].bounds);
+
+            Vector3 ls = obj.transform.lossyScale;
+            return Mathf.Max(
+                wb.size.x / Mathf.Max(1e-4f, ls.x),
+                wb.size.y / Mathf.Max(1e-4f, ls.y),
+                wb.size.z / Mathf.Max(1e-4f, ls.z));
         }
 
         /// Gathers the remaining (not-yet-docked) pile objects back toward the tray's center with

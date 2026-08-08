@@ -373,8 +373,10 @@ namespace MechaFind3D.PhysicsInteraction
                 txt.alignment = TextAnchor.MiddleLeft;
                 txt.color = goal.IsCompleted ? Color.green : Color.white;
 
-                string shapeName = (goal.shapeType == ObjectShapeType.Cube) ? "Küp" : "Küre";
-                txt.text = goal.IsCompleted ? "✅ TAMAMLANDI" : $"{goal.colorName} {shapeName}\nKalan: {goal.Remaining}";
+                string label = string.IsNullOrEmpty(goal.colorName)
+                    ? goal.colorName
+                    : char.ToUpper(goal.colorName[0]) + goal.colorName.Substring(1);
+                txt.text = goal.IsCompleted ? "✅ TAMAMLANDI" : $"{label}\nKalan: {goal.Remaining}";
             }
         }
 
