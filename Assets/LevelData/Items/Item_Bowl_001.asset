@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38d6da6dca571294689896056c3e1ccf, type: 3}
+  m_Name: Item_Bowl_001
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.ItemDataSO
+  itemId: bowl_001
+  displayName: Bowl_001
+  prefab: {fileID: 7919766802895880124, guid: 4f5bdf9030f94d14e83bb4ff3ea61fc8, type: 3}
+  targetColor: {r: 0.2, g: 0.85, b: 0.35, a: 1}
+  icon: {fileID: 0}

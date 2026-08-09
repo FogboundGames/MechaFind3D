@@ -57,12 +57,15 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         private readonly List<GameObject> spawnedObjects = new List<GameObject>();
+        public static PhysicsObjectSpawner Instance { get; private set; }
+
         private PhysicsMaterial physicsMaterial;
         private List<NamedColor> namedColors;
         private List<Material> colorMaterials;
 
         private void Awake()
         {
+            Instance = this;
             Physics.gravity = new Vector3(0f, -15.0f, 0f);
             Physics.defaultSolverIterations = 20;
             Physics.defaultSolverVelocityIterations = 10;
@@ -74,8 +77,11 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void Start()
         {
-            SpawnObjects();
-            SettleObjectsOnFloor();
+            if (LevelManager.Instance == null)
+            {
+                SpawnObjects();
+                SettleObjectsOnFloor();
+            }
         }
 
         public void SettleObjectsOnFloor()
@@ -147,6 +153,37 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
+        public void ClearCurrentPile()
+        {
+            Transform container = transform.Find("SpawnedObjectsContainer");
+            if (container != null)
+            {
+                int childCount = container.childCount;
+                for (int i = childCount - 1; i >= 0; i--)
+                {
+                    GameObject child = container.GetChild(i).gameObject;
+                    if (Application.isPlaying)
+                    {
+                        Destroy(child);
+                    }
+                    else
+                    {
+                        DestroyImmediate(child);
+                    }
+                }
+            }
+
+            // Also clear any spawned mecha ragdoll instances
+            GameObject[] oldMechas = GameObject.FindGameObjectsWithTag("Untagged");
+            foreach (var go in oldMechas)
+            {
+                if (go.name.Contains("MechaRagdoll") || go.name.Contains("Mecha_3D_Preview_Instance"))
+                {
+                    if (Application.isPlaying) Destroy(go);
+                    else DestroyImmediate(go);
+                }
+            }
+        }
         public void SpawnObjects()
         {
             ClearObjects();
@@ -154,18 +191,66 @@ namespace MechaFind3D.PhysicsInteraction
             Transform container = new GameObject("Spawned_Physics_Objects").transform;
             container.SetParent(transform);
 
-            bool spawnFood = useFoodModels && foodModels != null && foodModels.Length > 0;
+            List<ItemDataSO> levelItems = null;
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                levelItems = LevelManager.Instance.ActiveLevelData.BuildSpawnItemList();
+            }
 
-            for (int i = 0; i < totalObjectCount; i++)
+            bool useLevelItems = levelItems != null && levelItems.Count > 0;
+            int countToSpawn = useLevelItems ? levelItems.Count : totalObjectCount;
+            bool spawnFood = !useLevelItems && useFoodModels && foodModels != null && foodModels.Length > 0;
+
+            // The configured target size is a per-level/inspector wish, but it only makes sense relative to
+            // how many objects actually have to share the spawn area — the same size that looks right for
+            // 20 objects will bury the tray in overlap at 80. Cap it so the pile always fits the area this
+            // level is actually spawning into, instead of a single fixed size that only works by coincidence.
+            float autoMaxItemSize = ComputeAutoMaxItemSize(countToSpawn);
+
+            for (int i = 0; i < countToSpawn; i++)
             {
                 GameObject obj;
                 ObjectShapeType shapeType;
                 string itemId;
                 Color itemColor;
                 float scale;
-                float massSize;   // final VISUAL size, used for mass (not the normalization scale)
+                float massSize;
+                bool isCustomModel = false;
 
-                if (spawnFood)
+                if (useLevelItems)
+                {
+                    ItemDataSO itemData = levelItems[i];
+                    if (itemData != null && itemData.prefab != null)
+                    {
+                        obj = Instantiate(itemData.prefab);
+                        obj.name = $"LevelObj_{itemData.GetEffectiveItemId()}_{i}";
+                        shapeType = ObjectShapeType.Cube;
+                        itemId = itemData.GetEffectiveItemId();
+                        itemColor = itemData.targetColor;
+                        isCustomModel = true;
+
+                        float configuredSize = (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null) ? LevelManager.Instance.ActiveLevelData.foodTargetSize : 1.20f;
+                        float targetSize = Mathf.Max(1.10f, configuredSize);
+                        float rand = Random.Range(0.95f, 1.05f);
+                        float localMax = LocalMaxDimension(obj);
+                        float norm = localMax > 1e-4f ? targetSize / localMax : targetSize;
+                        scale = norm * rand;
+                        massSize = targetSize * rand;
+                    }
+                    else
+                    {
+                        // Fallback primitive if prefab missing
+                        obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                        obj.name = $"FallbackCube_{i}";
+                        shapeType = ObjectShapeType.Cube;
+                        itemId = "cube";
+                        itemColor = Color.cyan;
+                        scale = minScale;
+                        massSize = scale;
+                    }
+                    obj.transform.SetParent(container);
+                }
+                else if (spawnFood)
                 {
                     GameObject model = foodModels[Random.Range(0, foodModels.Length)];
                     obj = Instantiate(model);
@@ -175,12 +260,14 @@ namespace MechaFind3D.PhysicsInteraction
                     shapeType = ObjectShapeType.Cube;   // constant: identity is the food TYPE below
                     itemId = model.name;                // e.g. "apple", "banana"
                     itemColor = Color.white;
+                    isCustomModel = true;
 
+                    float effectiveFoodTargetSize = Mathf.Min(foodTargetSize, autoMaxItemSize);
                     float rand = Random.Range(0.9f, 1.1f);
                     float localMax = LocalMaxDimension(obj);
-                    float norm = localMax > 1e-4f ? foodTargetSize / localMax : foodTargetSize;
+                    float norm = localMax > 1e-4f ? effectiveFoodTargetSize / localMax : effectiveFoodTargetSize;
                     scale = norm * rand;
-                    massSize = foodTargetSize * rand;
+                    massSize = effectiveFoodTargetSize * rand;
                 }
                 else
                 {
@@ -214,7 +301,7 @@ namespace MechaFind3D.PhysicsInteraction
                 obj.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
                 obj.transform.localScale = Vector3.one * scale;
 
-                if (spawnFood)
+                if (isCustomModel)
                 {
                     foreach (Collider existingCol in obj.GetComponentsInChildren<Collider>())
                     {
@@ -305,6 +392,17 @@ namespace MechaFind3D.PhysicsInteraction
                 box.center = localCenter;
                 box.size = unscaledSize;
             }
+        }
+
+        /// Caps how big a pile item can be so `countToSpawn` of them can actually fit the spawn area
+        /// without burying the tray in overlap — treats each item as roughly circular footprint and
+        /// leaves some packing slack (0.85) for gaps between neighbours.
+        private float ComputeAutoMaxItemSize(int countToSpawn)
+        {
+            float areaW = spawnAreaSize.x * 1.5f;
+            float areaH = spawnAreaSize.y * 1.5f;
+            float areaPerItem = (areaW * areaH) / Mathf.Max(1, countToSpawn);
+            return Mathf.Max(1.10f, Mathf.Sqrt(areaPerItem) * 1.2f);
         }
 
         /// Largest renderer dimension in the object's LOCAL space (independent of its current scale),

@@ -86,11 +86,14 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void Start()
         {
-            if (MatchGoalManager.Instance != null)
+            if (LevelManager.Instance == null)
             {
-                MatchGoalManager.Instance.SetupLevelGoals();
+                if (MatchGoalManager.Instance != null)
+                {
+                    MatchGoalManager.Instance.SetupLevelGoals();
+                }
+                RefreshTargetGoalsUI();
             }
-            RefreshTargetGoalsUI();
         }
 
         private void Update()
@@ -228,7 +231,13 @@ namespace MechaFind3D.PhysicsInteraction
             titleTxt.fontSize = 20;
             titleTxt.fontStyle = FontStyle.Bold;
             titleTxt.color = new Color(0.35f, 0.18f, 0.02f);
-            titleTxt.text = "SEVİYE 1";
+            
+            string titleStr = "SEVİYE 1";
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                titleStr = LevelManager.Instance.ActiveLevelData.levelTitle.ToUpperInvariant();
+            }
+            titleTxt.text = titleStr;
             titleTxt.alignment = TextAnchor.MiddleCenter;
 
             GameObject goalsContainer = new GameObject("Goals_Container");
@@ -758,6 +767,22 @@ namespace MechaFind3D.PhysicsInteraction
                 isProcessingMatch = false;
                 CheckAndProcessDockMatches();
             });
+        }
+
+        public void HideAllOverlayPanels()
+        {
+            for (int i = dockedItems.Count - 1; i >= 0; i--)
+            {
+                if (dockedItems[i].targetObject != null)
+                {
+                    Destroy(dockedItems[i].targetObject.gameObject);
+                }
+            }
+            dockedItems.Clear();
+            tweeningDockObjects.Clear();
+            isProcessingMatch = false;
+
+            UpdateSlotBadgesUI();
         }
     }
 }

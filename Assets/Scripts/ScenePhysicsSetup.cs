@@ -229,6 +229,13 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void SetupInteractionAndSpawner()
         {
+            LevelManager levelManager = GetComponent<LevelManager>();
+            if (levelManager == null)
+            {
+                levelManager = gameObject.AddComponent<LevelManager>();
+            }
+            levelManager.AutoFindLevelsIfEmpty();
+
             MatchGoalManager goalManager = GetComponent<MatchGoalManager>();
             if (goalManager == null)
             {
@@ -253,6 +260,13 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 interaction = gameObject.AddComponent<FingerPhysicsInteraction>();
             }
+
+            MechaRagdollSpawner mechaSpawner = GetComponent<MechaRagdollSpawner>();
+            if (mechaSpawner == null)
+            {
+                mechaSpawner = gameObject.AddComponent<MechaRagdollSpawner>();
+            }
+            mechaSpawner.AutoFindCharacterModelsIfEmpty();
         }
     }
 }

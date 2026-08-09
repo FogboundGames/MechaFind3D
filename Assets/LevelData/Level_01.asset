@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a864202d3e27464ba58b8fad0a86a44, type: 3}
+  m_Name: Level_01
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
+  levelNumber: 1
+  levelTitle: Seviye 1
+  totalPileCount: 96
+  foodTargetSize: 0.22
+  targetGoals:
+  - itemData: {fileID: 11400000, guid: 66167c16f5e145743b6eb3dd723a1af8, type: 2}
+    requiredCount: 3
+  - itemData: {fileID: 11400000, guid: fccc954b5f90fbc498d16c8ae3251b45, type: 2}
+    requiredCount: 3
+  - itemData: {fileID: 11400000, guid: 42c04b3d918c0f94c80ee1aed6df68b9, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: b6b0b655f74da75498f0b2aa38c30be3, type: 2}
+    requiredCount: 6
+  fillerItems: []
+  enableCamouflageMecha: 1
+  customMechaPrefab: {fileID: 8771091787928289351, guid: d6f53d603dc1d3a8e8710f1efa9bb4d0, type: 3}
+  hostItemSO: {fileID: 11400000, guid: b6b0b655f74da75498f0b2aa38c30be3, type: 2}
+  mechaHostKeyword: avocado_003
+  mechaScaleRatio: 0.89
+  mechaOpacity: 0.302
+  mechaLocalOffset: {x: 0, y: 0, z: 0}
+  mechaRotationOffset: {x: 92.64, y: 0, z: 0}

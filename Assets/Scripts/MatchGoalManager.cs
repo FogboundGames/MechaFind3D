@@ -37,9 +37,30 @@ namespace MechaFind3D.PhysicsInteraction
             levelGoals.Clear();
             isLevelComplete = false;
 
-            // Food-type goals. colorName holds the food item id (must match a spawned food model
-            // name); shapeType stays Cube because identity now comes from the food type, not shape.
-            // totalRequired is a multiple of 3 so a whole number of match-3s completes it.
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                LevelDataSO levelData = LevelManager.Instance.ActiveLevelData;
+                if (levelData.targetGoals != null && levelData.targetGoals.Count > 0)
+                {
+                    foreach (var req in levelData.targetGoals)
+                    {
+                        if (req.itemData != null)
+                        {
+                            levelGoals.Add(new MatchGoal
+                            {
+                                shapeType = ObjectShapeType.Cube,
+                                colorName = req.itemData.GetEffectiveItemId(),
+                                targetColor = req.itemData.targetColor,
+                                totalRequired = req.requiredCount,
+                                currentCount = 0
+                            });
+                        }
+                    }
+                    return;
+                }
+            }
+
+            // Fallback default goals if no LevelData asset is assigned
             levelGoals.Add(new MatchGoal
             {
                 shapeType = ObjectShapeType.Cube,
