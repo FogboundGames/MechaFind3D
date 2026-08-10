@@ -161,7 +161,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 EditorGUILayout.PropertyField(so.FindProperty("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
                 EditorGUILayout.PropertyField(so.FindProperty("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
-                EditorGUILayout.PropertyField(so.FindProperty("mechaScaleRatio"), new GUIContent("Mecha Ölçek Oranı (scaleRatio):"));
+                EditorGUILayout.PropertyField(so.FindProperty("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
+                EditorGUILayout.PropertyField(so.FindProperty("mechaScaleRatio"), new GUIContent("Mecha Ölçek Oranı (yalnızca Boy=0 ise):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaOpacity"), new GUIContent("Mecha Saydamlığı (0.55 = %55):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaLocalOffset"), new GUIContent("Mecha Konum Öteleme (Offset):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaRotationOffset"), new GUIContent("Mecha Dönüş Açısı (Euler):"));
@@ -640,13 +641,30 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             GameObject mechaInst = Instantiate(mechaPrefab);
             mechaInst.name = "Preview_Mecha_Silhouette";
+            // Match play EXACTLY: PhysicsObjectSpawner normalizes each food to maxDim = Max(1.10, foodTargetSize)
+            // (there's a hard 1.10 floor), NOT raw foodTargetSize. Scale the preview host to that same size so
+            // the mecha (sized absolutely below) reads identically in preview and gameplay.
+            {
+                float targetHostMax = Mathf.Max(1.10f, level.foodTargetSize);
+                Renderer[] hr = hostInstance.GetComponentsInChildren<Renderer>();
+                if (hr.Length > 0)
+                {
+                    Bounds hb = hr[0].bounds;
+                    for (int i = 1; i < hr.Length; i++) hb.Encapsulate(hr[i].bounds);
+                    float maxDim = Mathf.Max(hb.size.x, Mathf.Max(hb.size.y, hb.size.z));
+                    if (maxDim > 1e-4f)
+                        hostInstance.transform.localScale *= (targetHostMax / maxDim);
+                }
+            }
+
             ChameleonCamouflage.EmbedMechaInHostObject(
                 mechaInst,
                 hostInstance,
                 level.mechaScaleRatio,
                 level.mechaOpacity,
                 level.mechaLocalOffset,
-                level.mechaRotationOffset
+                level.mechaRotationOffset,
+                level.mechaWorldSize
             );
 
             Selection.activeGameObject = hostInstance;

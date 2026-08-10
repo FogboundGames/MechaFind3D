@@ -2807,7 +2807,7 @@ MonoBehaviour:
   preferredHostKeyword: cake
   spawnPosition: {x: 0, y: 3, z: 0}
   spawnTiltEuler: {x: 20, y: 180, z: 15}
-  spawnOnStart: 1
+  spawnOnStart: 0
   ragdollSettings:
     torsoMass: 3
     headMass: 1

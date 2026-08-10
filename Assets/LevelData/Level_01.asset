@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
   levelNumber: 1
   levelTitle: Seviye 1
-  totalPileCount: 96
+  totalPileCount: 16
   foodTargetSize: 0.22
   targetGoals:
   - itemData: {fileID: 11400000, guid: 66167c16f5e145743b6eb3dd723a1af8, type: 2}
@@ -23,14 +23,14 @@ MonoBehaviour:
     requiredCount: 3
   - itemData: {fileID: 11400000, guid: 42c04b3d918c0f94c80ee1aed6df68b9, type: 2}
     requiredCount: 6
-  - itemData: {fileID: 11400000, guid: b6b0b655f74da75498f0b2aa38c30be3, type: 2}
-    requiredCount: 6
-  fillerItems: []
+  fillerItems:
+  - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
   enableCamouflageMecha: 1
   customMechaPrefab: {fileID: 8771091787928289351, guid: d6f53d603dc1d3a8e8710f1efa9bb4d0, type: 3}
-  hostItemSO: {fileID: 11400000, guid: b6b0b655f74da75498f0b2aa38c30be3, type: 2}
-  mechaHostKeyword: avocado_003
-  mechaScaleRatio: 0.89
+  hostItemSO: {fileID: 11400000, guid: b9ec21824735bc34da3685edb3d36a95, type: 2}
+  mechaHostKeyword: cheesecake_001
+  mechaScaleRatio: 0.5
+  mechaWorldSize: 0.5
   mechaOpacity: 0.302
   mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 92.64, y: 0, z: 0}
+  mechaRotationOffset: {x: 0, y: 0, z: 0}

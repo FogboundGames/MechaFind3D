@@ -147,7 +147,14 @@ namespace MechaFind3D.PhysicsInteraction
             // Enforce compact mini size on raw mecha model by default (never a 2-meter giant!)
             currentSpawnedMecha.transform.localScale = Vector3.one * 0.20f;
 
-            RagdollBuilder.Build(currentSpawnedMecha, ragdollSettings);
+            // Skinned/rigged mechas (e.g. meccha chameleon) must NOT be ragdoll-built: turning their
+            // bones into falling physics bodies scatters the skeleton in world space, so after embedding
+            // the visible mesh floats away from the host. Only ragdoll simple (non-skinned) characters.
+            // (The embed step poses + strips physics itself, so ragdoll isn't needed for embedded mechas.)
+            if (currentSpawnedMecha.GetComponentInChildren<SkinnedMeshRenderer>() == null)
+            {
+                RagdollBuilder.Build(currentSpawnedMecha, ragdollSettings);
+            }
 
             if (camouflage)
             {
@@ -169,6 +176,7 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 float targetScaleRatio = 0.85f;
                 float targetOpacity = 0.22f;
+                float absWorldSize = 0f;
                 string keyword = preferredHostKeyword;
                 Vector3 posOffset = Vector3.zero;
                 Vector3 rotOffset = Vector3.zero;
@@ -177,6 +185,7 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     targetScaleRatio = LevelManager.Instance.ActiveLevelData.mechaScaleRatio;
                     targetOpacity = LevelManager.Instance.ActiveLevelData.mechaOpacity;
+                    absWorldSize = LevelManager.Instance.ActiveLevelData.mechaWorldSize;
                     posOffset = LevelManager.Instance.ActiveLevelData.mechaLocalOffset;
                     rotOffset = LevelManager.Instance.ActiveLevelData.mechaRotationOffset;
 
@@ -201,7 +210,7 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (hostObj != null)
                 {
-                    ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset);
+                    ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset, absWorldSize);
                     return;
                 }
             }

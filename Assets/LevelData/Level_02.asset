@@ -22,7 +22,7 @@ MonoBehaviour:
   customMechaPrefab: {fileID: 0}
   hostItemSO: {fileID: 0}
   mechaHostKeyword: cake
-  mechaScaleRatio: 0.85
+  mechaScaleRatio: 0.5
   mechaOpacity: 0.22
   mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 90, y: 0, z: 0}
+  mechaRotationOffset: {x: 0, y: 0, z: 0}

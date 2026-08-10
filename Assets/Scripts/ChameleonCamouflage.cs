@@ -90,7 +90,7 @@ namespace MechaFind3D.PhysicsInteraction
         /// Embeds/Attaches the mecha INTO a host item (e.g. a Cake 🍰), positioning its upper body/limbs
         /// emerging from the top of the host object, repainted in the host item's exact texture/materials!
         /// </summary>
-        public static void EmbedMechaInHostObject(GameObject mecha, GameObject hostObject, float scaleRatio = 0.85f, float opacity = 0.22f, Vector3 positionOffset = default, Vector3 rotationOffset = default)
+        public static void EmbedMechaInHostObject(GameObject mecha, GameObject hostObject, float scaleRatio = 0.85f, float opacity = 0.22f, Vector3 positionOffset = default, Vector3 rotationOffset = default, float absoluteWorldSize = 0f)
         {
             if (mecha == null || hostObject == null) return;
 
@@ -138,31 +138,61 @@ namespace MechaFind3D.PhysicsInteraction
             float hostExtent = hostBounds.size.magnitude;
             if (hostExtent < 1e-4f) hostExtent = 1.0f;
 
-            // Measure unscaled mecha model size
+            // Measure unscaled mecha model size. For skinned meshes use localBounds (the serialized
+            // bind-pose bounds), NOT renderer.bounds: the latter is pose-dependent and stale in edit
+            // mode, so it desynced the tool preview size from gameplay. localBounds is identical in
+            // edit and play, making the mecha exactly the same size in both.
             mecha.transform.localScale = Vector3.one;
-            float rawMechaExtent = GetCombinedBounds(mecha).size.magnitude;
+            float rawMechaExtent;
+            SkinnedMeshRenderer skinned = mecha.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (skinned != null)
+            {
+                Vector3 worldSize = Vector3.Scale(skinned.localBounds.size, skinned.transform.lossyScale);
+                rawMechaExtent = worldSize.magnitude;
+            }
+            else
+            {
+                rawMechaExtent = GetCombinedBounds(mecha).size.magnitude;
+            }
             if (rawMechaExtent < 1e-4f) rawMechaExtent = 2.0f;
 
-            // Target mecha world size relative to host object
-            float effectiveScaleRatio = Mathf.Clamp(scaleRatio, 0.25f, 1.20f);
-            float targetMechaWorldSize = hostExtent * effectiveScaleRatio;
+            // Target mecha world size: ABSOLUTE (identical in tool preview and gameplay, and tunable from
+            // one place) when provided; otherwise fall back to host-relative scaleRatio.
+            float targetMechaWorldSize = (absoluteWorldSize > 0f)
+                ? absoluteWorldSize
+                : hostExtent * Mathf.Clamp(scaleRatio, 0.25f, 1.20f);
             float desiredWorldScale = targetMechaWorldSize / rawMechaExtent;
 
-            // Parent mecha directly to host object transform for 100% synchronized movement
-            mecha.transform.SetParent(hostObject.transform, false);
+            // Prefer a hand-placed anchor on the host — a child Transform named "MechaAnchor" set ONCE
+            // per food prefab in the editor. It defines exactly where/how the mecha sits, so positioning
+            // is solved per food type (not per level) and reused everywhere. Multiple "MechaAnchor*"
+            // children give per-spawn variety (Ezgi's "4 points / 2 for flat"). No anchor => auto top.
+            Transform anchor = PickMechaAnchor(hostObject.transform);
+            Transform attachParent = (anchor != null) ? anchor : hostObject.transform;
 
-            // Cancel out parent local scale so mecha is NEVER shrunk to microscopic dot!
-            Vector3 parentLossy = hostObject.transform.lossyScale;
+            mecha.transform.SetParent(attachParent, false);
+
+            // Cancel out parent world scale so the mecha keeps its intended size (never a microscopic dot).
+            Vector3 parentLossy = attachParent.lossyScale;
             float px = Mathf.Abs(parentLossy.x) > 1e-4f ? Mathf.Abs(parentLossy.x) : 1f;
             float py = Mathf.Abs(parentLossy.y) > 1e-4f ? Mathf.Abs(parentLossy.y) : 1f;
             float pz = Mathf.Abs(parentLossy.z) > 1e-4f ? Mathf.Abs(parentLossy.z) : 1f;
-
             mecha.transform.localScale = new Vector3(desiredWorldScale / px, desiredWorldScale / py, desiredWorldScale / pz);
 
-            // Position mecha lying FLAT (90 deg X-rotation) directly glued on the top surface of the host object
-            Vector3 defaultRot = (rotationOffset == Vector3.zero) ? new Vector3(90f, 0f, 0f) : rotationOffset;
-            mecha.transform.localPosition = new Vector3(0f, 0.05f, 0f) + positionOffset;
-            mecha.transform.localRotation = Quaternion.Euler(defaultRot);
+            if (anchor != null)
+            {
+                // The anchor's own position/rotation on the food IS the placement.
+                // positionOffset/rotationOffset stay available as optional fine-tune tweaks on top of it.
+                mecha.transform.localPosition = positionOffset;
+                mecha.transform.localRotation = Quaternion.Euler(rotationOffset);
+            }
+            else
+            {
+                // No anchor: fall back to auto placement lying flat on the host's top surface.
+                Vector3 defaultRot = (rotationOffset == Vector3.zero) ? new Vector3(90f, 0f, 0f) : rotationOffset;
+                mecha.transform.localPosition = new Vector3(0f, 0.05f, 0f) + positionOffset;
+                mecha.transform.localRotation = Quaternion.Euler(defaultRot);
+            }
 
             // Remove all joints, colliders, and rigidbodies in proper dependency order
             // (Joints must be removed FIRST because CharacterJoint requires Rigidbody)
@@ -202,6 +232,27 @@ namespace MechaFind3D.PhysicsInteraction
                     t.localRotation = Quaternion.Euler(0f, 0f, 20f);
                 }
             }
+        }
+
+        /// <summary>
+        /// Finds hand-placed placement anchors on a host object: any child Transform whose name starts
+        /// with "MechaAnchor" (case-insensitive). Returns a random one for variety, or null if none.
+        /// Designers add/move these once per food prefab in the Scene view to fix positioning per item.
+        /// </summary>
+        private static Transform PickMechaAnchor(Transform host)
+        {
+            if (host == null) return null;
+
+            List<Transform> anchors = new List<Transform>();
+            foreach (Transform t in host.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == host) continue;
+                if (t.name.StartsWith("MechaAnchor", System.StringComparison.OrdinalIgnoreCase))
+                    anchors.Add(t);
+            }
+
+            if (anchors.Count == 0) return null;
+            return anchors[Random.Range(0, anchors.Count)];
         }
 
         private static Bounds GetCombinedBounds(GameObject obj)
