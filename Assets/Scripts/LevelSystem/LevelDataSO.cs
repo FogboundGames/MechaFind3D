@@ -13,6 +13,16 @@ namespace MechaFind3D.PhysicsInteraction
         public int requiredCount = 6;
     }
 
+    public enum MechaPivotSelection
+    {
+        Auto,
+        PivotTop,
+        PivotBottom,
+        PivotLeft,
+        PivotRight,
+        MechaAnchor
+    }
+
     [CreateAssetMenu(fileName = "Level_01", menuName = "MechaFind3D/Level Data", order = 2)]
     public class LevelDataSO : ScriptableObject
     {
@@ -38,6 +48,9 @@ namespace MechaFind3D.PhysicsInteraction
         [Header("Mecha Ragdoll & Disguise Config")]
         [Tooltip("Should a camouflaged mecha character drop into this level's pile?")]
         public bool enableCamouflageMecha = true;
+
+        [Tooltip("Which pivot point on the host object to place the mecha on.")]
+        public MechaPivotSelection targetPivot = MechaPivotSelection.PivotTop;
 
         [Tooltip("Optional custom mecha model prefab for this level (defaults to Assets/Prefabs/meccha chameleon.glb if empty).")]
         public GameObject customMechaPrefab;

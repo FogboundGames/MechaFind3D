@@ -208,9 +208,15 @@ namespace MechaFind3D.PhysicsInteraction
                     hostObj.Initialize(ObjectShapeType.Cube, LevelManager.Instance.ActiveLevelData.hostItemSO.targetColor, LevelManager.Instance.ActiveLevelData.hostItemSO.GetEffectiveItemId());
                 }
 
+                MechaPivotSelection pivotPref = MechaPivotSelection.Auto;
+                if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+                {
+                    pivotPref = LevelManager.Instance.ActiveLevelData.targetPivot;
+                }
+
                 if (hostObj != null)
                 {
-                    ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset, absWorldSize);
+                    ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset, absWorldSize, pivotPref);
                     return;
                 }
             }

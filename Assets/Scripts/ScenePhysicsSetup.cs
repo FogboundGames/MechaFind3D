@@ -60,6 +60,11 @@ namespace MechaFind3D.PhysicsInteraction
         [ContextMenu("Build Scene Environment Now")]
         public void SetupSceneEnvironment()
         {
+            Physics.gravity = new Vector3(0f, -15.0f, 0f);
+            Physics.defaultSolverIterations = 30;
+            Physics.defaultSolverVelocityIterations = 15;
+            Physics.defaultContactOffset = 0.008f;
+
             SetupCamera();
             SetupLighting();
             GameObject floorObj = CreateContainerTrayFloor();

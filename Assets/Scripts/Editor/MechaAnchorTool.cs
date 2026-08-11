@@ -35,6 +35,46 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             Debug.Log($"[MechaAnchorTool] {created.Count} adet MechaAnchor eklendi. Sahne görünümünde konumlandır/döndür; birden fazla eklersen çeşitlilik olur.");
         }
 
+        [MenuItem("MechaFind3D/Add 4 Edge Pivots (Top, Bottom, Left, Right) to Selection")]
+        private static void AddFourEdgePivotsToSelection()
+        {
+            GameObject[] selection = Selection.gameObjects;
+            if (selection == null || selection.Length == 0)
+            {
+                Debug.LogWarning("[MechaAnchorTool] Önce bir obje seç.");
+                return;
+            }
+
+            foreach (GameObject go in selection)
+            {
+                PrefabColliderPivotProcessor.EnsureCollidersExist(go);
+                PrefabColliderPivotProcessor.SetupFourEdgePivots(go.transform, isMecha: go.name.ToLowerInvariant().Contains("mecha") || go.name.ToLowerInvariant().Contains("meccha"));
+                EditorUtility.SetDirty(go);
+            }
+
+            Debug.Log($"[MechaAnchorTool] {selection.Length} adet objeye en dış collider kenarlarında 4 adet pivot (Pivot_Top, Pivot_Bottom, Pivot_Left, Pivot_Right) ve Collider eklendi.");
+        }
+
+        [MenuItem("MechaFind3D/Remove Old Mecha Anchors from Selection")]
+        private static void RemoveOldAnchorsFromSelection()
+        {
+            GameObject[] selection = Selection.gameObjects;
+            if (selection == null || selection.Length == 0)
+            {
+                Debug.LogWarning("[MechaAnchorTool] Önce bir obje seç.");
+                return;
+            }
+
+            foreach (GameObject go in selection)
+            {
+                Undo.RegisterFullObjectHierarchyUndo(go, "Remove Old Mecha Anchors");
+                PrefabColliderPivotProcessor.RemoveOldAnchors(go.transform);
+                EditorUtility.SetDirty(go);
+            }
+
+            Debug.Log($"[MechaAnchorTool] {selection.Length} adet objeden eski MechaAnchor'lar temizlendi.");
+        }
+
         [MenuItem("MechaFind3D/Add Mecha Anchor to Selection", true)]
         private static bool ValidateAddAnchor() => Selection.activeGameObject != null;
 

@@ -67,9 +67,9 @@ namespace MechaFind3D.PhysicsInteraction
         {
             Instance = this;
             Physics.gravity = new Vector3(0f, -15.0f, 0f);
-            Physics.defaultSolverIterations = 20;
-            Physics.defaultSolverVelocityIterations = 10;
-            Physics.defaultContactOffset = 0.005f;
+            Physics.defaultSolverIterations = 30;
+            Physics.defaultSolverVelocityIterations = 15;
+            Physics.defaultContactOffset = 0.008f;
             InitializeNamedColors();
             InitializePhysicsMaterial();
             CreateColorMaterials();
@@ -119,11 +119,11 @@ namespace MechaFind3D.PhysicsInteraction
         {
             physicsMaterial = new PhysicsMaterial("MatchFactoryToyPhysics")
             {
-                dynamicFriction = friction,
-                staticFriction = friction * 1.2f,
-                bounciness = bounciness,
-                frictionCombine = PhysicsMaterialCombine.Maximum,
-                bounceCombine = PhysicsMaterialCombine.Minimum
+                dynamicFriction = 0.15f,
+                staticFriction = 0.20f,
+                bounciness = 0.25f,
+                frictionCombine = PhysicsMaterialCombine.Minimum,
+                bounceCombine = PhysicsMaterialCombine.Maximum
             };
         }
 
@@ -337,7 +337,13 @@ namespace MechaFind3D.PhysicsInteraction
                 rb.sleepThreshold = 0.05f;
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
                 rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                rb.solverIterations = 30;
+                rb.solverVelocityIterations = 15;
                 rb.WakeUp();
+
+                // Attach active contact pusher so colliding objects immediately push each other away
+                ColliderContactPusher pusher = obj.GetComponent<ColliderContactPusher>();
+                if (pusher == null) obj.AddComponent<ColliderContactPusher>();
 
                 spawnedObjects.Add(obj);
             }

@@ -159,6 +159,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
                 EditorGUILayout.BeginVertical(GUI.skin.box);
                 EditorGUILayout.PropertyField(so.FindProperty("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
+                EditorGUILayout.PropertyField(so.FindProperty("targetPivot"), new GUIContent("Yerleşeceği Pivot Noktası:"));
                 EditorGUILayout.PropertyField(so.FindProperty("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
@@ -367,9 +368,6 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             }
         }
 
-        // ====================================================================
-        // TAB 2: ITEM LIBRARY
-        // ====================================================================
         private void DrawItemLibraryTab()
         {
             EditorGUILayout.BeginHorizontal();
@@ -379,72 +377,98 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             EditorGUILayout.Space(5);
 
+            Color oldBgColor = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.2f, 0.75f, 1.0f);
+            if (GUILayout.Button("⚡ 1-Tık: Tüm Objelere ve Mechaya Collider & 4 Edge Pivot Ekle", GUILayout.Height(34)))
+            {
+                PrefabColliderPivotProcessor.ProcessAllLibraryPrefabs();
+            }
+            GUI.backgroundColor = oldBgColor;
+
+            EditorGUILayout.Space(5);
+
             ItemDataSO[] items = FindAllAssets<ItemDataSO>();
-            if (items.Length == 0)
+            if (items == null || items.Length == 0)
             {
                 EditorGUILayout.HelpBox("Henüz hiçbir ItemDataSO varlığı bulunamadı. Toplu Prefab Yükleyici sekmesinden 3D prefablarınızı tek tıkla yükleyebilirsiniz!", MessageType.Info);
                 return;
             }
 
-            int columns = 3;
-            int colCount = 0;
-            EditorGUILayout.BeginHorizontal();
-
+            List<ItemDataSO> validItems = new List<ItemDataSO>();
             foreach (var item in items)
             {
                 if (item == null) continue;
                 if (!string.IsNullOrEmpty(itemSearchQuery) && !item.displayName.ToLower().Contains(itemSearchQuery.ToLower()))
                     continue;
-
-                EditorGUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(220), GUILayout.Height(130));
-
-                EditorGUILayout.BeginHorizontal();
-                Texture2D preview = item.prefab != null ? AssetPreview.GetAssetPreview(item.prefab) : null;
-                if (preview != null)
-                {
-                    GUILayout.Label(preview, GUILayout.Width(50), GUILayout.Height(50));
-                }
-                else
-                {
-                    GUILayout.Box("3D", GUILayout.Width(50), GUILayout.Height(50));
-                }
-
-                EditorGUILayout.BeginVertical();
-                GUILayout.Label(item.displayName, EditorStyles.boldLabel);
-                GUILayout.Label($"ID: {item.GetEffectiveItemId()}", EditorStyles.miniLabel);
-                item.targetColor = EditorGUILayout.ColorField(item.targetColor);
-                EditorGUILayout.EndVertical();
-                EditorGUILayout.EndHorizontal();
-
-                int targetLvlNum = selectedLevel != null ? selectedLevel.levelNumber : 1;
-                
-                EditorGUILayout.BeginHorizontal();
-                Color prevBg = GUI.backgroundColor;
-                GUI.backgroundColor = new Color(0.3f, 0.9f, 0.4f);
-                if (GUILayout.Button($"➕ Hedef (S{targetLvlNum})", GUILayout.Height(24)))
-                {
-                    AddItemToSelectedLevelGoals(item);
-                }
-                GUI.backgroundColor = new Color(0.95f, 0.7f, 0.2f);
-                if (GUILayout.Button($"📦 Dolgu", GUILayout.Height(24)))
-                {
-                    AddItemToSelectedLevelFillers(item);
-                }
-                GUI.backgroundColor = prevBg;
-                EditorGUILayout.EndHorizontal();
-
-                EditorGUILayout.EndVertical();
-
-                colCount++;
-                if (colCount >= columns)
-                {
-                    colCount = 0;
-                    EditorGUILayout.EndHorizontal();
-                    EditorGUILayout.BeginHorizontal();
-                }
+                validItems.Add(item);
             }
 
+            if (validItems.Count == 0)
+            {
+                EditorGUILayout.HelpBox("Arama kriterlerine uygun obje bulunamadı.", MessageType.Info);
+                return;
+            }
+
+            int columns = 3;
+            for (int i = 0; i < validItems.Count; i += columns)
+            {
+                EditorGUILayout.BeginHorizontal();
+                for (int c = 0; c < columns; c++)
+                {
+                    int idx = i + c;
+                    if (idx < validItems.Count)
+                    {
+                        DrawItemCard(validItems[idx]);
+                    }
+                    else
+                    {
+                        GUILayout.Box("", GUIStyle.none, GUILayout.Width(220), GUILayout.Height(130));
+                    }
+                }
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+
+        private void DrawItemCard(ItemDataSO item)
+        {
+            EditorGUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(220), GUILayout.Height(130));
+
+            EditorGUILayout.BeginHorizontal();
+            Texture2D preview = item.prefab != null ? AssetPreview.GetAssetPreview(item.prefab) : null;
+            if (preview != null)
+            {
+                GUILayout.Label(preview, GUILayout.Width(50), GUILayout.Height(50));
+            }
+            else
+            {
+                GUILayout.Label("3D", EditorStyles.centeredGreyMiniLabel, GUILayout.Width(50), GUILayout.Height(50));
+            }
+
+            EditorGUILayout.BeginVertical();
+            GUILayout.Label(item.displayName, EditorStyles.boldLabel);
+            GUILayout.Label($"ID: {item.GetEffectiveItemId()}", EditorStyles.miniLabel);
+            item.targetColor = EditorGUILayout.ColorField(item.targetColor);
+            EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
+
+            int targetLvlNum = selectedLevel != null ? selectedLevel.levelNumber : 1;
+            
+            EditorGUILayout.BeginHorizontal();
+            Color prevBg = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.3f, 0.9f, 0.4f);
+            if (GUILayout.Button($"➕ Hedef (S{targetLvlNum})", GUILayout.Height(24)))
+            {
+                AddItemToSelectedLevelGoals(item);
+            }
+            GUI.backgroundColor = new Color(0.95f, 0.7f, 0.2f);
+            if (GUILayout.Button($"📦 Dolgu", GUILayout.Height(24)))
+            {
+                AddItemToSelectedLevelFillers(item);
+            }
+            GUI.backgroundColor = prevBg;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.EndVertical();
         }
 
         private void AddItemToSelectedLevelGoals(ItemDataSO item)
@@ -664,7 +688,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 level.mechaOpacity,
                 level.mechaLocalOffset,
                 level.mechaRotationOffset,
-                level.mechaWorldSize
+                level.mechaWorldSize,
+                level.targetPivot
             );
 
             Selection.activeGameObject = hostInstance;

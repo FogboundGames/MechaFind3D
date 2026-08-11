@@ -90,7 +90,7 @@ namespace MechaFind3D.PhysicsInteraction
         /// Embeds/Attaches the mecha INTO a host item (e.g. a Cake 🍰), positioning its upper body/limbs
         /// emerging from the top of the host object, repainted in the host item's exact texture/materials!
         /// </summary>
-        public static void EmbedMechaInHostObject(GameObject mecha, GameObject hostObject, float scaleRatio = 0.85f, float opacity = 0.22f, Vector3 positionOffset = default, Vector3 rotationOffset = default, float absoluteWorldSize = 0f)
+        public static void EmbedMechaInHostObject(GameObject mecha, GameObject hostObject, float scaleRatio = 0.85f, float opacity = 0.22f, Vector3 positionOffset = default, Vector3 rotationOffset = default, float absoluteWorldSize = 0f, MechaPivotSelection pivotPreference = MechaPivotSelection.Auto)
         {
             if (mecha == null || hostObject == null) return;
 
@@ -127,10 +127,10 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // 3. Apply uniform CRYSTAL GLASS material (İçini %100 kristal netliğinde gösteren şeffaf cam)
+            // 3. Apply uniform CRYSTAL GLASS material
             ApplyGlassMaterial(mecha, opacity);
 
-            // 4. Spread arms and legs out in Vitruvian pose (matching user's drawing)
+            // 4. Spread arms and legs out in Vitruvian pose
             ApplyVitruvianSpreadPose(mecha.transform);
 
             // 5. Compute bounds & position mecha FLAT ON TOP of the host object face
@@ -163,46 +163,118 @@ namespace MechaFind3D.PhysicsInteraction
                 : hostExtent * Mathf.Clamp(scaleRatio, 0.25f, 1.20f);
             float desiredWorldScale = targetMechaWorldSize / rawMechaExtent;
 
-            // Prefer a hand-placed anchor on the host — a child Transform named "MechaAnchor" set ONCE
-            // per food prefab in the editor. It defines exactly where/how the mecha sits, so positioning
-            // is solved per food type (not per level) and reused everywhere. Multiple "MechaAnchor*"
-            // children give per-spawn variety (Ezgi's "4 points / 2 for flat"). No anchor => auto top.
-            Transform anchor = PickMechaAnchor(hostObject.transform);
-            Transform attachParent = (anchor != null) ? anchor : hostObject.transform;
+            bool hasPivots = TryPickApproachPivot(hostObject.transform, out ApproachSide side, out Transform pivot, pivotPreference);
+            Vector3 approachDirection = hasPivots ? ApproachDirectionForSide(hostObject.transform, side, pivot) : hostObject.transform.up;
 
-            mecha.transform.SetParent(attachParent, false);
+            mecha.transform.SetParent(hostObject.transform, false);
 
             // Cancel out parent world scale so the mecha keeps its intended size (never a microscopic dot).
-            Vector3 parentLossy = attachParent.lossyScale;
+            Vector3 parentLossy = hostObject.transform.lossyScale;
             float px = Mathf.Abs(parentLossy.x) > 1e-4f ? Mathf.Abs(parentLossy.x) : 1f;
             float py = Mathf.Abs(parentLossy.y) > 1e-4f ? Mathf.Abs(parentLossy.y) : 1f;
             float pz = Mathf.Abs(parentLossy.z) > 1e-4f ? Mathf.Abs(parentLossy.z) : 1f;
             mecha.transform.localScale = new Vector3(desiredWorldScale / px, desiredWorldScale / py, desiredWorldScale / pz);
 
-            if (anchor != null)
+            // 6. Build exact trigger colliders on mecha for interaction/docking
+            AddExactMeshColliderToMecha(mecha);
+
+            // 7. Surface Skin Mapping: Place mecha flat on host surface and offset outwards so lowest point rests on top
+            Vector3 surfacePoint = pivot != null ? pivot.position : GetCombinedBounds(hostObject).center + approachDirection * GetCombinedBounds(hostObject).extents.y;
+            Vector3 surfaceNormal = approachDirection.sqrMagnitude > 1e-4f ? approachDirection.normalized : hostObject.transform.up;
+
+            bool isHandAuthoredAnchor = pivot != null &&
+                (pivot.name.StartsWith("MechaAnchor", System.StringComparison.OrdinalIgnoreCase) ||
+                 pivot.name.StartsWith("Anchor", System.StringComparison.OrdinalIgnoreCase));
+
+            if (isHandAuthoredAnchor)
             {
-                // The anchor's own position/rotation on the food IS the placement.
-                // positionOffset/rotationOffset stay available as optional fine-tune tweaks on top of it.
-                mecha.transform.localPosition = positionOffset;
-                mecha.transform.localRotation = Quaternion.Euler(rotationOffset);
+                // Hand-placed anchor (MechaAnchorTool): its own rotation was deliberately authored to define
+                // orientation directly, so use it as-is.
+                mecha.transform.rotation = pivot.rotation * Quaternion.Euler(90f, 0f, 0f);
             }
             else
             {
-                // No anchor: fall back to auto placement lying flat on the host's top surface.
-                Vector3 defaultRot = (rotationOffset == Vector3.zero) ? new Vector3(90f, 0f, 0f) : rotationOffset;
-                mecha.transform.localPosition = new Vector3(0f, 0.05f, 0f) + positionOffset;
-                mecha.transform.localRotation = Quaternion.Euler(defaultRot);
+                // Auto-generated edge pivots (Pivot_Top/Bottom/Left/Right) all have identity local rotation —
+                // they carry no orientation info of their own. Derive the flattening rotation from the actual
+                // approach direction instead, so the mecha's back faces INTO the surface from whichever side
+                // was picked (this reduces to exactly the old fixed (90,0,0) for Top, and correctly
+                // generalizes it for Bottom/Left/Right — without this, every side used the Top-only rotation
+                // and only a stray limb/corner ever reached the surface).
+                mecha.transform.rotation = Quaternion.FromToRotation(Vector3.forward, -surfaceNormal);
             }
 
-            // Remove all joints, colliders, and rigidbodies in proper dependency order
-            // (Joints must be removed FIRST because CharacterJoint requires Rigidbody)
+            // Start mecha at surfacePoint to evaluate its mesh extent
+            mecha.transform.position = surfacePoint;
+            Physics.SyncTransforms();
+
+            // Calculate exact 8-corner projection using sharedMesh.bounds (always accurate and populated)
+            Renderer[] mechaRends = mecha.GetComponentsInChildren<Renderer>(true);
+            float minProj = float.MaxValue;
+            float maxProj = float.MinValue;
+
+            if (mechaRends != null && mechaRends.Length > 0)
+            {
+                foreach (Renderer r in mechaRends)
+                {
+                    if (r == null || !r.enabled) continue;
+                    Mesh mesh = null;
+                    if (r is SkinnedMeshRenderer smr) mesh = smr.sharedMesh;
+                    else if (r.GetComponent<MeshFilter>() is MeshFilter mf) mesh = mf.sharedMesh;
+
+                    if (mesh == null) continue;
+
+                    Bounds b = mesh.bounds;
+                    Vector3 c = b.center;
+                    Vector3 e = b.extents;
+                    Vector3[] localCorners = new Vector3[]
+                    {
+                        c + new Vector3(-e.x, -e.y, -e.z),
+                        c + new Vector3(-e.x, -e.y,  e.z),
+                        c + new Vector3(-e.x,  e.y, -e.z),
+                        c + new Vector3(-e.x,  e.y,  e.z),
+                        c + new Vector3( e.x, -e.y, -e.z),
+                        c + new Vector3( e.x, -e.y,  e.z),
+                        c + new Vector3( e.x,  e.y, -e.z),
+                        c + new Vector3( e.x,  e.y,  e.z),
+                    };
+
+                    foreach (Vector3 lc in localCorners)
+                    {
+                        Vector3 worldPoint = r.transform.TransformPoint(lc);
+                        float proj = Vector3.Dot(worldPoint - surfacePoint, surfaceNormal);
+                        if (proj < minProj) minProj = proj;
+                        if (proj > maxProj) maxProj = proj;
+                    }
+                }
+            }
+
+            if (minProj == float.MaxValue) { minProj = -0.2f; maxProj = 0.2f; }
+
+            // Sink the mecha into the host by a fraction of its own depth along surfaceNormal, instead of
+            // stopping flush at the surface: since the mecha is fully transparent glass, the sunken portion
+            // just gets naturally hidden behind the host's opaque mesh (normal depth occlusion), while the
+            // rest keeps poking out — reads as "hiding inside" the object rather than a separate shape
+            // hovering awkwardly beside/above it with a visible gap.
+            const float embedFraction = 0.45f;
+            float depthRange = maxProj - minProj;
+            float shiftAmount = -minProj + 0.01f - depthRange * embedFraction;
+            mecha.transform.position += surfaceNormal * shiftAmount;
+            Physics.SyncTransforms();
+
+            // Apply positionOffset/rotationOffset on top of the mapped surface pose
+            if (positionOffset != Vector3.zero)
+            {
+                mecha.transform.position += mecha.transform.TransformDirection(positionOffset);
+            }
+            if (rotationOffset != Vector3.zero)
+            {
+                mecha.transform.rotation = mecha.transform.rotation * Quaternion.Euler(rotationOffset);
+            }
+
+            // Remove physics joints and rigidbodies so embedded mecha stays fixed on host object
             foreach (Joint j in mecha.GetComponentsInChildren<Joint>())
             {
                 Object.Destroy(j);
-            }
-            foreach (Collider col in mecha.GetComponentsInChildren<Collider>())
-            {
-                Object.Destroy(col);
             }
             foreach (Rigidbody rb in mecha.GetComponentsInChildren<Rigidbody>())
             {
@@ -235,24 +307,156 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>
-        /// Finds hand-placed placement anchors on a host object: any child Transform whose name starts
-        /// with "MechaAnchor" (case-insensitive). Returns a random one for variety, or null if none.
-        /// Designers add/move these once per food prefab in the Scene view to fix positioning per item.
+        /// Builds tight per-limb convex hull colliders that hug the mecha's actual body silhouette
+        /// (see MechaColliderBuilder) instead of a single whole-body hull or bounding box, so the body
+        /// makes contact along its real surface without a large invisible box clipping into the host item.
         /// </summary>
-        private static Transform PickMechaAnchor(Transform host)
+        public static void AddExactMeshColliderToMecha(GameObject mecha)
         {
-            if (host == null) return null;
+            if (mecha == null) return;
+            MechaColliderBuilder.BuildTightBodyColliders(mecha, isTrigger: true);
+        }
 
-            List<Transform> anchors = new List<Transform>();
+        private enum ApproachSide { Top, Bottom, Left, Right }
+
+        /// <summary>
+        /// Picks a designated pivot/anchor child on the host with priority:
+        /// 0. Active selection in Unity Editor (if user clicked a child pivot in Hierarchy)
+        /// 1. Explicit designer preference / anchors (MechaAnchor..., Anchor..., Pivot_BaseContact)
+        /// 2. Top surface pivots (Pivot_Top, Pivot_Front, Pivot_Back)
+        /// 3. Side pivots (Pivot_Left, Pivot_Right)
+        /// 4. Bottom pivot (Pivot_Bottom - last resort only)
+        /// </summary>
+        private static bool TryPickApproachPivot(Transform host, out ApproachSide side, out Transform pivot, MechaPivotSelection preference = MechaPivotSelection.Auto)
+        {
+            side = ApproachSide.Top;
+            pivot = null;
+            if (host == null) return false;
+
+#if UNITY_EDITOR
+            // Active Unity Editor Selection check: If the user clicked a child pivot in Hierarchy (e.g. Pivot_Top), use it directly!
+            if (UnityEditor.Selection.activeTransform != null && UnityEditor.Selection.activeTransform.IsChildOf(host) && UnityEditor.Selection.activeTransform != host)
+            {
+                Transform activeT = UnityEditor.Selection.activeTransform;
+                string activeName = activeT.name.ToLowerInvariant();
+                if (activeName.Contains("top")) side = ApproachSide.Top;
+                else if (activeName.Contains("bottom")) side = ApproachSide.Bottom;
+                else if (activeName.Contains("left")) side = ApproachSide.Left;
+                else if (activeName.Contains("right")) side = ApproachSide.Right;
+                else side = ApproachSide.Top;
+
+                pivot = activeT;
+                return true;
+            }
+#endif
+
+            List<(ApproachSide side, Transform t)> explicitAnchors = new List<(ApproachSide, Transform)>();
+            List<(ApproachSide side, Transform t)> topPivots = new List<(ApproachSide, Transform)>();
+            List<(ApproachSide side, Transform t)> sidePivots = new List<(ApproachSide, Transform)>();
+            List<(ApproachSide side, Transform t)> bottomPivots = new List<(ApproachSide, Transform)>();
+
             foreach (Transform t in host.GetComponentsInChildren<Transform>(true))
             {
                 if (t == host) continue;
-                if (t.name.StartsWith("MechaAnchor", System.StringComparison.OrdinalIgnoreCase))
-                    anchors.Add(t);
+                string name = t.name;
+
+                if (name.StartsWith("MechaAnchor", System.StringComparison.OrdinalIgnoreCase) ||
+                    name.StartsWith("Anchor", System.StringComparison.OrdinalIgnoreCase) ||
+                    name.Equals("Pivot_BaseContact", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    explicitAnchors.Add((ApproachSide.Top, t));
+                }
+                else if (name.Equals("Pivot_Top", System.StringComparison.OrdinalIgnoreCase) ||
+                         name.Equals("Pivot_Front", System.StringComparison.OrdinalIgnoreCase) ||
+                         name.Equals("Pivot_Back", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    topPivots.Add((ApproachSide.Top, t));
+                }
+                else if (name.Equals("Pivot_Left", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    sidePivots.Add((ApproachSide.Left, t));
+                }
+                else if (name.Equals("Pivot_Right", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    sidePivots.Add((ApproachSide.Right, t));
+                }
+                else if (name.Equals("Pivot_Bottom", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    bottomPivots.Add((ApproachSide.Bottom, t));
+                }
             }
 
-            if (anchors.Count == 0) return null;
-            return anchors[Random.Range(0, anchors.Count)];
+            // Honor explicitly requested pivot preference from LevelDataSO if specified
+            if (preference == MechaPivotSelection.PivotTop && topPivots.Count > 0)
+            {
+                (side, pivot) = topPivots[0];
+                return true;
+            }
+            if (preference == MechaPivotSelection.PivotBottom && bottomPivots.Count > 0)
+            {
+                (side, pivot) = bottomPivots[0];
+                return true;
+            }
+            if (preference == MechaPivotSelection.PivotLeft && sidePivots.Count > 0)
+            {
+                (side, pivot) = sidePivots[0];
+                return true;
+            }
+            if (preference == MechaPivotSelection.PivotRight && sidePivots.Count > 0)
+            {
+                (side, pivot) = sidePivots[0];
+                return true;
+            }
+            if (preference == MechaPivotSelection.MechaAnchor && explicitAnchors.Count > 0)
+            {
+                (side, pivot) = explicitAnchors[0];
+                return true;
+            }
+
+            if (explicitAnchors.Count > 0)
+            {
+                (side, pivot) = explicitAnchors[Random.Range(0, explicitAnchors.Count)];
+                return true;
+            }
+            if (topPivots.Count > 0)
+            {
+                (side, pivot) = topPivots[Random.Range(0, topPivots.Count)];
+                return true;
+            }
+            if (sidePivots.Count > 0)
+            {
+                (side, pivot) = sidePivots[Random.Range(0, sidePivots.Count)];
+                return true;
+            }
+            if (bottomPivots.Count > 0)
+            {
+                (side, pivot) = bottomPivots[Random.Range(0, bottomPivots.Count)];
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>World-space approach direction for a side, derived fresh from the host's live axes or pivot orientation.</summary>
+        private static Vector3 ApproachDirectionForSide(Transform host, ApproachSide side, Transform pivot = null)
+        {
+            if (pivot != null)
+            {
+                if (pivot.name.StartsWith("MechaAnchor", System.StringComparison.OrdinalIgnoreCase) ||
+                    pivot.name.StartsWith("Anchor", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return pivot.up;
+                }
+            }
+
+            switch (side)
+            {
+                case ApproachSide.Top: return host.up;
+                case ApproachSide.Bottom: return -host.up;
+                case ApproachSide.Left: return -host.right;
+                case ApproachSide.Right: return host.right;
+                default: return host.up;
+            }
         }
 
         private static Bounds GetCombinedBounds(GameObject obj)
