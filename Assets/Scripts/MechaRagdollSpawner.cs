@@ -177,6 +177,7 @@ namespace MechaFind3D.PhysicsInteraction
                 float targetScaleRatio = 0.85f;
                 float targetOpacity = 0.22f;
                 float absWorldSize = 0f;
+                float wrapAmount = 0f;
                 string keyword = preferredHostKeyword;
                 Vector3 posOffset = Vector3.zero;
                 Vector3 rotOffset = Vector3.zero;
@@ -186,6 +187,7 @@ namespace MechaFind3D.PhysicsInteraction
                     targetScaleRatio = LevelManager.Instance.ActiveLevelData.mechaScaleRatio;
                     targetOpacity = LevelManager.Instance.ActiveLevelData.mechaOpacity;
                     absWorldSize = LevelManager.Instance.ActiveLevelData.mechaWorldSize;
+                    wrapAmount = LevelManager.Instance.ActiveLevelData.mechaWrapAmount;
                     posOffset = LevelManager.Instance.ActiveLevelData.mechaLocalOffset;
                     rotOffset = LevelManager.Instance.ActiveLevelData.mechaRotationOffset;
 
@@ -216,7 +218,7 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (hostObj != null)
                 {
-                    ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset, absWorldSize, pivotPref);
+                    ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset, absWorldSize, pivotPref, wrapAmount);
                     return;
                 }
             }

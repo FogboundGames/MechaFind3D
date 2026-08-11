@@ -90,7 +90,7 @@ namespace MechaFind3D.PhysicsInteraction
         /// Embeds/Attaches the mecha INTO a host item (e.g. a Cake 🍰), positioning its upper body/limbs
         /// emerging from the top of the host object, repainted in the host item's exact texture/materials!
         /// </summary>
-        public static void EmbedMechaInHostObject(GameObject mecha, GameObject hostObject, float scaleRatio = 0.85f, float opacity = 0.22f, Vector3 positionOffset = default, Vector3 rotationOffset = default, float absoluteWorldSize = 0f, MechaPivotSelection pivotPreference = MechaPivotSelection.Auto)
+        public static void EmbedMechaInHostObject(GameObject mecha, GameObject hostObject, float scaleRatio = 0.85f, float opacity = 0.22f, Vector3 positionOffset = default, Vector3 rotationOffset = default, float absoluteWorldSize = 0f, MechaPivotSelection pivotPreference = MechaPivotSelection.Auto, float wrapAmount = 0f)
         {
             if (mecha == null || hostObject == null) return;
 
@@ -130,8 +130,10 @@ namespace MechaFind3D.PhysicsInteraction
             // 3. Apply uniform CRYSTAL GLASS material
             ApplyGlassMaterial(mecha, opacity);
 
-            // 4. Spread arms and legs out in Vitruvian pose
-            ApplyVitruvianSpreadPose(mecha.transform);
+            // 4. Pose is left at the model's imported T-pose here. A fixed "Vitruvian spread" used to be
+            // forced on every mecha at this point, which meant the limbs were never actually straight and
+            // it fought the wrap pose applied later. Limb posing is now driven solely by wrapAmount:
+            // 0 = untouched T-pose, higher = curled around the host.
 
             // 5. Compute bounds & position mecha FLAT ON TOP of the host object face
             Bounds hostBounds = GetCombinedBounds(hostObject);
@@ -164,6 +166,16 @@ namespace MechaFind3D.PhysicsInteraction
             float desiredWorldScale = targetMechaWorldSize / rawMechaExtent;
 
             bool hasPivots = TryPickApproachPivot(hostObject.transform, out ApproachSide side, out Transform pivot, pivotPreference);
+
+            // The mecha lands on whichever side we picked, but the host's yaw is arbitrary (it tumbled in
+            // the pile), so that side can end up facing away from the player — leaving the mecha hidden
+            // behind its own host and the level unwinnable. Yaw the host so the chosen side faces the
+            // camera. Only meaningful for sideways approaches; Top/Bottom are vertical and unaffected.
+            if (hasPivots && side != ApproachSide.Top && side != ApproachSide.Bottom)
+            {
+                FaceSideTowardCamera(hostObject.transform, side);
+            }
+
             Vector3 approachDirection = hasPivots ? ApproachDirectionForSide(hostObject.transform, side, pivot) : hostObject.transform.up;
 
             mecha.transform.SetParent(hostObject.transform, false);
@@ -207,57 +219,86 @@ namespace MechaFind3D.PhysicsInteraction
             mecha.transform.position = surfacePoint;
             Physics.SyncTransforms();
 
-            // Calculate exact 8-corner projection using sharedMesh.bounds (always accurate and populated)
-            Renderer[] mechaRends = mecha.GetComponentsInChildren<Renderer>(true);
+            // Body thickness measured in the UNWRAPPED pose. How deep to sink the mecha has to come from
+            // this, not from the wrapped pose: curling the arms sweeps them around the approach axis, which
+            // inflates the measured depth, and sinking by a fraction of that inflated number buried the
+            // whole body inside the host as wrapAmount went up.
+            float flatDepth = MeasureDepthAlongAxis(mecha, surfacePoint, surfaceNormal);
+
+            // Curl the limbs around the host. Done before the centring/extent work below so those see the
+            // final silhouette.
+            ApplyWrapPose(mecha.transform, wrapAmount);
+            Physics.SyncTransforms();
+
+            // The model's origin sits at its FEET, not in the middle of the body, so dropping the transform
+            // on the pivot lands the feet on the host's centre and throws the whole figure off to one side.
+            // Slide it so the BODY's centre is over the pivot instead. Only the two axes across the surface
+            // are corrected — depth along surfaceNormal is what the sink step below is for.
+            Bounds centeringBounds;
+            if (TryGetBodyBounds(mecha, out centeringBounds))
+            {
+                Vector3 toPivot = surfacePoint - centeringBounds.center;
+                Vector3 lateral = toPivot - Vector3.Project(toPivot, surfaceNormal);
+                mecha.transform.position += lateral;
+                Physics.SyncTransforms();
+            }
+
+            // How far the mecha reaches along the approach axis. TORSO ONLY — arms and legs are excluded
+            // on purpose. They are what wraps around the host, so they reach past its surface by design;
+            // letting them drive this measurement pushed the whole figure back until the torso floated
+            // clear of the object with only the limbs near it. Measuring the torso alone beds the body
+            // against the surface and leaves the limbs free to curl around it.
+            // Colliders (per-limb, tight) are preferred over the skinned mesh's own padded bounds.
             float minProj = float.MaxValue;
             float maxProj = float.MinValue;
 
-            if (mechaRends != null && mechaRends.Length > 0)
+            Collider[] mechaExtentCols = mecha.GetComponentsInChildren<Collider>(true);
+            foreach (Collider col in mechaExtentCols)
             {
+                if (col == null || !col.enabled) continue;
+                if (!IsTorsoPart(col.gameObject.name)) continue;
+                AccumulateProjection(col.bounds, surfacePoint, surfaceNormal, ref minProj, ref maxProj);
+            }
+
+            // No torso colliders identified (unknown rig naming): fall back to every collider, then renderers.
+            if (minProj == float.MaxValue)
+            {
+                foreach (Collider col in mechaExtentCols)
+                {
+                    if (col == null || !col.enabled) continue;
+                    AccumulateProjection(col.bounds, surfacePoint, surfaceNormal, ref minProj, ref maxProj);
+                }
+            }
+
+            if (minProj == float.MaxValue)
+            {
+                Renderer[] mechaRends = mecha.GetComponentsInChildren<Renderer>(true);
                 foreach (Renderer r in mechaRends)
                 {
                     if (r == null || !r.enabled) continue;
-                    Mesh mesh = null;
-                    if (r is SkinnedMeshRenderer smr) mesh = smr.sharedMesh;
-                    else if (r.GetComponent<MeshFilter>() is MeshFilter mf) mesh = mf.sharedMesh;
-
-                    if (mesh == null) continue;
-
-                    Bounds b = mesh.bounds;
-                    Vector3 c = b.center;
-                    Vector3 e = b.extents;
-                    Vector3[] localCorners = new Vector3[]
-                    {
-                        c + new Vector3(-e.x, -e.y, -e.z),
-                        c + new Vector3(-e.x, -e.y,  e.z),
-                        c + new Vector3(-e.x,  e.y, -e.z),
-                        c + new Vector3(-e.x,  e.y,  e.z),
-                        c + new Vector3( e.x, -e.y, -e.z),
-                        c + new Vector3( e.x, -e.y,  e.z),
-                        c + new Vector3( e.x,  e.y, -e.z),
-                        c + new Vector3( e.x,  e.y,  e.z),
-                    };
-
-                    foreach (Vector3 lc in localCorners)
-                    {
-                        Vector3 worldPoint = r.transform.TransformPoint(lc);
-                        float proj = Vector3.Dot(worldPoint - surfacePoint, surfaceNormal);
-                        if (proj < minProj) minProj = proj;
-                        if (proj > maxProj) maxProj = proj;
-                    }
+                    AccumulateProjection(r.bounds, surfacePoint, surfaceNormal, ref minProj, ref maxProj);
                 }
             }
 
             if (minProj == float.MaxValue) { minProj = -0.2f; maxProj = 0.2f; }
+
+            const float embedFraction = 0.45f;
+            float depthRange = maxProj - minProj;
+            // Sink depth comes from the unwrapped body thickness (see flatDepth above) so it stays constant
+            // as the mecha curls; depthRange is still what the fallback path needs.
+            float sinkDepth = (flatDepth > 1e-4f ? flatDepth : depthRange) * embedFraction;
 
             // Sink the mecha into the host by a fraction of its own depth along surfaceNormal, instead of
             // stopping flush at the surface: since the mecha is fully transparent glass, the sunken portion
             // just gets naturally hidden behind the host's opaque mesh (normal depth occlusion), while the
             // rest keeps poking out — reads as "hiding inside" the object rather than a separate shape
             // hovering awkwardly beside/above it with a visible gap.
-            const float embedFraction = 0.45f;
-            float depthRange = maxProj - minProj;
-            float shiftAmount = -minProj + 0.01f - depthRange * embedFraction;
+            //
+            // Measured off the RENDERED mesh corners on purpose. Driving this from collider contact instead
+            // (ColliderContactSnapSolver, or an axis-constrained binary search against the same colliders)
+            // was tried and looked worse: the mecha's per-limb convex hulls sit wider than the visible mesh,
+            // so contact triggers early and leaves it hovering with a gap on rounded hosts.
+            float shiftAmount = -minProj + 0.01f - sinkDepth;
             mecha.transform.position += surfaceNormal * shiftAmount;
             Physics.SyncTransforms();
 
@@ -282,26 +323,56 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
-        private static void ApplyVitruvianSpreadPose(Transform mechaRoot)
+        /// <summary>
+        /// Curls the mecha's limbs around the host so it clings to it (a soda can, a bottle) instead of
+        /// lying flat on the surface. Bones are rotated about the mecha's OWN up/right axes in world space
+        /// rather than their local axes, because local bone axes differ per rig and per limb — using the
+        /// root's axes keeps left/right symmetric and works on any humanoid import.
+        /// <paramref name="amount"/> 0 = untouched flat pose, 1 = full hug.
+        /// </summary>
+        private static void ApplyWrapPose(Transform mechaRoot, float amount)
         {
+            amount = Mathf.Clamp01(amount);
+            if (amount <= 0.001f) return;
+
+            // Around the host: the mecha faces the surface, so its up axis runs along a standing host's
+            // axis. Swinging the arms about that axis carries them around the object's sides.
+            Vector3 around = mechaRoot.up;
+            Vector3 forwardAxis = mechaRoot.right;
+
+            // Sign chosen so the limbs sweep TOWARD the host and around its sides. Checked from a top-down
+            // view, which is the only angle that shows unambiguously whether an arm curls around the object
+            // or off into open space — from the front both directions look similar.
+            // The totals are also kept moderate: a shoulder+elbow adding up to much more than ~135° stops
+            // following the surface and drives the arm straight through the object instead.
+            const float upperArmSwing = 70f;   // shoulder brings the arm around the object
+            const float forearmCurl = 55f;     // elbow continues the curve along the surface
+            const float legCurl = 50f;         // knees/thighs tuck in underneath
+            const float hugTilt = 10f;         // slight lean into the surface
+
             foreach (Transform t in mechaRoot.GetComponentsInChildren<Transform>())
             {
                 string n = t.name.ToLowerInvariant();
-                if (n.Contains("arm-left") || n.Contains("arm_l") || n.Contains("leftarm") || n.Contains("arm.l") || n.Contains("l_arm"))
+                bool isLeft = n.EndsWith(".l") || n.Contains("_l") || n.Contains("left");
+                float side = isLeft ? 1f : -1f;
+
+                if (n.Contains("upper_arm"))
                 {
-                    t.localRotation = Quaternion.Euler(0f, 0f, -40f);
+                    t.Rotate(around, side * upperArmSwing * amount, Space.World);
+                    t.Rotate(forwardAxis, hugTilt * amount, Space.World);
                 }
-                else if (n.Contains("arm-right") || n.Contains("arm_r") || n.Contains("rightarm") || n.Contains("arm.r") || n.Contains("r_arm"))
+                else if (n.Contains("forearm"))
                 {
-                    t.localRotation = Quaternion.Euler(0f, 0f, 40f);
+                    t.Rotate(around, side * forearmCurl * amount, Space.World);
                 }
-                else if (n.Contains("leg-left") || n.Contains("leg_l") || n.Contains("leftleg") || n.Contains("leg.l") || n.Contains("l_leg"))
+                else if (n.Contains("thigh"))
                 {
-                    t.localRotation = Quaternion.Euler(0f, 0f, -20f);
+                    t.Rotate(around, side * legCurl * amount, Space.World);
+                    t.Rotate(forwardAxis, hugTilt * amount, Space.World);
                 }
-                else if (n.Contains("leg-right") || n.Contains("leg_r") || n.Contains("rightleg") || n.Contains("leg.r") || n.Contains("r_leg"))
+                else if (n.Contains("shin"))
                 {
-                    t.localRotation = Quaternion.Euler(0f, 0f, 20f);
+                    t.Rotate(around, side * legCurl * 0.8f * amount, Space.World);
                 }
             }
         }
@@ -317,7 +388,7 @@ namespace MechaFind3D.PhysicsInteraction
             MechaColliderBuilder.BuildTightBodyColliders(mecha, isTrigger: true);
         }
 
-        private enum ApproachSide { Top, Bottom, Left, Right }
+        private enum ApproachSide { Top, Bottom, Left, Right, Front, Back }
 
         /// <summary>
         /// Picks a designated pivot/anchor child on the host with priority:
@@ -352,6 +423,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             List<(ApproachSide side, Transform t)> explicitAnchors = new List<(ApproachSide, Transform)>();
             List<(ApproachSide side, Transform t)> topPivots = new List<(ApproachSide, Transform)>();
+            List<(ApproachSide side, Transform t)> facePivots = new List<(ApproachSide, Transform)>();
             List<(ApproachSide side, Transform t)> sidePivots = new List<(ApproachSide, Transform)>();
             List<(ApproachSide side, Transform t)> bottomPivots = new List<(ApproachSide, Transform)>();
 
@@ -366,11 +438,20 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     explicitAnchors.Add((ApproachSide.Top, t));
                 }
-                else if (name.Equals("Pivot_Top", System.StringComparison.OrdinalIgnoreCase) ||
-                         name.Equals("Pivot_Front", System.StringComparison.OrdinalIgnoreCase) ||
-                         name.Equals("Pivot_Back", System.StringComparison.OrdinalIgnoreCase))
+                else if (name.Equals("Pivot_Top", System.StringComparison.OrdinalIgnoreCase))
                 {
                     topPivots.Add((ApproachSide.Top, t));
+                }
+                // Front/Back were previously lumped in with Top, which handed them the Top approach
+                // direction (host.up) — so the mecha was flattened against the wrong axis and only a
+                // stray limb reached the broad face. They now carry their own side/direction.
+                else if (name.Equals("Pivot_Front", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    facePivots.Add((ApproachSide.Front, t));
+                }
+                else if (name.Equals("Pivot_Back", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    facePivots.Add((ApproachSide.Back, t));
                 }
                 else if (name.Equals("Pivot_Left", System.StringComparison.OrdinalIgnoreCase))
                 {
@@ -407,6 +488,15 @@ namespace MechaFind3D.PhysicsInteraction
                 (side, pivot) = sidePivots[0];
                 return true;
             }
+            if (preference == MechaPivotSelection.PivotFront || preference == MechaPivotSelection.PivotBack)
+            {
+                ApproachSide wanted = preference == MechaPivotSelection.PivotFront ? ApproachSide.Front : ApproachSide.Back;
+                foreach (var fp in facePivots)
+                {
+                    if (fp.side == wanted) { (side, pivot) = fp; return true; }
+                }
+                if (facePivots.Count > 0) { (side, pivot) = facePivots[0]; return true; }
+            }
             if (preference == MechaPivotSelection.MechaAnchor && explicitAnchors.Count > 0)
             {
                 (side, pivot) = explicitAnchors[0];
@@ -418,9 +508,21 @@ namespace MechaFind3D.PhysicsInteraction
                 (side, pivot) = explicitAnchors[Random.Range(0, explicitAnchors.Count)];
                 return true;
             }
+            // Auto: prefer the broad face on thin/flat items (a slice's front face dwarfs its edges), so
+            // the mecha lies against real surface area instead of balancing on a narrow rim.
+            if (facePivots.Count > 0 && IsFlatObject(host))
+            {
+                (side, pivot) = facePivots[Random.Range(0, facePivots.Count)];
+                return true;
+            }
             if (topPivots.Count > 0)
             {
                 (side, pivot) = topPivots[Random.Range(0, topPivots.Count)];
+                return true;
+            }
+            if (facePivots.Count > 0)
+            {
+                (side, pivot) = facePivots[Random.Range(0, facePivots.Count)];
                 return true;
             }
             if (sidePivots.Count > 0)
@@ -438,6 +540,153 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>World-space approach direction for a side, derived fresh from the host's live axes or pivot orientation.</summary>
+        /// <summary>
+        /// True for the mecha's trunk (spine/torso/chest/head/pelvis) and false for anything that hangs
+        /// off it. Limb colliders are named after their bone (BodyCollider_forearm.L, ...), so this is a
+        /// name test. Used to decide what actually beds against a host surface: the trunk does, while the
+        /// arms and legs are free to reach past it and wrap around.
+        /// </summary>
+        private static bool IsTorsoPart(string objectName)
+        {
+            string n = objectName.ToLowerInvariant();
+
+            // Defined by exclusion: name the limbs, treat everything else as trunk. Generated colliders
+            // are all prefixed "BodyCollider_", so an inclusion list keyed on words like "body" would
+            // match every part; this way an unrecognised bone (neck, tail) still counts as trunk.
+            return !(n.Contains("arm") || n.Contains("hand") || n.Contains("shoulder") ||
+                     n.Contains("thigh") || n.Contains("shin") || n.Contains("leg") ||
+                     n.Contains("foot") || n.Contains("toe") || n.Contains("heel"));
+        }
+
+        /// <summary>
+        /// Thickness of the mecha's body along <paramref name="axis"/>, from its current pose.
+        /// </summary>
+        private static float MeasureDepthAlongAxis(GameObject mecha, Vector3 origin, Vector3 axis)
+        {
+            float min = float.MaxValue, max = float.MinValue;
+
+            // Trunk only, to match the placement measurement — the sink depth should describe how thick
+            // the body is, not how far an outstretched arm happens to reach along this axis.
+            foreach (Collider c in mecha.GetComponentsInChildren<Collider>(true))
+            {
+                if (c == null || !c.enabled) continue;
+                if (!IsTorsoPart(c.gameObject.name)) continue;
+                AccumulateProjection(c.bounds, origin, axis, ref min, ref max);
+            }
+            if (min == float.MaxValue)
+            {
+                foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r == null || !r.enabled) continue;
+                    AccumulateProjection(r.bounds, origin, axis, ref min, ref max);
+                }
+            }
+
+            return min == float.MaxValue ? 0f : max - min;
+        }
+
+        /// <summary>
+        /// World-space bounds of the mecha's actual body, preferring its per-limb colliders (tight) and
+        /// falling back to renderers. Used to centre the figure on a pivot, since the model's own transform
+        /// origin is at its feet rather than in the middle of the body.
+        /// </summary>
+        private static bool TryGetBodyBounds(GameObject mecha, out Bounds bounds)
+        {
+            bounds = default;
+            bool has = false;
+
+            foreach (Collider c in mecha.GetComponentsInChildren<Collider>(true))
+            {
+                if (c == null || !c.enabled) continue;
+                if (!has) { bounds = c.bounds; has = true; }
+                else bounds.Encapsulate(c.bounds);
+            }
+            if (has) return true;
+
+            foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r == null || !r.enabled) continue;
+                if (!has) { bounds = r.bounds; has = true; }
+                else bounds.Encapsulate(r.bounds);
+            }
+            return has;
+        }
+
+        /// <summary>
+        /// Projects a world-space AABB's 8 corners onto the approach axis, widening the running min/max.
+        /// </summary>
+        private static void AccumulateProjection(Bounds worldBounds, Vector3 surfacePoint, Vector3 surfaceNormal, ref float minProj, ref float maxProj)
+        {
+            Vector3 c = worldBounds.center;
+            Vector3 e = worldBounds.extents;
+
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = c + new Vector3(
+                    (i & 1) == 0 ? -e.x : e.x,
+                    (i & 2) == 0 ? -e.y : e.y,
+                    (i & 4) == 0 ? -e.z : e.z);
+
+                float proj = Vector3.Dot(corner - surfacePoint, surfaceNormal);
+                if (proj < minProj) minProj = proj;
+                if (proj > maxProj) maxProj = proj;
+            }
+        }
+
+        /// <summary>
+        /// Spins the host around Y so the given side's outward normal points horizontally at the camera,
+        /// then locks its rotation so the pile can't tumble the mecha out of view again.
+        /// </summary>
+        private static void FaceSideTowardCamera(Transform host, ApproachSide side)
+        {
+            Camera cam = Camera.main;
+            if (cam == null) cam = Object.FindFirstObjectByType<Camera>();
+            if (cam == null) return;
+
+            // Where the chosen side currently points, flattened to the horizontal plane.
+            Vector3 current = ApproachDirectionForSide(host, side);
+            current.y = 0f;
+            if (current.sqrMagnitude < 1e-6f) return;
+
+            // Where we want it to point: from the host back toward the camera, also flattened.
+            Vector3 desired = cam.transform.position - host.position;
+            desired.y = 0f;
+            if (desired.sqrMagnitude < 1e-6f) return;
+
+            host.rotation = Quaternion.FromToRotation(current.normalized, desired.normalized) * host.rotation;
+
+            Rigidbody rb = host.GetComponent<Rigidbody>();
+            if (rb != null) rb.constraints |= RigidbodyConstraints.FreezeRotation;
+
+            Physics.SyncTransforms();
+        }
+
+        /// <summary>
+        /// True when the host is noticeably thinner along one axis than the other two (a slice, a wafer,
+        /// a flat piece of bread). For those, the broad face — not the top rim — is the surface a mecha
+        /// can convincingly lie against.
+        /// </summary>
+        private static bool IsFlatObject(Transform host)
+        {
+            Renderer[] rends = host.GetComponentsInChildren<Renderer>();
+            if (rends == null || rends.Length == 0) return false;
+
+            Bounds b = rends[0].bounds;
+            for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
+
+            // Compare the thinnest axis against the MIDDLE one, not the longest. Measuring against the
+            // longest also flags merely elongated shapes: a sausage is round in cross-section but long,
+            // so min/max is small even though it has no broad face to lie on. min/mid is small only when
+            // one axis is genuinely squashed relative to the other two — an actual slice/wafer.
+            Vector3 s = b.size;
+            float min = Mathf.Min(s.x, Mathf.Min(s.y, s.z));
+            float max = Mathf.Max(s.x, Mathf.Max(s.y, s.z));
+            float mid = s.x + s.y + s.z - min - max;
+            if (mid < 1e-4f) return false;
+
+            return (min / mid) < 0.5f;
+        }
+
         private static Vector3 ApproachDirectionForSide(Transform host, ApproachSide side, Transform pivot = null)
         {
             if (pivot != null)
@@ -455,6 +704,8 @@ namespace MechaFind3D.PhysicsInteraction
                 case ApproachSide.Bottom: return -host.up;
                 case ApproachSide.Left: return -host.right;
                 case ApproachSide.Right: return host.right;
+                case ApproachSide.Front: return -host.forward;
+                case ApproachSide.Back: return host.forward;
                 default: return host.up;
             }
         }

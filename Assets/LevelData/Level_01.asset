@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
   levelNumber: 1
   levelTitle: Seviye 1
-  totalPileCount: 15
+  totalPileCount: 16
   foodTargetSize: 0.22
   targetGoals:
   - itemData: {fileID: 11400000, guid: 66167c16f5e145743b6eb3dd723a1af8, type: 2}
@@ -26,12 +26,13 @@ MonoBehaviour:
   fillerItems:
   - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
   enableCamouflageMecha: 1
-  targetPivot: 2
+  targetPivot: 0
   customMechaPrefab: {fileID: 8771091787928289351, guid: d6f53d603dc1d3a8e8710f1efa9bb4d0, type: 3}
-  hostItemSO: {fileID: 11400000, guid: 66167c16f5e145743b6eb3dd723a1af8, type: 2}
-  mechaHostKeyword: watermelon_003
+  hostItemSO: {fileID: 11400000, guid: 939451b88faded1498862c35f0fdba54, type: 2}
+  mechaHostKeyword: ice_cream_003
   mechaScaleRatio: 0.5
-  mechaWorldSize: 0.5
+  mechaWrapAmount: 0.45
+  mechaWorldSize: 1
   mechaOpacity: 0.302
   mechaLocalOffset: {x: 0, y: 0, z: 0}
   mechaRotationOffset: {x: 0, y: 0, z: 0}

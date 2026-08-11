@@ -19,6 +19,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         public const string PivotBottomName = "Pivot_Bottom";
         public const string PivotLeftName = "Pivot_Left";
         public const string PivotRightName = "Pivot_Right";
+        public const string PivotFrontName = "Pivot_Front";
+        public const string PivotBackName = "Pivot_Back";
         public const string PivotBaseContactName = "Pivot_BaseContact";
 
         [MenuItem("MechaFind3D/1-Click: Process Colliders & 4 Edge Pivots for All Library Prefabs & Mecha")]
@@ -219,11 +221,19 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             Vector3 leftLocalPos = new Vector3(localBounds.min.x, localBounds.center.y, localBounds.center.z);
             Vector3 rightLocalPos = new Vector3(localBounds.max.x, localBounds.center.y, localBounds.center.z);
 
-            // Create/Update 4 Edge Pivots with outward rotations
+            // Broad-face pivots. On thin items (a melon slice) this face is the biggest surface by far,
+            // and it's the only one the mecha can actually lie flat against — the four rim pivots leave
+            // it poking out past a narrow edge.
+            Vector3 frontLocalPos = new Vector3(localBounds.center.x, localBounds.center.y, localBounds.min.z);
+            Vector3 backLocalPos = new Vector3(localBounds.center.x, localBounds.center.y, localBounds.max.z);
+
+            // Create/Update edge + face pivots with outward rotations
             CreateOrUpdatePivotChild(root, PivotTopName, topLocalPos, Quaternion.identity);
             CreateOrUpdatePivotChild(root, PivotBottomName, bottomLocalPos, Quaternion.Euler(180f, 0f, 0f));
             CreateOrUpdatePivotChild(root, PivotLeftName, leftLocalPos, Quaternion.Euler(0f, 0f, 90f));
             CreateOrUpdatePivotChild(root, PivotRightName, rightLocalPos, Quaternion.Euler(0f, 0f, -90f));
+            CreateOrUpdatePivotChild(root, PivotFrontName, frontLocalPos, Quaternion.Euler(-90f, 0f, 0f));
+            CreateOrUpdatePivotChild(root, PivotBackName, backLocalPos, Quaternion.Euler(90f, 0f, 0f));
 
             // If it's a Mecha, also create Pivot_BaseContact at the bottom/belly contact line
             if (isMecha)

@@ -164,6 +164,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 EditorGUILayout.PropertyField(so.FindProperty("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaScaleRatio"), new GUIContent("Mecha Ölçek Oranı (yalnızca Boy=0 ise):"));
+                EditorGUILayout.PropertyField(so.FindProperty("mechaWrapAmount"), new GUIContent("Objeye Sarılma (0=düz, 1=tam sarılır):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaOpacity"), new GUIContent("Mecha Saydamlığı (0.55 = %55):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaLocalOffset"), new GUIContent("Mecha Konum Öteleme (Offset):"));
                 EditorGUILayout.PropertyField(so.FindProperty("mechaRotationOffset"), new GUIContent("Mecha Dönüş Açısı (Euler):"));
@@ -689,7 +690,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 level.mechaLocalOffset,
                 level.mechaRotationOffset,
                 level.mechaWorldSize,
-                level.targetPivot
+                level.targetPivot,
+                level.mechaWrapAmount
             );
 
             Selection.activeGameObject = hostInstance;

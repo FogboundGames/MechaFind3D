@@ -19,10 +19,12 @@ MonoBehaviour:
   targetGoals: []
   fillerItems: []
   enableCamouflageMecha: 1
+  targetPivot: 0
   customMechaPrefab: {fileID: 0}
   hostItemSO: {fileID: 0}
   mechaHostKeyword: cake
   mechaScaleRatio: 0.5
+  mechaWorldSize: 0.5
   mechaOpacity: 0.22
   mechaLocalOffset: {x: 0, y: 0, z: 0}
   mechaRotationOffset: {x: 0, y: 0, z: 0}

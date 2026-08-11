@@ -20,6 +20,11 @@ namespace MechaFind3D.PhysicsInteraction
         PivotBottom,
         PivotLeft,
         PivotRight,
+        // Front/Back sit on the object's broad face. For thin/flat items (a melon slice, a bread slice)
+        // that face is by far the largest surface, so it's the only side the mecha can actually lie
+        // against instead of poking out past a narrow edge.
+        PivotFront,
+        PivotBack,
         MechaAnchor
     }
 
@@ -64,6 +69,10 @@ namespace MechaFind3D.PhysicsInteraction
         [Range(0.05f, 1.0f)]
         [Tooltip("Host-relative scale (used only when Mecha World Size is 0).")]
         public float mechaScaleRatio = 0.25f;
+
+        [Range(0f, 1f)]
+        [Tooltip("How much the mecha hugs/wraps around the host instead of lying flat on it. 0 = flat spread-eagle pose, 1 = arms and legs fully curled around the object (e.g. clinging to a soda can).")]
+        public float mechaWrapAmount = 0f;
 
         [Tooltip("ABSOLUTE mecha size in world units. If > 0, the mecha is exactly this size regardless of host scale, so the tool preview and gameplay match AND you tune the size from one place. Set to 0 to use Mecha Scale Ratio (host-relative) instead.")]
         public float mechaWorldSize = 0.5f;
