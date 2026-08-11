@@ -327,7 +327,7 @@ namespace MechaFind3D.PhysicsInteraction
             if (speed > 1e-4f) dragDir /= speed;
             else dragDir = Vector3.forward;
 
-            float uniformForceMagnitude = Mathf.Clamp(speed * pushForceMultiplier * 0.04f, 0.08f, 0.45f);
+            float uniformForceMagnitude = Mathf.Clamp(speed * pushForceMultiplier * 0.04f, 0.08f, maxForceClamp * 0.4f);
 
             foreach (Collider col in hits)
             {

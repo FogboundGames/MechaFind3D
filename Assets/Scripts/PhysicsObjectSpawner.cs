@@ -119,11 +119,11 @@ namespace MechaFind3D.PhysicsInteraction
         {
             physicsMaterial = new PhysicsMaterial("MatchFactoryToyPhysics")
             {
-                dynamicFriction = 0.15f,
-                staticFriction = 0.20f,
-                bounciness = 0.25f,
+                dynamicFriction = friction * 0.75f,
+                staticFriction = friction,
+                bounciness = bounciness,
                 frictionCombine = PhysicsMaterialCombine.Minimum,
-                bounceCombine = PhysicsMaterialCombine.Maximum
+                bounceCombine = PhysicsMaterialCombine.Minimum
             };
         }
 
@@ -331,7 +331,7 @@ namespace MechaFind3D.PhysicsInteraction
                 rb.isKinematic = false;
                 rb.useGravity = true;
                 rb.constraints = RigidbodyConstraints.None;
-                rb.mass = 1.0f;
+                rb.mass = objectMass;
                 rb.linearDamping = linearDrag;
                 rb.angularDamping = angularDrag;
                 rb.sleepThreshold = 0.05f;

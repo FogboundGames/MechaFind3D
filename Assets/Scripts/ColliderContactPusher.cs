@@ -44,13 +44,15 @@ namespace MechaFind3D.PhysicsInteraction
             for (int i = 0; i < contacts; i++)
             {
                 ContactPoint contact = collision.GetContact(i);
-                Vector3 pushDir = contact.normal;
 
-                // Push this object away along the contact normal
+                // Keep repulsion purely horizontal (XZ plane) so stacked objects don't get pushed upward into the air
+                Vector3 pushDir = new Vector3(contact.normal.x, 0f, contact.normal.z);
+                if (pushDir.sqrMagnitude < 1e-4f) continue;
+
+                pushDir.Normalize();
+
+                // Push this object away horizontally
                 rb.AddForceAtPosition(pushDir * forceAmount, contact.point, mode);
-
-                // Push the opposing object in the opposite direction
-                collision.rigidbody.AddForceAtPosition(-pushDir * forceAmount, contact.point, mode);
             }
         }
     }
