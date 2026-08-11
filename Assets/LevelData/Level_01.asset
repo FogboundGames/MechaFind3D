@@ -28,10 +28,10 @@ MonoBehaviour:
   enableCamouflageMecha: 1
   targetPivot: 0
   customMechaPrefab: {fileID: 8771091787928289351, guid: d6f53d603dc1d3a8e8710f1efa9bb4d0, type: 3}
-  hostItemSO: {fileID: 11400000, guid: 939451b88faded1498862c35f0fdba54, type: 2}
-  mechaHostKeyword: ice_cream_003
+  hostItemSO: {fileID: 11400000, guid: 66167c16f5e145743b6eb3dd723a1af8, type: 2}
+  mechaHostKeyword: watermelon_003
   mechaScaleRatio: 0.5
-  mechaWrapAmount: 0.45
+  mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.302
   mechaLocalOffset: {x: 0, y: 0, z: 0}

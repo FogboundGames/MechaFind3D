@@ -100,8 +100,10 @@ namespace MechaFind3D.PhysicsInteraction
             Rigidbody hostRb = hostObject.GetComponent<Rigidbody>();
             if (hostRb != null)
             {
-                // Freeze X and Z rotation so the cake never rolls sideways or upside down
-                hostRb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+                // Allow the mecha object to tip over naturally
+                hostRb.constraints = RigidbodyConstraints.None;
+                // Increase mass so the mecha object feels heavier and more substantial
+                hostRb.mass = 8.0f;
             }
 
             // 2. Extract host item materials (e.g. Cake frosting and layer textures)
