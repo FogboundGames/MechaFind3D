@@ -33,38 +33,105 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("3D Cardboard Box Packaging (DOTween Animation)")]
         [SerializeField] private GameObject cardboardBoxOpenedPrefab;
+        [Tooltip("Optional material for the packaging box. Box.fbx ships a single untextured material, so leave empty only if you are happy with the model's own look.")]
+        [SerializeField] private Material boxMaterialOverride;
+
+        [Header("3D Conveyor Belt (replaces the flat UI conveyor)")]
+        [SerializeField] private GameObject conveyorPrefab;
+        [Tooltip("Belt height as a fraction of a dock box's height. Drives the tile scale, and with it how many tiles fit side by side.")]
+        [Range(0.15f, 1.5f)]
+        [SerializeField] private float conveyorHeightFraction = 0.6f;
+        [Tooltip("How far the boxes sink into the belt's top surface, in world units. Slightly positive hides any gap under them.")]
+        [SerializeField] private float conveyorSinkIntoBoxes = 0.01f;
+        [Tooltip("Stripe scroll speed in LOOPS per second. Negative runs the belt to the RIGHT, which is the direction the packed boxes travel.")]
+        [SerializeField] private float conveyorSpeed = -0.2f;
+        [Tooltip("Mirrors the stripe layout so the arrow heads point right, matching the belt's travel direction.")]
+        [SerializeField] private bool conveyorFlipStripes = true;
+        [Tooltip("How many belt pallets to lay across the shelf. They stretch to fill the run, so fewer means bigger. 0 auto-fits them from Conveyor Height Fraction instead.")]
+        [Min(0)]
+        [SerializeField] private int conveyorTileCount = 4;
+        [Tooltip("Show only every Nth arrow on a pallet. 1 shows all eight the model ships.")]
+        [Min(1)]
+        [SerializeField] private int conveyorArrowStride = 1;
+        [Tooltip("Size multiplier on the arrows. 1 leaves them exactly as modelled.")]
+        [Min(0.1f)]
+        [SerializeField] private float conveyorArrowScale = 1f;
         [Tooltip("Number of completed boxes to fit side-by-side in a single horizontal row before starting a new row.")]
         [SerializeField] private int completedBoxesPerRow = 4;
 
         private const int MAX_SLOTS = 2;
         private const int ITEMS_PER_BOX = 3;
 
-        // Rigged flap bones (relative path from the box root) that fold shut for the lid-close animation.
-        private static readonly string[] FlapBonePaths =
-        {
-            "Armature/Front.Top",
-            "Armature/Back.Top",
-            "Armature/Left.Top",
-            "Armature/Right.Top"
-        };
+        // Box.fbx ships its own lid-folding animation, baked into a single four-flap clip by
+        // MechaFind3D → Kutu → Box.fbx Kapanma Klibini Üret and played by PackagingBoxFlaps. The
+        // hand-tuned per-bone quaternions the old "Cardboard Box (Rigged)" prefab needed are gone.
+        private const string PackagingBoxResourcePath = "CardboardBox/PackagingBox";
 
-        // Local rotations captured from the "Cardboard Box (Opened)" / "Cardboard Box (Closed)" reference
-        // prefabs, in the same Front/Back/Left/Right order as FlapBonePaths.
-        private static readonly Quaternion[] FlapOpenLocalRotations =
-        {
-            new Quaternion(0.8997768f, 0f, 0f, 0.4363507f),
-            new Quaternion(0.37796697f, 0f, 0f, 0.9258191f),
-            new Quaternion(0.68000966f, -0.20325376f, 0.19386926f, 0.6772663f),
-            new Quaternion(0.62172043f, 0.3368441f, -0.33684343f, 0.6217205f)
-        };
+        // Box.fbx was authored Z-up, so its imported prefab root carries a baked Euler(-90, 0, 0) that
+        // stands the box upright. Assigning an ABSOLUTE rotation (the old code's Quaternion.Euler(18,0,0))
+        // throws that away and lays the box on its side. Every display rotation is therefore composed on
+        // top of the prefab's own rest rotation, which is captured once when the prefab is loaded.
+        private static readonly Vector3 BoxSlotTiltEuler = new Vector3(18f, 0f, 0f);
+        private static readonly Vector3 BoxShelfTiltEuler = new Vector3(16f, 10f, 0f);
 
-        private static readonly Quaternion[] FlapClosedLocalRotations =
+        private Quaternion boxRestRotation = Quaternion.identity;
+
+        private const string ConveyorResourcePath = "Conveyor/ConveyorBelt";
+        private GameObject conveyorInstance;
+        private float conveyorTopOffsetY;
+
+        private Quaternion BoxDisplayRotation(Vector3 tiltEuler)
         {
-            Quaternion.identity,
-            new Quaternion(1f, 0f, 0f, 0f),
-            new Quaternion(0.49653107f, 0.4965316f, -0.50344455f, 0.50344497f),
-            new Quaternion(0.5f, -0.5f, 0.5f, 0.5f)
-        };
+            return Quaternion.Euler(tiltEuler) * boxRestRotation;
+        }
+
+        /// <summary>
+        /// DOJump arcs along world +Y, but the dock plane sits only <see cref="dockCameraDepth"/> units in
+        /// front of a camera that is pitched steeply down - so world +Y points largely back INTO the lens,
+        /// and every unit of jump power eats |dot(up, camForward)| units of view depth. The old fixed
+        /// powers (1.0 for items, 0.9 for the box) put the arc's apex ~0.75-0.85 units from the camera,
+        /// i.e. inside its face. This caps the apex at a fraction of the dock depth instead, so the arc
+        /// stays a readable hop no matter how the camera angle or dock depth is retuned.
+        /// </summary>
+        /// <summary>
+        /// DOPunchScale's punch is in ABSOLUTE local-scale units, not a multiplier. The old box prefab sat
+        /// near scale 1 so a 0.18 punch was a light squash; Box.fbx is ~24 units wide natively, so it fits
+        /// its slot at scale ~0.0066 and the same 0.18 punched it to 26x its size for a moment - the box
+        /// appearing to explode or leap at the camera whenever an item landed in it. Scaling the punch by
+        /// the box's current scale keeps the squash proportional whatever model is used.
+        ///
+        /// The box is also parked in <see cref="tweeningDockObjects"/> for the duration, because
+        /// AlignDocked3DObjectsWithSlots otherwise rewrites localScale every frame and fights the punch.
+        /// </summary>
+        private void PunchBox(GameObject box, Vector3 relativePunch, float duration, int vibrato, float elasticity)
+        {
+            if (box == null) return;
+
+            float scale = box.transform.localScale.x;
+            box.transform.DOKill(true);
+
+            tweeningDockObjects.Add(box);
+            box.transform.DOPunchScale(relativePunch * scale, duration, vibrato, elasticity)
+                .OnComplete(() =>
+                {
+                    tweeningDockObjects.Remove(box);
+                    if (box != null) box.transform.localScale = Vector3.one * scale;
+                });
+        }
+
+        private float GetDockJumpPower(float maxPower)
+        {
+            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
+            if (mainCamera == null) return maxPower;
+
+            const float maxDepthFractionSpent = 0.25f;
+
+            float depthLostPerUnit = Mathf.Abs(Vector3.Dot(Vector3.up, mainCamera.transform.forward));
+            if (depthLostPerUnit < 0.05f) return maxPower;
+
+            float safePower = dockCameraDepth * maxDepthFractionSpent / depthLostPerUnit;
+            return Mathf.Min(maxPower, safePower);
+        }
 
         private readonly GameObject[] slotBox = new GameObject[MAX_SLOTS];
         private readonly string[] slotAssignedItemName = new string[MAX_SLOTS];
@@ -81,6 +148,7 @@ namespace MechaFind3D.PhysicsInteraction
 
         private Camera mainCamera;
         private bool isProcessingMatch = false;
+        private bool warnedAboutFlaps = false;
 
         private static readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
         private static readonly string[] GoalCardPalette = { "Pink", "Yellow", "Green", "Blue" };
@@ -123,6 +191,12 @@ namespace MechaFind3D.PhysicsInteraction
         private void Start()
         {
             Ensure3DCardboardBoxes();
+
+            // Deferred by a frame on purpose. The belt's width and tile count are baked once from the
+            // shipped-box shelf, and that shelf is derived from the canvas layout - which has not settled
+            // during Start(). Building here left the belt sized from a stale layout while the per-frame
+            // follow moved it to the settled position, so it sat off-centre from the shelf.
+            StartCoroutine(BuildConveyorAfterLayout());
 
             if (LevelManager.Instance == null)
             {
@@ -533,9 +607,12 @@ namespace MechaFind3D.PhysicsInteraction
             Rigidbody rb = item.GetComponent<Rigidbody>();
             if (rb != null)
             {
-                rb.isKinematic = true;
+                // Zero the velocities BEFORE going kinematic - Unity rejects velocity writes on a kinematic
+                // body and logs "Setting linear velocity of a kinematic body is not supported" for every
+                // single collected item, which floods the console during exactly this flow.
                 rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
+                rb.isKinematic = true;
             }
 
             foreach (Renderer r in item.GetComponentsInChildren<Renderer>())
@@ -677,10 +754,61 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void LoadCardboardBoxPrefabsIfNull()
         {
+            // The scene still has the old "Cardboard Box (Rigged)" prefab serialized into this field. That
+            // box has an Armature/*.Top bone layout, which the Box.fbx clip's BoxFlap_* paths do not match,
+            // so it would silently never fold. Anything without PackagingBoxFlaps is therefore treated as a
+            // stale reference and replaced; assigning a prepared box that HAS the component still overrides.
+            if (cardboardBoxOpenedPrefab != null && cardboardBoxOpenedPrefab.GetComponent<PackagingBoxFlaps>() == null)
+            {
+                cardboardBoxOpenedPrefab = null;
+            }
+
             if (cardboardBoxOpenedPrefab == null)
             {
-                cardboardBoxOpenedPrefab = Resources.Load<GameObject>("CardboardBox/Cardboard Box (Opened)");
+                cardboardBoxOpenedPrefab = Resources.Load<GameObject>(PackagingBoxResourcePath);
             }
+
+            boxRestRotation = cardboardBoxOpenedPrefab != null
+                ? cardboardBoxOpenedPrefab.transform.rotation
+                : Quaternion.identity;
+
+            if (cardboardBoxOpenedPrefab == null)
+            {
+                Debug.LogError(
+                    $"📦 Paketleme kutusu prefab'ı yok (Resources/{PackagingBoxResourcePath}). " +
+                    "Unity menüsünden 'MechaFind3D → Kutu → Box.fbx Kapanma Klibini Üret' komutunu bir kez çalıştır.");
+            }
+        }
+
+        /// <summary>Instantiates a packaging box, strips its physics and leaves it in the open pose.</summary>
+        private GameObject CreatePackagingBox(int slotIndex)
+        {
+            if (cardboardBoxOpenedPrefab == null) return null;
+
+            GameObject box = Instantiate(cardboardBoxOpenedPrefab, transform);
+            box.name = $"Slot3DBox_{slotIndex}";
+            StripPhysicsFromVisual(box);
+
+            if (box.GetComponent<PackagingBoxFlaps>() == null) box.AddComponent<PackagingBoxFlaps>();
+
+            if (!warnedAboutFlaps && !HasFlapParts(box))
+            {
+                warnedAboutFlaps = true;
+                Debug.LogError($"📦 '{cardboardBoxOpenedPrefab.name}' üzerinde BoxFlap_* parçaları yok; " +
+                               "kapanma klibinin yolları tutmaz ve kapaklar hiç katlanmaz.");
+            }
+
+            SetBoxFlapsInstant(box, false);
+
+            if (boxMaterialOverride != null)
+            {
+                foreach (Renderer r in box.GetComponentsInChildren<Renderer>(true))
+                {
+                    r.sharedMaterial = boxMaterialOverride;
+                }
+            }
+
+            return box;
         }
 
         private static void StripPhysicsFromVisual(GameObject go)
@@ -691,41 +819,29 @@ namespace MechaFind3D.PhysicsInteraction
             foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true)) Destroy(rb);
         }
 
-        private static Transform[] GetFlapBones(GameObject box)
+        private static bool HasFlapParts(GameObject box)
         {
-            if (box == null) return null;
-            Transform[] bones = new Transform[FlapBonePaths.Length];
-            for (int i = 0; i < FlapBonePaths.Length; i++)
+            foreach (Transform t in box.GetComponentsInChildren<Transform>(true))
             {
-                bones[i] = box.transform.Find(FlapBonePaths[i]);
+                if (t.name.StartsWith("BoxFlap")) return true;
             }
-            return bones;
+            return false;
         }
 
         private static void SetBoxFlapsInstant(GameObject box, bool closed)
         {
-            Transform[] bones = GetFlapBones(box);
-            if (bones == null) return;
-            Quaternion[] targets = closed ? FlapClosedLocalRotations : FlapOpenLocalRotations;
-            for (int i = 0; i < bones.Length; i++)
-            {
-                if (bones[i] != null) bones[i].localRotation = targets[i];
-            }
+            if (box == null) return;
+            if (box.TryGetComponent(out PackagingBoxFlaps flaps)) flaps.SetClosedInstant(closed);
         }
 
-        /// <summary>Joins per-flap rotation tweens into an existing sequence so all four lid flaps fold together, in place (no position/scale change on the box itself).</summary>
+        /// <summary>Joins the box's own baked lid-folding animation into an existing sequence so all four flaps fold together, in place (no position/scale change on the box itself).</summary>
         private static void AnimateBoxFlaps(Sequence seq, GameObject box, bool closing, float duration)
         {
-            Transform[] bones = GetFlapBones(box);
-            if (bones == null) return;
-            Quaternion[] targets = closing ? FlapClosedLocalRotations : FlapOpenLocalRotations;
-            for (int i = 0; i < bones.Length; i++)
-            {
-                if (bones[i] != null)
-                {
-                    seq.Join(bones[i].DOLocalRotateQuaternion(targets[i], duration).SetEase(Ease.InOutQuad));
-                }
-            }
+            if (box == null) return;
+            if (!box.TryGetComponent(out PackagingBoxFlaps flaps)) return;
+
+            Tween fold = flaps.Fold(closing, duration);
+            if (fold != null) seq.Join(fold);
         }
 
         private Vector3 GetHeaderGoalWorldPosition()
@@ -757,7 +873,8 @@ namespace MechaFind3D.PhysicsInteraction
             GameObject[] allObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
             foreach (GameObject go in allObjects)
             {
-                if (go != null && (go.name.Contains("Slot3DBox") || go.name.Contains("Delivery_3DBox") || go.name.StartsWith("Cardboard Box")))
+                if (go != null && (go.name.Contains("Slot3DBox") || go.name.Contains("Delivery_3DBox")
+                                   || go.name.StartsWith("Cardboard Box") || go.name.StartsWith("PackagingBox")))
                 {
                     if (Application.isPlaying) Destroy(go);
                     else DestroyImmediate(go);
@@ -774,19 +891,174 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 for (int i = 0; i < MAX_SLOTS; i++)
                 {
-                    GameObject box = Instantiate(cardboardBoxOpenedPrefab, transform);
-                    box.name = $"Slot3DBox_{i}";
-                    StripPhysicsFromVisual(box);
-                    SetBoxFlapsInstant(box, false);
+                    GameObject box = CreatePackagingBox(i);
+                    if (box == null) continue;
 
                     float fitScale = ComputeFitScaleForSlot(i, box) * 1.25f;
                     box.transform.localScale = Vector3.one * fitScale;
-                    box.transform.rotation = Quaternion.Euler(18f, 0f, 0f);
+                    box.transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
                     box.transform.position = GetSlotWorldPosition(i);
 
                     slotBox[i] = box;
                 }
             }
+        }
+
+        /// <summary>
+        /// Swaps the hand-built flat UI conveyor for the 3D Conveyor.fbx belt.
+        ///
+        /// The old conveyor exists ONLY in the scene (a Conveyor_Belt_Panel Image plus a Chevron_Arrows
+        /// Text faking the arrows with characters) - no code creates it - so it is found by name and
+        /// switched off rather than deleted, leaving the scene authoring intact and reversible.
+        /// The 3D belt is then fitted to exactly the screen footprint the panel used to occupy, so the
+        /// dock boxes keep sitting on it without any of their own layout maths changing.
+        /// </summary>
+        private System.Collections.IEnumerator BuildConveyorAfterLayout()
+        {
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+            EnsureConveyorBelt();
+        }
+
+        private void EnsureConveyorBelt()
+        {
+            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
+            if (mainCamera == null) return;
+
+            if (conveyorPrefab == null) conveyorPrefab = Resources.Load<GameObject>(ConveyorResourcePath);
+            if (conveyorPrefab == null)
+            {
+                Debug.LogError($"🎞️ Konveyör prefab'ı yok (Resources/{ConveyorResourcePath}). " +
+                               "Unity menüsünden 'MechaFind3D → Konveyör → Conveyor.fbx Prefab'ını Üret' komutunu bir kez çalıştır.");
+                return;
+            }
+
+            // Anchored to the SHIPPED-box shelf, not to any screen rectangle. The belt has to read as the
+            // surface the packed boxes ride away on, so it takes their tilt and their depth; measuring a UI
+            // rect instead gave a billboard flat to the lens, in a different perspective from the boxes.
+            if (!TryGetShippedBoxRow(out Vector3 spanCentre, out float spanWidth, out float boxBottomY, out float boxHeight))
+            {
+                Debug.LogWarning("🎞️ Gönderilen koli rafı hesaplanamadı; 3D kayış yerleştirilemedi.");
+                return;
+            }
+
+            if (conveyorInstance != null) Destroy(conveyorInstance);
+
+            // Only the shelf tilt's PITCH is taken. Its 10 degrees of yaw would swing the belt's run off the
+            // row axis the boxes are laid out along, leaving the belt crossing the shelf at an angle.
+            Quaternion beltRotation = Quaternion.Euler(BoxShelfTiltEuler.x, 0f, 0f)
+                                      * conveyorPrefab.transform.rotation;
+            Vector3 topSurface = new Vector3(spanCentre.x, boxBottomY + conveyorSinkIntoBoxes, spanCentre.z);
+
+            conveyorInstance = ConveyorBelt.BuildRow(conveyorPrefab, transform, mainCamera,
+                                                     topSurface, beltRotation,
+                                                     spanWidth, boxHeight * conveyorHeightFraction,
+                                                     conveyorSpeed, conveyorFlipStripes,
+                                                     conveyorTileCount, conveyorArrowStride, conveyorArrowScale);
+
+            // How far the belt's top face sits above its own origin. Cached once so the per-frame follow
+            // is a single assignment instead of re-measuring 200 renderers every frame.
+            conveyorTopOffsetY = 0f;
+            if (conveyorInstance != null)
+            {
+                Bounds beltBounds = default;
+                bool beltHas = false;
+                foreach (Renderer r in conveyorInstance.GetComponentsInChildren<Renderer>())
+                {
+                    if (!r.enabled) continue;
+                    if (!beltHas) { beltBounds = r.bounds; beltHas = true; }
+                    else beltBounds.Encapsulate(r.bounds);
+                }
+                if (beltHas) conveyorTopOffsetY = beltBounds.max.y - conveyorInstance.transform.position.y;
+            }
+
+            // Only the leftover flat conveyor art is switched off. The dock container must keep its own
+            // graphics - the slot images ARE the box slots - so it is never blanked here.
+            RectTransform legacyPanel = FindConveyorPanel();
+            if (legacyPanel != null && legacyPanel != bottomDockContainer)
+            {
+                foreach (Graphic g in legacyPanel.GetComponentsInChildren<Graphic>(true))
+                {
+                    g.enabled = false;
+                }
+            }
+        }
+
+        private static RectTransform FindConveyorPanel()
+        {
+            GameObject panelObj = GameObject.Find("Conveyor_Belt_Panel");
+            return panelObj != null ? panelObj.GetComponent<RectTransform>() : null;
+        }
+
+        /// <summary>
+        /// Keeps the belt pinned under the shipped-box shelf every frame.
+        ///
+        /// The belt is built in Start(), before anything has shipped, so it starts off the estimated shelf
+        /// height; once real boxes land there the measured height takes over and the belt settles under
+        /// them. Following costs one assignment per frame thanks to the cached top offset.
+        /// </summary>
+        private void FollowDockBoxesWithConveyor()
+        {
+            if (conveyorInstance == null) return;
+            if (!TryGetShippedBoxRow(out Vector3 centre, out _, out float bottomY, out _)) return;
+
+            conveyorInstance.transform.position = new Vector3(
+                centre.x,
+                bottomY + conveyorSinkIntoBoxes - conveyorTopOffsetY,
+                centre.z);
+        }
+
+        /// <summary>
+        /// The shelf run that FILLED boxes are shipped to - the belt sits under those, so a packed box
+        /// lands on the belt and rides away, which is the whole point of it being a conveyor.
+        ///
+        /// Derived from <see cref="GetRedMarkedCompletedBoxWorldPos"/>, which is deterministic and needs no
+        /// boxes to exist. That matters because the belt is built at Start(), long before anything has
+        /// shipped. Once real boxes are on the shelf their measured undersides take over, so the belt
+        /// tracks their true height rather than an estimate.
+        /// </summary>
+        private bool TryGetShippedBoxRow(out Vector3 centre, out float width, out float bottomY, out float boxHeight)
+        {
+            centre = Vector3.zero;
+            width = 0f;
+            bottomY = 0f;
+            boxHeight = 0f;
+
+            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
+            if (mainCamera == null || slotRects.Count == 0) return false;
+
+            int lastIndex = Mathf.Max(0, completedBoxesPerRow - 1);
+            Vector3 first = GetRedMarkedCompletedBoxWorldPos(0);
+            Vector3 last = GetRedMarkedCompletedBoxWorldPos(lastIndex);
+            float footprint = EstimateShippedBoxFootprint();
+
+            centre = (first + last) * 0.5f;
+            // Carry a box-width past each end of the shelf so the belt runs out of frame rather than
+            // stopping dead where the last box would sit.
+            width = Vector3.Distance(first, last) + footprint * 2f;
+            bottomY = first.y;
+            boxHeight = footprint;
+
+            Bounds shipped = default;
+            bool has = false;
+            foreach (GameObject box in completedBoxObjects)
+            {
+                if (box == null) continue;
+                foreach (Renderer r in box.GetComponentsInChildren<Renderer>())
+                {
+                    if (!r.enabled) continue;
+                    if (!has) { shipped = r.bounds; has = true; }
+                    else shipped.Encapsulate(r.bounds);
+                }
+            }
+
+            if (has)
+            {
+                bottomY = shipped.min.y;
+                boxHeight = shipped.size.y;
+            }
+
+            return true;
         }
 
         private Quaternion GetDockItemSidewaysRotation()
@@ -811,7 +1083,7 @@ namespace MechaFind3D.PhysicsInteraction
             obj3D.transform.DOKill();
 
             Sequence seq = DOTween.Sequence();
-            seq.Join(obj3D.transform.DOJump(boxItemPos, 1.0f, 1, duration).SetEase(Ease.InQuad));
+            seq.Join(obj3D.transform.DOJump(boxItemPos, GetDockJumpPower(1.0f), 1, duration).SetEase(Ease.InQuad));
             seq.Join(obj3D.transform.DOScale(targetScale, duration).SetEase(Ease.OutBounce));
             seq.Join(obj3D.transform.DORotateQuaternion(targetRot, duration).SetEase(Ease.OutQuad));
             seq.OnComplete(() =>
@@ -820,9 +1092,7 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (slotIndex >= 0 && slotIndex < MAX_SLOTS && slotBox[slotIndex] != null)
                 {
-                    GameObject box = slotBox[slotIndex];
-                    box.transform.DOKill(true);
-                    box.transform.DOPunchScale(new Vector3(0.18f, -0.12f, 0.18f), 0.28f, 5, 0.5f);
+                    PunchBox(slotBox[slotIndex], new Vector3(0.18f, -0.12f, 0.18f), 0.28f, 5, 0.5f);
                 }
 
                 onComplete?.Invoke();
@@ -831,6 +1101,8 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void AlignDocked3DObjectsWithSlots()
         {
+            FollowDockBoxesWithConveyor();
+
             for (int i = 0; i < MAX_SLOTS; i++)
             {
                 Vector3 slotWorldPos = GetSlotWorldPosition(i);
@@ -840,7 +1112,7 @@ namespace MechaFind3D.PhysicsInteraction
                     slotBox[i].transform.position = Vector3.Lerp(slotBox[i].transform.position, slotWorldPos, Time.deltaTime * 22f);
                     float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * 1.25f;
                     slotBox[i].transform.localScale = Vector3.one * fitScale;
-                    slotBox[i].transform.rotation = Quaternion.Slerp(slotBox[i].transform.rotation, Quaternion.Euler(18f, 0f, 0f), Time.deltaTime * 15f);
+                    slotBox[i].transform.rotation = Quaternion.Slerp(slotBox[i].transform.rotation, BoxDisplayRotation(BoxSlotTiltEuler), Time.deltaTime * 15f);
                 }
 
                 List<DockItemData> itemsInBox = slotBoxContents[i];
@@ -1101,9 +1373,9 @@ namespace MechaFind3D.PhysicsInteraction
             Vector3 shipTargetWorld = GetRedMarkedCompletedBoxWorldPos(shipIndex);
             if (box != null)
             {
-                boxSeq.Append(box.transform.DOJump(shipTargetWorld, 0.9f, 1, 1.0f).SetEase(Ease.OutCubic));
+                boxSeq.Append(box.transform.DOJump(shipTargetWorld, GetDockJumpPower(0.9f), 1, 1.0f).SetEase(Ease.OutCubic));
                 boxSeq.Join(box.transform.DOScale(baseScale * 1.15f, 1.0f));
-                boxSeq.Join(box.transform.DORotate(new Vector3(16f, 10f, 0f), 1.0f));
+                boxSeq.Join(box.transform.DORotateQuaternion(BoxDisplayRotation(BoxShelfTiltEuler), 1.0f));
             }
 
             boxSeq.OnComplete(() =>
@@ -1111,18 +1383,15 @@ namespace MechaFind3D.PhysicsInteraction
                 if (box != null)
                 {
                     tweeningDockObjects.Remove(box);
-                    box.transform.DOPunchScale(new Vector3(0.14f, -0.10f, 0.14f), 0.32f);
+                    PunchBox(box, new Vector3(0.14f, -0.10f, 0.14f), 0.32f, 10, 1f);
                     completedBoxObjects.Add(box);
                 }
 
                 // Spawn a fresh open box for this slot so a new item can start filling it
-                if (cardboardBoxOpenedPrefab != null)
+                GameObject newBox = CreatePackagingBox(slotIndex);
+                if (newBox != null)
                 {
-                    GameObject newBox = Instantiate(cardboardBoxOpenedPrefab, transform);
-                    newBox.name = $"Slot3DBox_{slotIndex}";
-                    StripPhysicsFromVisual(newBox);
-                    SetBoxFlapsInstant(newBox, false);
-                    newBox.transform.rotation = Quaternion.Euler(18f, 0f, 0f);
+                    newBox.transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
                     newBox.transform.position = GetSlotWorldPosition(slotIndex);
                     newBox.transform.localScale = Vector3.zero;
                     slotBox[slotIndex] = newBox;

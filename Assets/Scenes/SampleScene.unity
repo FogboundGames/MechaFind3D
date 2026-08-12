@@ -1174,8 +1174,6 @@ MonoBehaviour:
   m_Script: {fileID: 145069656}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.ConveyorChevronAnimator
-  rectTransform: {fileID: 0}
-  scrollSpeed: 12
 --- !u!114 &153800413
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8423,6 +8421,15 @@ MonoBehaviour:
   dockCameraDepth: 2
   uiPlaneDistance: 3.2
   cardboardBoxOpenedPrefab: {fileID: 7881864654587423385, guid: 3b7481d0cfb08124f93ce1904cdb6b56, type: 3}
+  boxMaterialOverride: {fileID: 0}
+  conveyorPrefab: {fileID: 0}
+  conveyorHeightFraction: 0.55
+  conveyorSinkIntoBoxes: 0.01
+  conveyorSpeed: -0.35
+  conveyorFlipStripes: 1
+  conveyorTileCount: 4
+  conveyorArrowStride: 1
+  conveyorArrowScale: 1
   completedBoxesPerRow: 4
 --- !u!114 &1276484867
 MonoBehaviour:

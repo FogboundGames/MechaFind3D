@@ -1,0 +1,98 @@
+using UnityEditor;
+using UnityEngine;
+
+namespace MechaFind3D.PhysicsInteraction.EditorTools
+{
+    /// <summary>
+    /// Publishes Assets/Conveyor.fbx into Resources as a ready-to-spawn 3D conveyor belt, replacing the
+    /// old flat UI conveyor (MatchFactory_Canvas/Conveyor_Belt_Panel and its Chevron_Arrows Text).
+    ///
+    /// The model needs no clip baking - it ships no animation at all - so this only assembles the prefab:
+    /// attaches <see cref="ConveyorBelt"/>, and hides BeltPath, whose mesh is a degenerate zero-thickness
+    /// guide strip that would otherwise render as a stray sliver.
+    /// </summary>
+    public static class ConveyorPrefabBaker
+    {
+        private const string FbxPath = "Assets/Conveyor.fbx";
+        private const string OutputFolder = "Assets/Resources/Conveyor";
+        private const string PrefabPath = OutputFolder + "/ConveyorBelt.prefab";
+
+        [MenuItem("MechaFind3D/Konveyör/Conveyor.fbx Prefab'ını Üret")]
+        public static void Bake()
+        {
+            GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
+            if (model == null)
+            {
+                EditorUtility.DisplayDialog("Konveyör", $"{FbxPath} bulunamadı.", "Tamam");
+                return;
+            }
+
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(model);
+            if (instance == null)
+            {
+                EditorUtility.DisplayDialog("Konveyör", "Model sahneye alınamadı.", "Tamam");
+                return;
+            }
+
+            int dashCount = 0;
+            bool hidBeltPath = false;
+
+            try
+            {
+                PrefabUtility.UnpackPrefabInstance(instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                instance.name = "ConveyorBelt";
+
+                foreach (Transform t in instance.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name.StartsWith("Arrow_")) dashCount++;
+
+                    if (t.name == "BeltPath")
+                    {
+                        // Degenerate guide geometry (zero extent on one axis) - keep the transform as the
+                        // authored path reference, but stop it from drawing.
+                        var r = t.GetComponent<Renderer>();
+                        if (r != null) { r.enabled = false; hidBeltPath = true; }
+                    }
+                }
+
+                // Purely decorative: it must never take part in the pile physics or block taps.
+                foreach (Collider c in instance.GetComponentsInChildren<Collider>(true))
+                {
+                    Object.DestroyImmediate(c);
+                }
+
+                if (instance.GetComponent<ConveyorBelt>() == null)
+                {
+                    instance.AddComponent<ConveyorBelt>();
+                }
+
+                EnsureOutputFolder();
+                PrefabUtility.SaveAsPrefabAsset(instance, PrefabPath);
+            }
+            finally
+            {
+                Object.DestroyImmediate(instance);
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            Debug.Log($"🎞️ Konveyör prefab'ı üretildi → {PrefabPath}\n" +
+                      $"  {dashCount} şerit parçası, BeltPath render {(hidBeltPath ? "kapatıldı" : "bulunamadı")}, " +
+                      $"kök rotasyonu {model.transform.rotation.eulerAngles} (Z-up dönüşümü, korunuyor)");
+            Selection.activeObject = AssetDatabase.LoadAssetAtPath<Object>(PrefabPath);
+        }
+
+        private static void EnsureOutputFolder()
+        {
+            if (!AssetDatabase.IsValidFolder("Assets/Resources"))
+            {
+                AssetDatabase.CreateFolder("Assets", "Resources");
+            }
+            if (!AssetDatabase.IsValidFolder(OutputFolder))
+            {
+                AssetDatabase.CreateFolder("Assets/Resources", "Conveyor");
+            }
+        }
+    }
+}
