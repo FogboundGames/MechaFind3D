@@ -33,6 +33,8 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("3D Cardboard Box Packaging (DOTween Animation)")]
         [SerializeField] private GameObject cardboardBoxOpenedPrefab;
+        [Tooltip("Number of completed boxes to fit side-by-side in a single horizontal row before starting a new row.")]
+        [SerializeField] private int completedBoxesPerRow = 4;
 
         private const int MAX_SLOTS = 2;
         private const int ITEMS_PER_BOX = 3;
@@ -558,9 +560,19 @@ namespace MechaFind3D.PhysicsInteraction
 
             slotBoxContents[targetSlot].Add(data);
 
+            // Lock collection the instant this box reaches capacity, not 0.45s later when the fly-in
+            // animation's callback would otherwise call AnimateSlowBoxClosingAndShipping. That gap let a
+            // second box also reach capacity and start closing/shipping at the same time, so both boxes
+            // animated together and visibly interpenetrated on their way to the shelf.
+            bool willShip = slotBoxContents[targetSlot].Count >= ITEMS_PER_BOX;
+            if (willShip)
+            {
+                isProcessingMatch = true;
+            }
+
             AnimateItemIntoBox(item.gameObject, targetSlot, () =>
             {
-                if (slotBoxContents[targetSlot].Count >= ITEMS_PER_BOX)
+                if (willShip)
                 {
                     AnimateSlowBoxClosingAndShipping(targetSlot);
                 }
@@ -674,6 +686,7 @@ namespace MechaFind3D.PhysicsInteraction
         private static void StripPhysicsFromVisual(GameObject go)
         {
             if (go == null) return;
+            foreach (var pusher in go.GetComponentsInChildren<MechaFind3D.PhysicsInteraction.ColliderContactPusher>(true)) Destroy(pusher);
             foreach (var col in go.GetComponentsInChildren<Collider>(true)) Destroy(col);
             foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true)) Destroy(rb);
         }
@@ -977,67 +990,68 @@ namespace MechaFind3D.PhysicsInteraction
         private int completedBoxesCount = 0;
         private readonly List<GameObject> completedBoxObjects = new List<GameObject>();
 
-        private const int COMPLETED_BOXES_PER_ROW = 2;
+        private const int COMPLETED_BOXES_PER_ROW = 4;
 
         /// <summary>
-        /// Measures a live slot box's current on-screen footprint and scales it up by the same factor
-        /// applied when a box finishes shipping (baseScale*1.30 on top of the dock's *1.25), so the shelf
-        /// grid below can space boxes by their real rendered size instead of a guessed screen fraction.
+        /// Computes the world-space footprint a box has once it lands on the shelf, from the same
+        /// slot-size math used to size dock boxes rather than reading a live box's current bounds.
+        /// A live read could land mid-tween (e.g. the box shrinking/growing during its own closing or
+        /// respawn animation) and return a transient size, which made consecutive shelf gaps uneven.
+        /// The unscaled mesh extent cancels out of ComputeFitScaleForSlot's ratio, so this reproduces
+        /// the exact final on-shelf size (dock fit * 1.30 ship base * 1.15 shelf scale) deterministically.
         /// </summary>
         private float EstimateShippedBoxFootprint()
         {
-            for (int i = 0; i < MAX_SLOTS; i++)
+            if (slotRects.Count == 0) return 0.5f;
+
+            float targetWorldSize = ComputeFitScaleForSlot(0);
+            float footprint = targetWorldSize * 1.30f * 1.15f;
+            return footprint > 1e-4f ? footprint : 0.5f;
+        }
+
+        private int GetTotalExpectedCompletedBoxes()
+        {
+            if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null && MatchGoalManager.Instance.levelGoals.Count > 0)
             {
-                if (slotBox[i] == null) continue;
-                Renderer[] rends = slotBox[i].GetComponentsInChildren<Renderer>();
-                if (rends == null || rends.Length == 0) continue;
-
-                Bounds b = rends[0].bounds;
-                for (int k = 1; k < rends.Length; k++)
+                int totalBoxes = 0;
+                foreach (var goal in MatchGoalManager.Instance.levelGoals)
                 {
-                    if (rends[k] != null) b.Encapsulate(rends[k].bounds);
+                    totalBoxes += Mathf.Max(1, Mathf.CeilToInt(goal.totalRequired / 3.0f));
                 }
-
-                float maxSide = Mathf.Max(b.size.x, b.size.z);
-                if (maxSide > 1e-4f) return maxSide * 1.30f;
+                if (totalBoxes > 0) return Mathf.Max(4, totalBoxes);
             }
-
-            return 0.5f;
+            return 4;
         }
 
         public Vector3 GetRedMarkedCompletedBoxWorldPos(int index)
         {
             if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
 
-            int row = index / COMPLETED_BOXES_PER_ROW;
-            int col = index % COMPLETED_BOXES_PER_ROW;
+            if (mainCamera == null) return new Vector3(-1.2f + index * 0.65f, 0.60f, -1.6f);
 
-            if (mainCamera == null) return new Vector3(-1.0f + col * 1.0f, 0.60f + row * 0.7f, -1.6f);
+            // Left anchor point for the completed-boxes row (above the purple dock bar)
+            Vector3 startAnchor = mainCamera.ScreenToWorldPoint(new Vector3(
+                Screen.width * 0.22f, Screen.height * 0.235f, dockCameraDepth + 0.40f));
 
-            // Anchor point for the completed-boxes shelf: right above the "KARIŞTIR" button / purple dock
-            // bar, in the gap between the dock and the loose pile (per the placement the user marked).
-            Vector3 anchorWorld = mainCamera.ScreenToWorldPoint(new Vector3(
-                Screen.width * 0.50f, Screen.height * 0.235f, dockCameraDepth + 0.40f));
-
-            // Lay the grid out along the camera's own screen-facing right/up axes so it always reads as a
-            // flat row to the player, and space cells by the box's real footprint so they never overlap
-            // regardless of resolution or how big ComputeFitScaleForSlot ends up making the boxes.
             Vector3 camRight = mainCamera.transform.right;
-            Vector3 camUp = mainCamera.transform.up;
-            float cellSize = EstimateShippedBoxFootprint() * 1.15f;
 
-            float rowWidth = (COMPLETED_BOXES_PER_ROW - 1) * cellSize;
-            float colOffset = -rowWidth * 0.5f + col * cellSize;
+            // Equal step distance between each consecutive box (always 1.0 * cellSize gap)
+            float cellSize = EstimateShippedBoxFootprint() * 1.05f;
 
-            // Rows grow upward from this bottom anchor, into the gap between the dock and the pile,
-            // instead of downward into the dock bar itself.
-            Vector3 worldPos = anchorWorld + camRight * colOffset + camUp * (row * cellSize);
+            // Box 0: startAnchor + 0 * cellSize
+            // Box 1: startAnchor + 1 * cellSize
+            // Box 2: startAnchor + 2 * cellSize
+            // Box 3: startAnchor + 3 * cellSize
+            Vector3 worldPos = startAnchor + camRight * (index * cellSize);
             return worldPos;
         }
 
         private void AnimateSlowBoxClosingAndShipping(int slotIndex)
         {
             isProcessingMatch = true;
+
+            // Reserve the shipping index immediately so sequential boxes never get duplicate or skipped indices
+            int shipIndex = completedBoxesCount++;
 
             // Hide the dock slot's in-progress fill badge right away - otherwise it keeps floating over
             // the (now visually empty) dock slot for the whole shipping animation, reading as a second,
@@ -1084,7 +1098,7 @@ namespace MechaFind3D.PhysicsInteraction
             boxSeq.AppendInterval(0.30f);
 
             // Phase 5: Jump to the completed-boxes shelf, directly above KUTU 1 / next to the KARIŞTIR button
-            Vector3 shipTargetWorld = GetRedMarkedCompletedBoxWorldPos(completedBoxesCount);
+            Vector3 shipTargetWorld = GetRedMarkedCompletedBoxWorldPos(shipIndex);
             if (box != null)
             {
                 boxSeq.Append(box.transform.DOJump(shipTargetWorld, 0.9f, 1, 1.0f).SetEase(Ease.OutCubic));
@@ -1100,8 +1114,6 @@ namespace MechaFind3D.PhysicsInteraction
                     box.transform.DOPunchScale(new Vector3(0.14f, -0.10f, 0.14f), 0.32f);
                     completedBoxObjects.Add(box);
                 }
-
-                completedBoxesCount++;
 
                 // Spawn a fresh open box for this slot so a new item can start filling it
                 if (cardboardBoxOpenedPrefab != null)

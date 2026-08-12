@@ -314,7 +314,10 @@ namespace MechaFind3D.PhysicsInteraction
                 mecha.transform.rotation = mecha.transform.rotation * Quaternion.Euler(rotationOffset);
             }
 
-            // Remove physics joints and rigidbodies so embedded mecha stays fixed on host object
+            foreach (MechaFind3D.PhysicsInteraction.ColliderContactPusher pusher in mecha.GetComponentsInChildren<MechaFind3D.PhysicsInteraction.ColliderContactPusher>())
+            {
+                Object.Destroy(pusher);
+            }
             foreach (Joint j in mecha.GetComponentsInChildren<Joint>())
             {
                 Object.Destroy(j);
@@ -877,6 +880,7 @@ namespace MechaFind3D.PhysicsInteraction
             mascot.name = "Mecha_Head_Mascot";
 
             // Strip physics scripts and colliders so it doesn't collide
+            foreach (var pusher in mascot.GetComponentsInChildren<MechaFind3D.PhysicsInteraction.ColliderContactPusher>()) Object.Destroy(pusher);
             foreach (var col in mascot.GetComponentsInChildren<Collider>()) Object.Destroy(col);
             foreach (var rb in mascot.GetComponentsInChildren<Rigidbody>()) Object.Destroy(rb);
             var findTarget = mascot.GetComponent<FindTargetObject>();

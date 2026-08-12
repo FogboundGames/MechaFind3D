@@ -7,7 +7,6 @@ namespace MechaFind3D.PhysicsInteraction
     /// applies immediate repulsive forces along the collision normal to push objects apart,
     /// completely preventing objects from clipping or interpenetrating into each other in the pile.
     /// </summary>
-    [RequireComponent(typeof(Rigidbody))]
     public class ColliderContactPusher : MonoBehaviour
     {
         [Header("Contact Repulsion Settings")]
@@ -26,18 +25,20 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void OnCollisionEnter(Collision collision)
         {
-            if (collision.rigidbody == null) return;
+            if (rb == null || collision.rigidbody == null) return;
             ApplyRepulsion(collision, impactImpulse, ForceMode.Impulse);
         }
 
         private void OnCollisionStay(Collision collision)
         {
-            if (collision.rigidbody == null) return;
+            if (rb == null || collision.rigidbody == null) return;
             ApplyRepulsion(collision, repulsionForce, ForceMode.Acceleration);
         }
 
         private void ApplyRepulsion(Collision collision, float forceAmount, ForceMode mode)
         {
+            if (rb == null) return;
+
             int contacts = collision.contactCount;
             if (contacts == 0) return;
 
