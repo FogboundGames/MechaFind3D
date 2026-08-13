@@ -17,7 +17,9 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
     /// </summary>
     public static class BoxCloseClipBaker
     {
-        private const string FbxPath = "Assets/Box.fbx";
+        // Located by NAME rather than a fixed path: the model has already been moved once (Assets/ ->
+        // Assets/Prefabs/), which silently broke this tool until the path was chased down.
+        private const string FbxName = "Box";
         private const string SourceClipName = "BoxClose";
         private const string OutputFolder = "Assets/Resources/CardboardBox";
         private const string ClipPath = OutputFolder + "/BoxClose.anim";
@@ -26,10 +28,17 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         [MenuItem("MechaFind3D/Kutu/Box.fbx Kapanma Klibini Üret")]
         public static void Bake()
         {
+            string FbxPath = FindModelPath(FbxName);
+            if (string.IsNullOrEmpty(FbxPath))
+            {
+                EditorUtility.DisplayDialog("Kutu Klibi", $"'{FbxName}.fbx' projede bulunamadı.", "Tamam");
+                return;
+            }
+
             GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
             if (model == null)
             {
-                EditorUtility.DisplayDialog("Kutu Klibi", $"{FbxPath} bulunamadı.", "Tamam");
+                EditorUtility.DisplayDialog("Kutu Klibi", $"{FbxPath} yüklenemedi.", "Tamam");
                 return;
             }
 
@@ -110,6 +119,17 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             clip.legacy = true;
             return clip;
+        }
+
+        /// <summary>Finds a model asset anywhere in the project by file name, so moving it cannot break the tool.</summary>
+        internal static string FindModelPath(string fileName)
+        {
+            foreach (string guid in AssetDatabase.FindAssets($"{fileName} t:Model"))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (System.IO.Path.GetFileNameWithoutExtension(path) == fileName) return path;
+            }
+            return null;
         }
 
         /// <summary>Creates the Resources output folder through the AssetDatabase so CreateAsset can write into it.</summary>

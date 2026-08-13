@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
   levelNumber: 1
   levelTitle: Seviye 1
-  totalPileCount: 16
+  totalPileCount: 15
   foodTargetSize: 0.22
   targetGoals:
   - itemData: {fileID: 11400000, guid: 66167c16f5e145743b6eb3dd723a1af8, type: 2}
@@ -33,6 +33,6 @@ MonoBehaviour:
   mechaScaleRatio: 0.5
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
-  mechaOpacity: 0.302
+  mechaOpacity: 0.15
   mechaLocalOffset: {x: 0, y: 0, z: 0}
   mechaRotationOffset: {x: 0, y: 0, z: 0}

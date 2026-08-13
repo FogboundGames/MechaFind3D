@@ -24,7 +24,8 @@ MonoBehaviour:
   hostItemSO: {fileID: 0}
   mechaHostKeyword: cake
   mechaScaleRatio: 0.5
+  mechaWrapAmount: 0
   mechaWorldSize: 0.5
-  mechaOpacity: 0.22
+  mechaOpacity: 0.15
   mechaLocalOffset: {x: 0, y: 0, z: 0}
   mechaRotationOffset: {x: 0, y: 0, z: 0}

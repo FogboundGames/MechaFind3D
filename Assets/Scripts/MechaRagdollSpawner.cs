@@ -163,7 +163,15 @@ namespace MechaFind3D.PhysicsInteraction
 
             // Fixed glass look: applied last so every mecha reads as a light, see-through white silhouette
             // no matter which disguise mode ran above (or whether embedding into a host object even happened).
-            ChameleonCamouflage.ApplyGlassMaterial(currentSpawnedMecha);
+            // It must use the LEVEL's opacity: the embed path above already applied that value, and this
+            // call used to overwrite it with the hard-coded default, so a level asking for a fainter, better
+            // hidden mecha never actually got one.
+            float glassOpacity = 0.22f;
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                glassOpacity = LevelManager.Instance.ActiveLevelData.mechaOpacity;
+            }
+            ChameleonCamouflage.ApplyGlassMaterial(currentSpawnedMecha, glassOpacity);
 
             return currentSpawnedMecha;
         }

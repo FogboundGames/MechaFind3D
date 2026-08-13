@@ -13,17 +13,22 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
     /// </summary>
     public static class ConveyorPrefabBaker
     {
-        private const string FbxPath = "Assets/Conveyor.fbx";
+        // Located by NAME rather than a fixed path - the models were moved from Assets/ to Assets/Prefabs/
+        // once already, which silently broke this tool.
+        private const string FbxName = "Conveyor";
         private const string OutputFolder = "Assets/Resources/Conveyor";
         private const string PrefabPath = OutputFolder + "/ConveyorBelt.prefab";
 
         [MenuItem("MechaFind3D/Konveyör/Conveyor.fbx Prefab'ını Üret")]
         public static void Bake()
         {
-            GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath);
+            string fbxPath = BoxCloseClipBaker.FindModelPath(FbxName);
+            GameObject model = string.IsNullOrEmpty(fbxPath)
+                ? null
+                : AssetDatabase.LoadAssetAtPath<GameObject>(fbxPath);
             if (model == null)
             {
-                EditorUtility.DisplayDialog("Konveyör", $"{FbxPath} bulunamadı.", "Tamam");
+                EditorUtility.DisplayDialog("Konveyör", $"'{FbxName}.fbx' projede bulunamadı.", "Tamam");
                 return;
             }
 

@@ -52,6 +52,15 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private int conveyorTileCount = 6;
         [Tooltip("Linear move speed of completed boxes along the conveyor belt (world units per second). Matches belt travel direction.")]
         [SerializeField] private float conveyorBoxMoveSpeed = 0.40f;
+        [Tooltip("How quickly a shipped box eases into its place in the run. Higher is snappier; too low and the boxes visibly trail the belt.")]
+        [SerializeField] private float conveyorBoxSettleSpeed = 12f;
+
+        [Header("Mecha On Sealed Lid")]
+        [Tooltip("How much of the lid seam the mecha stretches across, laid out full length. 1 spans the whole box.")]
+        [Range(0.4f, 1f)]
+        [SerializeField] private float mechaLidFillRatio = 0.9f;
+        [Tooltip("How far the mecha floats above the lid, as a fraction of the seam's length. Just enough to stop it z-fighting the cardboard.")]
+        [SerializeField] private float mechaLidClearance = 0.02f;
 #pragma warning disable CS0414
         [Tooltip("If true, spawns initial completed boxes on the conveyor belt at start so it moves continuously right away.")]
         [SerializeField] private bool spawnInitialConveyorBoxes = false;
@@ -150,11 +159,19 @@ namespace MechaFind3D.PhysicsInteraction
 
         private readonly List<RectTransform> slotRects = new List<RectTransform>();
         private readonly List<Text> slotBadgeTexts = new List<Text>();
-        private readonly List<Image> slotItemIconImages = new List<Image>();
         private readonly HashSet<GameObject> tweeningDockObjects = new HashSet<GameObject>();
 
         private Camera mainCamera;
-        private bool isProcessingMatch = false;
+        // Per-slot rather than one global flag: a single lock froze ALL collection for the ~2.5s a full box
+        // spent closing and shipping, so the player could not drop anything into the other, idle slots
+        // either. Not readonly - Unity drops readonly fields when it serializes state across a domain
+        // reload, which would leave this out of step with the rest of the slot arrays.
+        private bool[] slotProcessing = new bool[MAX_SLOTS];
+
+        private bool IsSlotBusy(int slotIndex)
+        {
+            return slotIndex >= 0 && slotIndex < MAX_SLOTS && slotProcessing[slotIndex];
+        }
         private bool warnedAboutFlaps = false;
 
         private static readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
@@ -400,7 +417,6 @@ namespace MechaFind3D.PhysicsInteraction
 
             slotRects.Clear();
             slotBadgeTexts.Clear();
-            slotItemIconImages.Clear();
 
             for (int i = 0; i < MAX_SLOTS; i++)
             {
@@ -412,20 +428,9 @@ namespace MechaFind3D.PhysicsInteraction
                 // Removed blue background square image for clean 3D box tray appearance!
                 slotBg.color = Color.clear;
 
-                // Item Icon Image displayed on/above each box
-                GameObject iconObj = new GameObject("ItemIconBadge");
-                iconObj.transform.SetParent(slotObj.transform, false);
-
-                RectTransform iconRect = iconObj.AddComponent<RectTransform>();
-                iconRect.anchorMin = new Vector2(0.5f, 0.88f);
-                iconRect.anchorMax = new Vector2(0.5f, 0.88f);
-                iconRect.pivot = new Vector2(0.5f, 0.5f);
-                iconRect.sizeDelta = new Vector2(72, 72);
-
-                Image iconImg = iconObj.AddComponent<Image>();
-                iconImg.type = Image.Type.Simple;
-                iconImg.preserveAspect = true;
-                iconObj.SetActive(false);
+                // The flat ItemIconBadge that used to sit above each slot is gone: the real 3D packing box
+                // now stands in that spot and shows its own contents, so the 2D stand-in only ever read as
+                // a stray sprite floating over the dock.
 
                 // Slot badge text below box
                 GameObject labelObj = new GameObject("LabelText");
@@ -454,7 +459,6 @@ namespace MechaFind3D.PhysicsInteraction
 
                 slotRects.Add(slotRect);
                 slotBadgeTexts.Add(labelTxt);
-                slotItemIconImages.Add(iconImg);
             }
         }
 
@@ -623,7 +627,7 @@ namespace MechaFind3D.PhysicsInteraction
 
         public bool TryCollectItemToDock(FindTargetObject item)
         {
-            if (isProcessingMatch || item == null) return false;
+            if (item == null) return false;
 
             bool isMecha = IsMechaItem(item);
             string itemType = isMecha ? "Mecha" : item.colorName;
@@ -634,6 +638,8 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 // Slot 2 is dedicated exclusively for Mecha
                 int mechaSlot = 2;
+                if (IsSlotBusy(mechaSlot)) return false;
+
                 if (string.IsNullOrEmpty(slotAssignedItemName[mechaSlot]))
                 {
                     slotAssignedItemName[mechaSlot] = "Mecha";
@@ -650,6 +656,8 @@ namespace MechaFind3D.PhysicsInteraction
                 // Slots 0 & 1 are for general items
                 for (int i = 0; i < 2; i++)
                 {
+                    if (IsSlotBusy(i)) continue;
+
                     int req = slotRequiredCount[i] > 0 ? slotRequiredCount[i] : 3;
                     if (slotAssignedItemName[i] == itemType && slotBoxContents[i].Count < req)
                     {
@@ -662,6 +670,8 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     for (int i = 0; i < 2; i++)
                     {
+                        if (IsSlotBusy(i)) continue;
+
                         if (string.IsNullOrEmpty(slotAssignedItemName[i]))
                         {
                             slotAssignedItemName[i] = itemType;
@@ -732,6 +742,11 @@ namespace MechaFind3D.PhysicsInteraction
                     mechaObjToCollect = item.gameObject;
                 }
 
+                // Camouflage comes off the moment it is torn away from its host: the glass look only exists
+                // to hide it in the pile, so from here on - the flight, the box, the sealed lid - it shows
+                // as solid white.
+                ChameleonCamouflage.ApplyRevealedMaterial(mechaObjToCollect);
+
                 Rigidbody rb = mechaObjToCollect.GetComponent<Rigidbody>();
                 if (rb != null)
                 {
@@ -767,7 +782,7 @@ namespace MechaFind3D.PhysicsInteraction
                 bool willShip = slotBoxContents[targetSlot].Count >= reqCount;
                 if (willShip)
                 {
-                    isProcessingMatch = true;
+                    slotProcessing[targetSlot] = true;
                 }
 
                 // Unscrew spin animation (720 deg Y rotation + hop up)
@@ -825,7 +840,7 @@ namespace MechaFind3D.PhysicsInteraction
                 bool willShip = slotBoxContents[targetSlot].Count >= reqCount;
                 if (willShip)
                 {
-                    isProcessingMatch = true;
+                    slotProcessing[targetSlot] = true;
                 }
 
                 AnimateItemIntoBox(item.gameObject, targetSlot, () =>
@@ -1218,7 +1233,23 @@ namespace MechaFind3D.PhysicsInteraction
                 while (targetPos.x < minX) targetPos.x += spanX;
                 while (targetPos.x > maxX) targetPos.x -= spanX;
 
-                box.transform.position = targetPos;
+                // Eased into place rather than assigned outright. Every box's target is recomputed from the
+                // lead box's spacing, so the moment a newly shipped box joined the run, all the others were
+                // teleported to their new even spacing in a single frame - the visible snap. Only the lead
+                // box keeps a hard assignment, because it IS the motion reference; the followers all lag by
+                // the same tiny amount, so the spacing between them stays exactly even.
+                float gap = Vector3.Distance(box.transform.position, targetPos);
+                if (gap > spanX * 0.5f)
+                {
+                    // Wrapped around the far edge - easing across would drag it back over the whole screen.
+                    box.transform.position = targetPos;
+                }
+                else
+                {
+                    box.transform.position = Vector3.Lerp(box.transform.position, targetPos,
+                                                          Time.deltaTime * conveyorBoxSettleSpeed);
+                }
+
                 box.transform.rotation = BoxDisplayRotation(BoxShelfTiltEuler);
             }
         }
@@ -1354,7 +1385,12 @@ namespace MechaFind3D.PhysicsInteraction
 
             // Phase 2: Parabolic Arc Flight into box (0.38s smooth jump + spin)
             seq.Append(obj3D.transform.DOJump(boxItemPos, GetDockJumpPower(1.15f), 1, 0.38f).SetEase(Ease.OutCubic));
-            seq.Join(obj3D.transform.DOScale(targetScale, 0.38f).SetEase(Ease.OutQuad));
+
+            // Shrink finishes well before the flight does. Both tweens used to run the full 0.38s, but the
+            // position ease (OutCubic) outruns the scale ease (OutQuad) - a third of the way through, the
+            // item is already 66% of the way to the box while only 51% shrunk. Arriving still oversized is
+            // what let it poke through the box floor and flash underneath for a frame.
+            seq.Join(obj3D.transform.DOScale(targetScale, 0.24f).SetEase(Ease.OutQuad));
             seq.Join(obj3D.transform.DORotateQuaternion(targetRot, 0.38f).SetEase(Ease.OutQuad));
 
             // Phase 3: Impact Bounce & Box Squash & Stretch Reaction!
@@ -1364,8 +1400,11 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (obj3D != null)
                 {
-                    // Item elastic landing punch
-                    obj3D.transform.DOPunchScale(targetScale * 0.25f, 0.22f, 8, 1f);
+                    // Landing reaction is a SQUASH, not a uniform punch. A uniform punch grew the item on
+                    // every axis, including downward, which pushed it back through the box floor right
+                    // after it had landed - the same flash the shrink fix above is meant to remove.
+                    obj3D.transform.DOPunchScale(
+                        new Vector3(0.20f, -0.24f, 0.20f) * targetScaleVal, 0.22f, 8, 1f);
                 }
 
                 // Heavy impact squash-and-stretch punch on the box!
@@ -1424,31 +1463,6 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
-        private Sprite ExtractIconFromItem(DockItemData itemData)
-        {
-            if (itemData == null) return null;
-
-            string rawName = itemData.colorName;
-            if (!string.IsNullOrEmpty(rawName))
-            {
-                // Clean name (e.g. "Watermelon_003" -> "watermelon", "Sausage_01" -> "sausage")
-                string cleanName = rawName.Split('_')[0].Trim().ToLower();
-                Sprite icon = IconSprite(cleanName);
-                if (icon != null) return icon;
-
-                icon = IconSprite(rawName.ToLower());
-                if (icon != null) return icon;
-
-                icon = IconSprite(rawName);
-                if (icon != null) return icon;
-            }
-
-            string shapeName = itemData.shapeType.ToString().ToLower();
-            Sprite shapeIcon = IconSprite(shapeName);
-            if (shapeIcon != null) return shapeIcon;
-
-            return null;
-        }
 
         /// <summary>
         /// Places an actual clone of the packed item (its real mesh/model, not a generic shape) on a
@@ -1493,6 +1507,8 @@ namespace MechaFind3D.PhysicsInteraction
             display.transform.localPosition = Vector3.zero;
             display.transform.localRotation = Quaternion.Euler(20f, 45f, 0f);
 
+            bool layFlatOnSeam = itemData.colorName == "Mecha" || IsMechaItem(itemData.targetObject);
+
             // Restore scales and active state on all children
             display.transform.localScale = Vector3.one;
             foreach (Transform childTrans in display.GetComponentsInChildren<Transform>(true))
@@ -1522,15 +1538,144 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            float boxLidSize = hasBoxBounds ? Mathf.Min(boxBounds.size.x, boxBounds.size.z) : 0.35f;
-            float itemSize = GetObjectStaticUnscaledMaxExtent(display);
-            float desiredWorldSize = boxLidSize * 0.45f;
-            float scaleFactor = itemSize > 1e-4f ? desiredWorldSize / itemSize : 0.12f;
-            display.transform.localScale = Vector3.one * scaleFactor;
+            if (!(layFlatOnSeam && TryLayAlongLidSeam(box, group.transform, display)))
+            {
+                float boxLidSize = hasBoxBounds ? Mathf.Min(boxBounds.size.x, boxBounds.size.z) : 0.35f;
+                float itemSize = GetObjectStaticUnscaledMaxExtent(display);
+                float desiredWorldSize = boxLidSize * 0.45f;
+                float scaleFactor = itemSize > 1e-4f ? desiredWorldSize / itemSize : 0.12f;
+                display.transform.localScale = Vector3.one * scaleFactor;
+            }
 
             group.transform.DOKill();
             group.transform.localScale = Vector3.zero;
             group.transform.DOScale(Vector3.one, 0.35f).SetEase(Ease.OutBack);
+        }
+
+        /// <summary>
+        /// Lays a humanoid display model flat along the lid seam instead of standing it up.
+        ///
+        /// The generic Euler(20, 45, 0) showcase tilt suits a compact food item, but leaves the mecha
+        /// standing bolt upright off the lid. Instead it is laid full length along the join between the two
+        /// flaps that shut LAST - measured from Box.fbx's own animation, that is BoxFlap_Yn and BoxFlap_Yp
+        /// (they reach closed at frames 58/61, while Xn/Xp are already down by 26/30), and they meet along
+        /// the box's long axis.
+        ///
+        /// Everything is derived from the flap transforms at runtime rather than from hard-coded axes, so
+        /// it survives the box being tilted for the slot, the shelf, or anything else.
+        /// </summary>
+        private bool TryLayAlongLidSeam(GameObject box, Transform group, GameObject display)
+        {
+            Transform xn = FindDeepChild(box.transform, "BoxFlap_Xn");
+            Transform xp = FindDeepChild(box.transform, "BoxFlap_Xp");
+            Transform yn = FindDeepChild(box.transform, "BoxFlap_Yn");
+            Transform yp = FindDeepChild(box.transform, "BoxFlap_Yp");
+            if (xn == null || xp == null || yn == null || yp == null) return false;
+
+            // The last-closing pair meet along the line running between the FIRST-closing pair's hinges.
+            Vector3 seamDir = xp.position - xn.position;
+            Vector3 acrossSeam = yp.position - yn.position;
+            float seamLength = seamDir.magnitude;
+            if (seamLength < 1e-5f || acrossSeam.sqrMagnitude < 1e-10f) return false;
+
+            seamDir /= seamLength;
+            Vector3 lidNormal = Vector3.Cross(acrossSeam.normalized, seamDir).normalized;
+            if (Vector3.Dot(lidNormal, Vector3.up) < 0f) lidNormal = -lidNormal;
+
+            // Orientation lives on the GROUP, so the pop-in scale that follows grows the model out from the
+            // seam's centre. Putting it on the model instead would make it swell out of one end.
+            group.SetPositionAndRotation((yn.position + yp.position) * 0.5f,
+                                         Quaternion.LookRotation(lidNormal, seamDir));
+
+            display.transform.localRotation = Quaternion.identity;
+            display.transform.localScale = Vector3.one;
+
+            // Fitted against BOTH lid axes, not just the seam. A T-pose is nearly as wide across the arms
+            // as it is long, so sizing it to fill the seam alone left the arms hanging over the sides of
+            // the box - the lid is markedly narrower across the seam than along it. Whichever axis runs out
+            // first decides the scale.
+            float lengthAt1 = MeasureExtentAlong(display, seamDir);
+            float armSpanAt1 = MeasureExtentAlong(display, acrossSeam.normalized);
+            if (lengthAt1 < 1e-5f || armSpanAt1 < 1e-5f) return false;
+
+            float acrossLength = acrossSeam.magnitude;
+            float scaleFactor = Mathf.Min(seamLength * mechaLidFillRatio / lengthAt1,
+                                          acrossLength * mechaLidFillRatio / armSpanAt1);
+
+            float targetLength = lengthAt1 * scaleFactor;
+            display.transform.localScale = Vector3.one * scaleFactor;
+
+            // Offsets go through InverseTransformVector rather than being written straight into
+            // localPosition. seamLength and targetLength are WORLD measurements, but localPosition is in
+            // the group's own space - and the group hangs off a box scaled to about 0.0066, so writing
+            // world numbers there shrank the offset to essentially nothing and the model sat off-centre.
+            //
+            // The mecha's origin is at its FEET, so it has to come back half its own length along the seam
+            // to end up centred on it.
+            Vector3 seamCentre = group.position;
+            display.transform.localPosition =
+                group.InverseTransformVector(-seamDir * (targetLength * 0.5f));
+
+            // Then it is settled onto the lid by measurement: the model lies on its back, so how far its
+            // back reaches below its own pivot depends on the rig, and guessing an offset sinks it into the
+            // cardboard (measured -0.05 before this).
+            float lowest = float.MaxValue;
+            foreach (Renderer r in display.GetComponentsInChildren<Renderer>())
+            {
+                if (!r.enabled) continue;
+                Bounds rb = r.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    var corner = new Vector3(
+                        (i & 1) == 0 ? rb.min.x : rb.max.x,
+                        (i & 2) == 0 ? rb.min.y : rb.max.y,
+                        (i & 4) == 0 ? rb.min.z : rb.max.z);
+                    lowest = Mathf.Min(lowest, Vector3.Dot(corner - seamCentre, lidNormal));
+                }
+            }
+
+            if (lowest < float.MaxValue)
+            {
+                float lift = seamLength * mechaLidClearance - lowest;
+                display.transform.localPosition += group.InverseTransformVector(lidNormal * lift);
+            }
+
+            return true;
+        }
+
+        /// <summary>How far the object's visible geometry reaches along a world axis, at its current pose.</summary>
+        private static float MeasureExtentAlong(GameObject go, Vector3 axis)
+        {
+            float min = float.MaxValue;
+            float max = float.MinValue;
+
+            foreach (Renderer r in go.GetComponentsInChildren<Renderer>())
+            {
+                if (!r.enabled) continue;
+                Bounds b = r.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    var corner = new Vector3(
+                        (i & 1) == 0 ? b.min.x : b.max.x,
+                        (i & 2) == 0 ? b.min.y : b.max.y,
+                        (i & 4) == 0 ? b.min.z : b.max.z);
+
+                    float p = Vector3.Dot(corner, axis);
+                    if (p < min) min = p;
+                    if (p > max) max = p;
+                }
+            }
+
+            return max > min ? max - min : 0f;
+        }
+
+        private static Transform FindDeepChild(Transform root, string childName)
+        {
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name == childName) return t;
+            }
+            return null;
         }
 
         private int completedBoxesCount = 0;
@@ -1609,19 +1754,12 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void AnimateSlowBoxClosingAndShipping(int slotIndex)
         {
-            isProcessingMatch = true;
+            slotProcessing[slotIndex] = true;
             bool isMechaSlot = (slotIndex == 2);
 
             // Reserve the shipping index immediately so sequential boxes never get duplicate or skipped indices
             int shipIndex = isMechaSlot ? -1 : completedBoxesCount++;
 
-            // Hide the dock slot's in-progress fill badge right away - otherwise it keeps floating over
-            // the (now visually empty) dock slot for the whole shipping animation, reading as a second,
-            // detached copy of "what's in the box" next to the real one on the lid.
-            if (slotIndex < slotItemIconImages.Count && slotItemIconImages[slotIndex] != null)
-            {
-                slotItemIconImages[slotIndex].gameObject.SetActive(false);
-            }
 
             List<DockItemData> filledItems = new List<DockItemData>(slotBoxContents[slotIndex]);
             GameObject box = slotBox[slotIndex];
@@ -1716,7 +1854,7 @@ namespace MechaFind3D.PhysicsInteraction
                     slotRequiredCount[slotIndex] = 0;
 
                     UpdateSlotBadgesUI();
-                    isProcessingMatch = false;
+                    slotProcessing[slotIndex] = false;
                 });
             }
             else
@@ -1751,7 +1889,7 @@ namespace MechaFind3D.PhysicsInteraction
                     slotAssignedItemName[slotIndex] = "Mecha_Completed";
 
                     UpdateSlotBadgesUI();
-                    isProcessingMatch = false;
+                    slotProcessing[slotIndex] = false;
                 });
             }
         }
@@ -1769,55 +1907,18 @@ namespace MechaFind3D.PhysicsInteraction
                     if (i == 2 && assignedName == "Mecha_Completed")
                     {
                         slotBadgeTexts[i].text = "✅ MECHA";
-                        if (i < slotItemIconImages.Count && slotItemIconImages[i] != null)
-                        {
-                            slotItemIconImages[i].gameObject.SetActive(false);
-                        }
                     }
                     else if (!string.IsNullOrEmpty(assignedName))
                     {
                         slotBadgeTexts[i].text = $"{count}/{reqCount}";
-
-                        if (i < slotItemIconImages.Count && slotItemIconImages[i] != null)
-                        {
-                            Image iconImg = slotItemIconImages[i];
-                            DockItemData firstItem = count > 0 ? slotBoxContents[i][0] : null;
-                            Sprite itemSprite = ExtractIconFromItem(firstItem);
-
-                            if (itemSprite != null)
-                            {
-                                iconImg.sprite = itemSprite;
-                                iconImg.color = Color.white;
-                            }
-                            else
-                            {
-                                iconImg.sprite = IconSprite("Box");
-                                if (count > 0 && slotBoxContents[i][0].targetObject != null)
-                                    iconImg.color = slotBoxContents[i][0].objectColor;
-                                else
-                                    iconImg.color = i == 2 ? new Color(0.2f, 0.95f, 1.0f) : Color.yellow;
-                            }
-
-                            if (!iconImg.gameObject.activeSelf)
-                            {
-                                iconImg.gameObject.SetActive(true);
-                                iconImg.transform.DOKill();
-                                iconImg.transform.localScale = Vector3.zero;
-                                iconImg.transform.DOScale(1f, 0.35f).SetEase(Ease.OutBack);
-                            }
-                        }
+                    }
+                    else if (i == 2)
+                    {
+                        slotBadgeTexts[i].text = "🤖 MECHA";
                     }
                     else
                     {
-                        if (i == 2)
-                            slotBadgeTexts[i].text = "🤖 MECHA";
-                        else
-                            slotBadgeTexts[i].text = $"KUTU {i + 1}";
-
-                        if (i < slotItemIconImages.Count && slotItemIconImages[i] != null)
-                        {
-                            slotItemIconImages[i].gameObject.SetActive(false);
-                        }
+                        slotBadgeTexts[i].text = $"KUTU {i + 1}";
                     }
                 }
             }
@@ -1837,10 +1938,10 @@ namespace MechaFind3D.PhysicsInteraction
                 slotBoxContents[i].Clear();
                 slotAssignedItemName[i] = null;
                 slotRequiredCount[i] = 0;
+                slotProcessing[i] = false;
             }
 
             tweeningDockObjects.Clear();
-            isProcessingMatch = false;
 
             UpdateSlotBadgesUI();
         }

@@ -145,8 +145,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b1ca4ae2be0a34569ecc9a981de256b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.ConveyorBelt
-  speed: 0.35
+  speed: 0.2
   autoScroll: 1
+  flipStripes: 0
+  arrowGroupStride: 4
+  arrowScale: 1.6
+  arrowSurfaceLift: 0.006
 --- !u!1 &254365884309507171
 GameObject:
   m_ObjectHideFlags: 0

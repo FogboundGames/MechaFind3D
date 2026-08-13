@@ -60,12 +60,18 @@ namespace MechaFind3D.PhysicsInteraction
             glassMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
 
             // High Glass Glossiness & Specular Reflection
-            if (glassMat.HasProperty("_Smoothness")) glassMat.SetFloat("_Smoothness", 0.95f); // High glass gloss
-            if (glassMat.HasProperty("_Metallic")) glassMat.SetFloat("_Metallic", 0.15f);     // Glass edge specular shine
+            if (glassMat.HasProperty("_Smoothness")) glassMat.SetFloat("_Smoothness", 0.97f); // High glass gloss
+            // Metallic stays at 0. On a transparent surface any metallic darkens and greys the glass, which
+            // is the opposite of what a barely-there camouflage silhouette needs - the read should come from
+            // the specular highlight along its edges, not from body tint.
+            if (glassMat.HasProperty("_Metallic")) glassMat.SetFloat("_Metallic", 0f);
 
-            // Clear, visible glass tint with guaranteed visibility alpha (0.50f)
-            float fixedGlassAlpha = Mathf.Clamp(opacity < 0.10f ? 0.50f : opacity, 0.40f, 0.85f);
-            Color crystalGlassTint = new Color(0.95f, 0.98f, 1.0f, fixedGlassAlpha);
+            // The alpha the caller asked for is now actually used. It used to be clamped up to a floor of
+            // 0.40 (and bumped to 0.50 whenever it was under 0.10), so a level asking for a faint, hard-to-
+            // spot mecha silently got a near-solid one instead - which is exactly why the glass "read too
+            // solid". Only a tiny floor remains, to stop the silhouette vanishing outright.
+            float glassAlpha = Mathf.Clamp(opacity, 0.04f, 0.85f);
+            Color crystalGlassTint = new Color(0.95f, 0.98f, 1.0f, glassAlpha);
             if (glassMat.HasProperty("_BaseColor")) glassMat.SetColor("_BaseColor", crystalGlassTint);
             if (glassMat.HasProperty("_Color")) glassMat.SetColor("_Color", crystalGlassTint);
 
@@ -82,6 +88,55 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     newMats[m] = glassMat;
                 }
+                r.sharedMaterials = newMats;
+            }
+        }
+
+        /// <summary>
+        /// Drops the camouflage: repaints the mecha in a solid white material.
+        ///
+        /// The glass look exists to hide it while it is embedded in a host item. The moment it is torn off
+        /// and flies to its box it is no longer hiding, so it turns fully opaque - both as the payoff for
+        /// spotting it, and because a near-invisible model reads as a bug once it is meant to be on show.
+        /// </summary>
+        public static void ApplyRevealedMaterial(GameObject mecha)
+        {
+            if (mecha == null) return;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            Material whiteMat = new Material(shader) { name = "RevealedMechaMat" };
+
+            // Explicitly forced back to Opaque. The renderers are coming off a transparent material, and a
+            // material built from script never runs the Inspector's shader GUI that would otherwise reset
+            // the blend state - so without this the white would inherit alpha blending and stay see-through.
+            if (whiteMat.HasProperty("_Surface")) whiteMat.SetFloat("_Surface", 0f);
+            if (whiteMat.HasProperty("_Blend")) whiteMat.SetFloat("_Blend", 0f);
+            if (whiteMat.HasProperty("_Mode")) whiteMat.SetFloat("_Mode", 0f);
+            if (whiteMat.HasProperty("_SrcBlend")) whiteMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            if (whiteMat.HasProperty("_DstBlend")) whiteMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.Zero);
+            if (whiteMat.HasProperty("_ZWrite")) whiteMat.SetFloat("_ZWrite", 1f);
+
+            whiteMat.SetOverrideTag("RenderType", "Opaque");
+            whiteMat.DisableKeyword("_ALPHABLEND_ON");
+            whiteMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            whiteMat.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            whiteMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
+
+            if (whiteMat.HasProperty("_Smoothness")) whiteMat.SetFloat("_Smoothness", 0.45f);
+            if (whiteMat.HasProperty("_Metallic")) whiteMat.SetFloat("_Metallic", 0f);
+
+            Color white = Color.white;
+            if (whiteMat.HasProperty("_BaseColor")) whiteMat.SetColor("_BaseColor", white);
+            if (whiteMat.HasProperty("_Color")) whiteMat.SetColor("_Color", white);
+            if (whiteMat.HasProperty("_BaseMap")) whiteMat.SetTexture("_BaseMap", null);
+            if (whiteMat.HasProperty("_MainTex")) whiteMat.SetTexture("_MainTex", null);
+            whiteMat.mainTexture = null;
+
+            foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
+            {
+                int slotCount = Mathf.Max(1, r.sharedMaterials.Length);
+                Material[] newMats = new Material[slotCount];
+                for (int m = 0; m < slotCount; m++) newMats[m] = whiteMat;
                 r.sharedMaterials = newMats;
             }
         }
