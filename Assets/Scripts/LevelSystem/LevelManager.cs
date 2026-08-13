@@ -130,7 +130,7 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             // 4. Spawn camouflaged Mecha for this level
-            MechaRagdollSpawner mechaSpawner = FindObjectOfType<MechaRagdollSpawner>();
+            MechaRagdollSpawner mechaSpawner = FindFirstObjectByType<MechaRagdollSpawner>();
             if (mechaSpawner != null)
             {
                 mechaSpawner.SpawnRandom();
