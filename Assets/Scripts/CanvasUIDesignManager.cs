@@ -33,8 +33,17 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("3D Cardboard Box Packaging (DOTween Animation)")]
         [SerializeField] private GameObject cardboardBoxOpenedPrefab;
-        [Tooltip("Optional material for the packaging box. Box.fbx ships a single untextured material, so leave empty only if you are happy with the model's own look.")]
+        [Tooltip("Optional material for the packaging box. Overrides EVERY slot including the tape, so leave empty to keep the model's separate cardboard/tape materials.")]
         [SerializeField] private Material boxMaterialOverride;
+        [Tooltip("Tape colours handed out to boxes in order, so consecutive boxes never share one. Only the BoxTape slot is tinted; the cardboard is untouched.")]
+        [SerializeField] private Color[] boxTapeColors =
+        {
+            new Color(0.87f, 0.35f, 0.41f), // kırmızı  (modelin kendi rengi)
+            new Color(0.95f, 0.76f, 0.30f), // hardal
+            new Color(0.36f, 0.70f, 0.55f), // yeşil
+            new Color(0.36f, 0.58f, 0.86f), // mavi
+            new Color(0.72f, 0.50f, 0.85f)  // mor
+        };
 
         [Header("3D Conveyor Belt (replaces the flat UI conveyor)")]
         [SerializeField] private GameObject conveyorPrefab;
@@ -90,6 +99,10 @@ namespace MechaFind3D.PhysicsInteraction
         private static readonly Vector3 BoxShelfTiltEuler = new Vector3(16f, 10f, 0f);
 
         private Quaternion boxRestRotation = Quaternion.identity;
+
+        // Matches "BoxTape" and the "BoxTape_Variant" copies made from it.
+        private const string TapeMaterialPrefix = "BoxTape";
+        private int nextTapeVariant;
 
         private const string ConveyorResourcePath = "Conveyor/ConveyorBelt";
         private GameObject conveyorInstance;
@@ -619,7 +632,13 @@ namespace MechaFind3D.PhysicsInteraction
                 }
                 else
                 {
-                    if (!IsMechaItem(item) && item.colorName == targetItem.colorName) count++;
+                    // The slice carrying the mecha counts as its own food type as well. It used to be
+                    // excluded, because IsMechaItem is true for the HOST while the mecha is still riding
+                    // it - so with three watermelons, one of them hosting, the box only ever asked for two
+                    // and sealed itself early while a perfectly ordinary third slice was still in the pile.
+                    // Tapping the mecha lifts it off and leaves the host behind as a plain slice, so it
+                    // belongs in the food count from the start.
+                    if (item.colorName == targetItem.colorName) count++;
                 }
             }
             return Mathf.Max(1, count);
@@ -1005,7 +1024,53 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
+            ApplyTapeVariant(box);
+
             return box;
+        }
+
+        /// <summary>
+        /// Gives this box its own tape colour so a row of shipped boxes never reads as identical copies.
+        ///
+        /// Only the BoxTape material slot is touched - Box.fbx keeps tape on its own faces (the two
+        /// last-closing flaps and the body), separate from the Cardboard slot, so the cardboard is left
+        /// exactly as authored. Colours are cycled rather than picked at random, which is what guarantees
+        /// consecutive boxes actually differ instead of occasionally repeating.
+        /// </summary>
+        private void ApplyTapeVariant(GameObject box)
+        {
+            if (box == null || boxTapeColors == null || boxTapeColors.Length == 0) return;
+
+            Color tint = boxTapeColors[nextTapeVariant % boxTapeColors.Length];
+            nextTapeVariant++;
+
+            // One instance shared by every renderer on THIS box. Copying per renderer would multiply
+            // materials for no visual gain, and tinting the slot in place would recolour the shared
+            // BoxTape.mat asset - repainting every box in the game, including ones already shipped.
+            Material variant = null;
+
+            foreach (Renderer r in box.GetComponentsInChildren<Renderer>(true))
+            {
+                Material[] mats = r.sharedMaterials;
+                bool touched = false;
+
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (mats[i] == null || !mats[i].name.StartsWith(TapeMaterialPrefix)) continue;
+
+                    if (variant == null)
+                    {
+                        variant = new Material(mats[i]) { name = mats[i].name + "_Variant" };
+                        if (variant.HasProperty("_BaseColor")) variant.SetColor("_BaseColor", tint);
+                        if (variant.HasProperty("_Color")) variant.SetColor("_Color", tint);
+                    }
+
+                    mats[i] = variant;
+                    touched = true;
+                }
+
+                if (touched) r.sharedMaterials = mats;
+            }
         }
 
         private static void StripPhysicsFromVisual(GameObject go)
@@ -1799,13 +1864,35 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (!isMechaSlot)
             {
-                // Regular food boxes: Jump to the walking 3D conveyor belt!
-                Vector3 shipTargetWorld = GetRedMarkedCompletedBoxWorldPos(shipIndex);
+                // Regular food boxes: Jump to the walking 3D conveyor belt.
+                //
+                // The landing spot is worked out INSIDE the callback, not when this sequence is built.
+                // Building it up front baked in a target that was already ~2.4s stale by the time the box
+                // touched down (0.45s of items shrinking + 0.65s of flaps + a 0.30s pause + the 1.0s jump),
+                // and the belt keeps running throughout - about a full unit of travel. The box therefore
+                // landed a whole slot behind the formation and then slid forwards into place, which is the
+                // "distances re-animating" that shows up whenever a box joins the run.
+                //
+                // The extra lead of speed x flight time is what makes it land where its slot WILL be,
+                // rather than where the slot was when it set off.
+                const float shipFlight = 1.0f;
                 if (box != null)
                 {
-                    boxSeq.Append(box.transform.DOJump(shipTargetWorld, GetDockJumpPower(0.9f), 1, 1.0f).SetEase(Ease.OutCubic));
-                    boxSeq.Join(box.transform.DOScale(baseScale * 1.15f, 1.0f));
-                    boxSeq.Join(box.transform.DORotateQuaternion(BoxDisplayRotation(BoxShelfTiltEuler), 1.0f));
+                    boxSeq.AppendCallback(() =>
+                    {
+                        if (box == null) return;
+
+                        Vector3 target = GetRedMarkedCompletedBoxWorldPos(shipIndex);
+                        if (mainCamera != null)
+                        {
+                            target += mainCamera.transform.right * (conveyorBoxMoveSpeed * shipFlight);
+                        }
+
+                        box.transform.DOJump(target, GetDockJumpPower(0.9f), 1, shipFlight).SetEase(Ease.OutCubic);
+                        box.transform.DOScale(baseScale * 1.15f, shipFlight);
+                        box.transform.DORotateQuaternion(BoxDisplayRotation(BoxShelfTiltEuler), shipFlight);
+                    });
+                    boxSeq.AppendInterval(shipFlight);
                 }
 
                 boxSeq.OnComplete(() =>

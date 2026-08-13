@@ -3,7 +3,17 @@ guid: 204f2fce2245568459efc826a8bb2e8c
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: BoxTape
+    second: {fileID: 2100000, guid: 5eabc77943bf7d787beed3b26f3c7ee8, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Cardboard
+    second: {fileID: 2100000, guid: 526709430d8a4f6acbd18b58591e0245, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
