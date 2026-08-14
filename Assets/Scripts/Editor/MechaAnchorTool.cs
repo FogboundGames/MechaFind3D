@@ -130,7 +130,6 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             Vector3 rayStart = b.center + bestAxis * (b.size.magnitude * 0.6f);
             Vector3 rayDir = -bestAxis;
 
-            bool hitSuccess = false;
             // Fallback position/normal if raycast fails
             Vector3 hitPos = b.center + bestAxis * (bestAxis == Vector3.right ? b.extents.x : bestAxis == Vector3.up ? b.extents.y : b.extents.z);
             Vector3 hitNormal = bestAxis;
@@ -140,7 +139,6 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             {
                 if (h.transform.IsChildOf(host))
                 {
-                    hitSuccess = true;
                     hitPos = h.point;
                     hitNormal = h.normal;
                     break;

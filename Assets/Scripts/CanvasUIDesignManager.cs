@@ -679,6 +679,20 @@ namespace MechaFind3D.PhysicsInteraction
             return false;
         }
 
+        public void OnMechaVanished()
+        {
+            int mechaSlot = 2;
+            slotAssignedItemName[mechaSlot] = "Mecha";
+            if (slotRequiredCount[mechaSlot] <= 0) slotRequiredCount[mechaSlot] = 1;
+
+            if (slotBoxContents[mechaSlot].Count < slotRequiredCount[mechaSlot])
+            {
+                slotBoxContents[mechaSlot].Add(null);
+            }
+
+            RefreshTargetGoalsUI();
+        }
+
         public bool TryCollectItemToDock(FindTargetObject item)
         {
             return TryCollectItemToDock(item, null);
@@ -713,20 +727,46 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (isMecha)
             {
-                // Slot 2 is dedicated exclusively for Mecha
-                int mechaSlot = 2;
-                if (IsSlotBusy(mechaSlot)) return false;
+                // Find or attach MechaRunnerBehavior component on the hit mecha transform
+                MechaRunnerBehavior runner = item.GetComponentInChildren<MechaRunnerBehavior>();
+                if (runner == null && hitCollider != null)
+                {
+                    runner = hitCollider.GetComponentInParent<MechaRunnerBehavior>();
+                }
+                if (runner == null)
+                {
+                    Transform mechaRoot = item.transform;
+                    if (hitCollider != null)
+                    {
+                        Transform t = hitCollider.transform;
+                        while (t != null && t != item.transform)
+                        {
+                            string n = t.name.ToLowerInvariant();
+                            if (n.Contains("mecha") || n.Contains("meccha") || n.Contains("ragdoll"))
+                            {
+                                mechaRoot = t;
+                                break;
+                            }
+                            t = t.parent;
+                        }
+                    }
+                    runner = mechaRoot.gameObject.AddComponent<MechaRunnerBehavior>();
+                }
 
-                if (string.IsNullOrEmpty(slotAssignedItemName[mechaSlot]))
+                if (runner.currentState == MechaRunnerBehavior.MechaState.CamouflagedOnHost)
                 {
-                    slotAssignedItemName[mechaSlot] = "Mecha";
-                    slotRequiredCount[mechaSlot] = CountTotalMatchingObjectsInLevel(item);
+                    // 1st Tap: Start Running animation and wander around the tray area (No boxing!)
+                    runner.StartRunningMode(item.gameObject);
+                    return false;
                 }
-                int req = slotRequiredCount[mechaSlot] > 0 ? slotRequiredCount[mechaSlot] : 1;
-                if (slotAssignedItemName[mechaSlot] == "Mecha" && slotBoxContents[mechaSlot].Count < req)
+                else if (runner.currentState == MechaRunnerBehavior.MechaState.RunningInArea)
                 {
-                    targetSlot = mechaSlot;
+                    // 2nd Tap: Play DOTween spin-shrink vanish exit animation (No boxing!)
+                    runner.VanishAndDisappear();
+                    return false;
                 }
+
+                return false;
             }
             else
             {

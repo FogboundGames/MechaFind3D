@@ -41,7 +41,9 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private Vector3 spawnPosition = new Vector3(0f, 3f, 0f);
         [SerializeField] private Vector3 spawnTiltEuler = new Vector3(20f, 180f, 15f);
         [Tooltip("Spawn one automatically when the level starts.")]
-        [SerializeField] private bool spawnOnStart = true;
+        [SerializeField] private bool spawnOnStart = false;
+
+        public bool SpawnOnStart => spawnOnStart;
 
         [Header("Ragdoll Tuning")]
         [SerializeField] private RagdollBuilder.Settings ragdollSettings = RagdollBuilder.Settings.Default;

@@ -455,11 +455,55 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (!wasTap) return;
 
+            // A running/vanishing mecha has already unparented itself from its host item
+            // (see MechaRunnerBehavior.StartRunningMode), so it no longer sits under any
+            // FindTargetObject in the hierarchy and the lookup below would never find it.
+            // Route taps on it directly instead of through the FindTargetObject pile flow.
+            if (TryHandleStandaloneMechaTap(screenPos)) return;
+
             GetTouchWorldPosition(screenPos, out FindTargetObject targetItem, out Collider hitCollider);
             if (targetItem != null && CanvasUIDesignManager.Instance != null)
             {
                 CanvasUIDesignManager.Instance.TryCollectItemToDock(targetItem, hitCollider);
             }
+        }
+
+        private bool TryHandleStandaloneMechaTap(Vector2 screenPos)
+        {
+            if (mainCamera == null) return false;
+
+            Ray ray = mainCamera.ScreenPointToRay(screenPos);
+            RaycastHit[] rayHits = Physics.RaycastAll(ray, 200f, ~0, QueryTriggerInteraction.Collide);
+            foreach (RaycastHit h in rayHits)
+            {
+                if (TryDispatchStandaloneMechaHit(h.collider)) return true;
+            }
+
+            RaycastHit[] sphereHits = Physics.SphereCastAll(ray.origin, 0.35f, ray.direction, 200f, ~0, QueryTriggerInteraction.Collide);
+            foreach (RaycastHit h in sphereHits)
+            {
+                if (TryDispatchStandaloneMechaHit(h.collider)) return true;
+            }
+
+            return false;
+        }
+
+        private bool TryDispatchStandaloneMechaHit(Collider col)
+        {
+            if (col == null) return false;
+            MechaRunnerBehavior runner = col.GetComponentInParent<MechaRunnerBehavior>();
+            if (runner == null) return false;
+
+            // CamouflagedOnHost mecha is still parented under a host FindTargetObject, so let
+            // the normal pile-tap flow below handle that first tap. Only intercept once it's
+            // running loose (2nd tap = vanish) or already vanishing (swallow stray taps).
+            if (runner.currentState == MechaRunnerBehavior.MechaState.RunningInArea)
+            {
+                runner.VanishAndDisappear();
+                return true;
+            }
+
+            return runner.currentState == MechaRunnerBehavior.MechaState.Vanishing;
         }
     }
 }

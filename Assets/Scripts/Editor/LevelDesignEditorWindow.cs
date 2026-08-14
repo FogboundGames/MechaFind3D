@@ -182,6 +182,11 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 {
                     GenerateScene3DPreview(level);
                 }
+                GUI.backgroundColor = new Color(0.3f, 0.9f, 0.4f);
+                if (GUILayout.Button("📦 Mecha GLB Modelini FBX Formatına Dönüştür (.fbx Exporter)", GUILayout.Height(28)))
+                {
+                    MechaFind3D.EditorTools.GLBToFBXConverterTool.ConvertMechaGLBToFBX();
+                }
                 GUI.backgroundColor = prevBg;
 
                 // Visual Preview & Dimension Stats Box
