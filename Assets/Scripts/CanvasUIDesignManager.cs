@@ -644,11 +644,69 @@ namespace MechaFind3D.PhysicsInteraction
             return Mathf.Max(1, count);
         }
 
+        public static bool HasChildMecha(FindTargetObject item)
+        {
+            if (item == null) return false;
+            foreach (Transform child in item.GetComponentsInChildren<Transform>(true))
+            {
+                if (child != item.transform && (child.name.Contains("Mecha") || child.name.Contains("meccha") || child.name.Contains("Ragdoll")))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public static bool IsHitOnMechaCollider(FindTargetObject item, Collider hitCollider)
+        {
+            if (hitCollider == null) return false;
+
+            Transform t = hitCollider.transform;
+            while (t != null && (item == null || t != item.transform))
+            {
+                string name = t.name.ToLowerInvariant();
+                if (name.Contains("mecha") || name.Contains("meccha") || name.Contains("ragdoll") || 
+                    name.Contains("bodycollider") || name.Contains("mixamorig") || name.Contains("hullmesh") || name.Contains("bone") || name.Contains("arm") || name.Contains("leg") || name.Contains("head"))
+                {
+                    return true;
+                }
+                if (t.GetComponent<MechaRagdollSpawner>() != null || t.GetComponent<SkinnedMeshRenderer>() != null)
+                {
+                    return true;
+                }
+                t = t.parent;
+            }
+            return false;
+        }
+
         public bool TryCollectItemToDock(FindTargetObject item)
+        {
+            return TryCollectItemToDock(item, null);
+        }
+
+        public bool TryCollectItemToDock(FindTargetObject item, Collider hitCollider)
         {
             if (item == null) return false;
 
-            bool isMecha = IsMechaItem(item);
+            // Strict Hit Sensitivity: Collect Mecha ONLY if the player clicked directly on the mecha character figure's collider!
+            bool isMecha = false;
+            if (hitCollider != null)
+            {
+                isMecha = IsHitOnMechaCollider(item, hitCollider);
+            }
+            else
+            {
+                // Standalone mecha object (not embedded in a host item)
+                isMecha = item.name.Contains("Mecha") || item.name.Contains("meccha") ||
+                         (item.colorName != null && item.colorName.Equals("mecha", System.StringComparison.OrdinalIgnoreCase));
+            }
+
+            // GAMEPLAY RULE: A host object carrying a hidden mecha CANNOT be collected/boxed until the player clicks directly on the mecha first to pluck it off!
+            if (!isMecha && HasChildMecha(item))
+            {
+                return false;
+            }
+
             string itemType = isMecha ? "Mecha" : item.colorName;
 
             int targetSlot = -1;
@@ -823,6 +881,26 @@ namespace MechaFind3D.PhysicsInteraction
             }
             else
             {
+                // Unparent any child mecha riding on this host item before collecting the host item so the mecha drops into the pile
+                foreach (Transform child in item.GetComponentsInChildren<Transform>(true))
+                {
+                    if (child != item.transform && (child.name.Contains("Mecha") || child.name.Contains("meccha") || child.name.Contains("Ragdoll")))
+                    {
+                        child.SetParent(null, true);
+                        Rigidbody mechaRb = child.GetComponent<Rigidbody>();
+                        if (mechaRb != null)
+                        {
+                            mechaRb.isKinematic = false;
+                            mechaRb.WakeUp();
+                        }
+                        foreach (Collider c in child.GetComponentsInChildren<Collider>(true))
+                        {
+                            if (c != null) c.enabled = true;
+                        }
+                        break;
+                    }
+                }
+
                 item.isDocked = true;
 
                 Rigidbody rb = item.GetComponent<Rigidbody>();

@@ -64,10 +64,27 @@ namespace MechaFind3D.PhysicsInteraction
         private void Start()
         {
             AutoFindCharacterModelsIfEmpty();
-            if (spawnOnStart)
+            // Do NOT auto-spawn on Start to prevent extra duplicate mechas; LevelManager controls level mecha spawning.
+        }
+
+        public void ClearAllExistingMechas()
+        {
+            if (currentSpawnedMecha != null)
             {
-                // Slight delay so PhysicsObjectSpawner finishes spawning the pile objects first
-                Invoke(nameof(SpawnRandom), 0.08f);
+                Destroy(currentSpawnedMecha);
+                currentSpawnedMecha = null;
+            }
+
+            // Clean up any unattached standalone mecha objects in scene
+            foreach (var obj in FindObjectsByType<GameObject>(FindObjectsSortMode.None))
+            {
+                if (obj != null && (obj.name.StartsWith("MechaRagdoll_") || obj.name.StartsWith("meccha chameleon")))
+                {
+                    if (obj.transform.parent == null)
+                    {
+                        Destroy(obj);
+                    }
+                }
             }
         }
 
@@ -88,19 +105,13 @@ namespace MechaFind3D.PhysicsInteraction
             if (characterModels == null || characterModels.Length == 0)
             {
                 List<GameObject> list = new List<GameObject>();
-                if (customMechaPrefab != null) list.Add(customMechaPrefab);
-
-                string[] guids = AssetDatabase.FindAssets("character- t:Model", new[] { "Assets/kenney_blocky-characters_20" });
-                if (guids != null && guids.Length > 0)
+                foreach (string guid in AssetDatabase.FindAssets("meccha t:Model", new[] { "Assets/Prefabs" }))
                 {
-                    foreach (string guid in guids)
-                    {
-                        string path = AssetDatabase.GUIDToAssetPath(guid);
-                        GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-                        if (model != null && !list.Contains(model)) list.Add(model);
-                    }
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    GameObject go = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                    if (go != null && !list.Contains(go)) list.Add(go);
                 }
-                characterModels = list.ToArray();
+                if (list.Count > 0) characterModels = list.ToArray();
             }
 #endif
         }
@@ -115,6 +126,7 @@ namespace MechaFind3D.PhysicsInteraction
         public GameObject SpawnRandomAt(Vector3 position, Quaternion rotation)
         {
             AutoFindCharacterModelsIfEmpty();
+            ClearAllExistingMechas();
 
             GameObject modelToSpawn = null;
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null && LevelManager.Instance.ActiveLevelData.customMechaPrefab != null)
@@ -134,11 +146,6 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 Debug.LogWarning("[MechaRagdollSpawner] No mecha model assigned or found in project.");
                 return null;
-            }
-
-            if (currentSpawnedMecha != null)
-            {
-                Destroy(currentSpawnedMecha);
             }
 
             currentSpawnedMecha = Instantiate(modelToSpawn, position, rotation);
@@ -171,7 +178,14 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 glassOpacity = LevelManager.Instance.ActiveLevelData.mechaOpacity;
             }
-            ChameleonCamouflage.ApplyGlassMaterial(currentSpawnedMecha, glassOpacity);
+
+            Color hostColor = Color.white;
+            if (currentSpawnedMecha != null && currentSpawnedMecha.transform.parent != null)
+            {
+                hostColor = ChameleonCamouflage.GetHostDominantColor(currentSpawnedMecha.transform.parent.gameObject);
+            }
+
+            ChameleonCamouflage.ApplyGlassMaterial(currentSpawnedMecha, glassOpacity, hostColor);
 
             return currentSpawnedMecha;
         }

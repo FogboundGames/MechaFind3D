@@ -14,15 +14,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
   levelNumber: 1
   levelTitle: Seviye 1
-  totalPileCount: 15
+  totalPileCount: 45
   foodTargetSize: 0.22
   targetGoals:
   - itemData: {fileID: 11400000, guid: 66167c16f5e145743b6eb3dd723a1af8, type: 2}
-    requiredCount: 3
+    requiredCount: 9
   - itemData: {fileID: 11400000, guid: fccc954b5f90fbc498d16c8ae3251b45, type: 2}
-    requiredCount: 3
+    requiredCount: 9
   - itemData: {fileID: 11400000, guid: 42c04b3d918c0f94c80ee1aed6df68b9, type: 2}
-    requiredCount: 6
+    requiredCount: 9
+  - itemData: {fileID: 11400000, guid: 9e8cf29f3edb35f4db129a6d25da0bda, type: 2}
+    requiredCount: 9
+  - itemData: {fileID: 11400000, guid: 035c14ba91471994ea6c8aa409c2e0dc, type: 2}
+    requiredCount: 9
   fillerItems:
   - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
   enableCamouflageMecha: 1

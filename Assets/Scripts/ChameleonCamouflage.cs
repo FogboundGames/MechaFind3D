@@ -24,25 +24,61 @@ namespace MechaFind3D.PhysicsInteraction
         };
 
         /// <summary>
-        /// Gives the mecha a fixed, light-white see-through glass look — the host object underneath stays
-        /// clearly visible through it, while the mecha's own silhouette still reads as a subtle white shape.
-        /// Applied unconditionally so every mecha gets this appearance regardless of which disguise/camouflage
-        /// mode ran (or whether embedding into a host object even happened).
+        /// Extracts the primary/dominant color of the host object (from FindTargetObject or material properties)
+        /// so the mecha's camouflage glass tint can dynamically match the host item's color.
         /// </summary>
-        public static void ApplyGlassMaterial(GameObject mecha, float opacity = 0.22f)
+        public static Color GetHostDominantColor(GameObject hostObject)
+        {
+            if (hostObject == null) return Color.white;
+
+            // 1. Check FindTargetObject component
+            FindTargetObject target = hostObject.GetComponent<FindTargetObject>();
+            if (target == null) target = hostObject.GetComponentInChildren<FindTargetObject>();
+            if (target != null && target.objectColor != Color.clear && target.objectColor.a > 0.01f)
+            {
+                return target.objectColor;
+            }
+
+            // 2. Check Renderer materials
+            Renderer[] renderers = hostObject.GetComponentsInChildren<Renderer>();
+            foreach (Renderer r in renderers)
+            {
+                if (r == null || r.sharedMaterial == null) continue;
+                Material mat = r.sharedMaterial;
+
+                if (mat.HasProperty("_BaseColor"))
+                {
+                    Color c = mat.GetColor("_BaseColor");
+                    if (c.a > 0.01f && (c.r > 0.02f || c.g > 0.02f || c.b > 0.02f)) return c;
+                }
+                if (mat.HasProperty("_Color"))
+                {
+                    Color c = mat.GetColor("_Color");
+                    if (c.a > 0.01f && (c.r > 0.02f || c.g > 0.02f || c.b > 0.02f)) return c;
+                }
+            }
+
+            return Color.white;
+        }
+
+        /// <summary>
+        /// Gives the mecha a see-through glass look tinted dynamically by the host object's dominant color.
+        /// The host object underneath stays clearly visible through it, while the mecha blends subtly into the host.
+        /// </summary>
+        public static void ApplyGlassMaterial(GameObject mecha, float opacity = 0.22f, Color hostColor = default)
         {
             if (mecha == null) return;
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            // Prioritize built-in pipeline shaders to avoid magenta compilation errors
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit")
+                         ?? Shader.Find("Universal Render Pipeline/Unlit")
+                         ?? Shader.Find("Standard")
+                         ?? Shader.Find("Unlit/Transparent");
+
             Material glassMat = new Material(shader);
             glassMat.name = "CrystalGlassMechaMat";
 
-            // Transparent Glass Configuration.
-            // NOTE: setting _Surface/_Mode alone only records the *intent* to be transparent — in the
-            // Editor, toggling "Transparent" on a Lit material's Inspector also runs shader-GUI code that
-            // translates that into the actual GPU blend state (_SrcBlend/_DstBlend/_ZWrite/keywords). That
-            // translation never runs for materials built purely from script, so without setting these by
-            // hand the material silently keeps rendering fully opaque no matter what alpha is used.
+            // Transparent Blend & Z-Buffer Configuration
             if (glassMat.HasProperty("_Surface")) glassMat.SetFloat("_Surface", 1.0f); // URP: 1 = Transparent
             if (glassMat.HasProperty("_Blend")) glassMat.SetFloat("_Blend", 0.0f);     // URP: 0 = Alpha blend
             if (glassMat.HasProperty("_Mode")) glassMat.SetFloat("_Mode", 3.0f);       // Built-in Standard: 3 = Transparent
@@ -50,38 +86,54 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (glassMat.HasProperty("_SrcBlend")) glassMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
             if (glassMat.HasProperty("_DstBlend")) glassMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            if (glassMat.HasProperty("_ZWrite")) glassMat.SetFloat("_ZWrite", 1.0f); // Enable ZWrite so 3D glass contours stay 100% visible
+            
+            // ZWrite = 0 ensures depth buffer does NOT block or clip host object (watermelon, cake, etc.) rendering underneath
+            if (glassMat.HasProperty("_ZWrite")) glassMat.SetFloat("_ZWrite", 0.0f);
 
             glassMat.SetOverrideTag("RenderType", "Transparent");
             glassMat.DisableKeyword("_ALPHATEST_ON");
             glassMat.EnableKeyword("_ALPHABLEND_ON");
             glassMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
             glassMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            glassMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            glassMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 100;
 
-            // High Glass Glossiness & Specular Reflection
-            if (glassMat.HasProperty("_Smoothness")) glassMat.SetFloat("_Smoothness", 0.97f); // High glass gloss
-            // Metallic stays at 0. On a transparent surface any metallic darkens and greys the glass, which
-            // is the opposite of what a barely-there camouflage silhouette needs - the read should come from
-            // the specular highlight along its edges, not from body tint.
+            // Derive host-matched glass tint color
+            Color baseTint = new Color(0.90f, 0.96f, 1.0f);
+            bool hasHostColor = hostColor != default && hostColor != Color.clear && (hostColor.r > 0.02f || hostColor.g > 0.02f || hostColor.b > 0.02f);
+
+            if (hasHostColor)
+            {
+                // Blend host color into glass tint so it takes on the host item's dominant color
+                baseTint = Color.Lerp(new Color(0.92f, 0.95f, 1.0f), hostColor, 0.75f);
+            }
+
+            float glassAlpha = Mathf.Clamp(opacity * 0.75f, 0.08f, 0.25f);
+            baseTint.a = glassAlpha;
+
+            if (glassMat.HasProperty("_BaseColor")) glassMat.SetColor("_BaseColor", baseTint);
+            if (glassMat.HasProperty("_Color")) glassMat.SetColor("_Color", baseTint);
+
+            // Specular & Glossiness
+            if (glassMat.HasProperty("_Smoothness")) glassMat.SetFloat("_Smoothness", 0.95f);
             if (glassMat.HasProperty("_Metallic")) glassMat.SetFloat("_Metallic", 0f);
 
-            // The alpha the caller asked for is now actually used. It used to be clamped up to a floor of
-            // 0.40 (and bumped to 0.50 whenever it was under 0.10), so a level asking for a faint, hard-to-
-            // spot mecha silently got a near-solid one instead - which is exactly why the glass "read too
-            // solid". Only a tiny floor remains, to stop the silhouette vanishing outright.
-            float glassAlpha = Mathf.Clamp(opacity, 0.04f, 0.85f);
-            Color crystalGlassTint = new Color(0.95f, 0.98f, 1.0f, glassAlpha);
-            if (glassMat.HasProperty("_BaseColor")) glassMat.SetColor("_BaseColor", crystalGlassTint);
-            if (glassMat.HasProperty("_Color")) glassMat.SetColor("_Color", crystalGlassTint);
+            // Subtle emission glow matching host color tone for soft silhouette reading
+            if (glassMat.HasProperty("_EmissionColor"))
+            {
+                glassMat.EnableKeyword("_EMISSION");
+                Color emissionColor = hasHostColor ? hostColor * 0.35f : new Color(0.15f, 0.50f, 0.85f) * 0.35f;
+                emissionColor.a = 1.0f;
+                glassMat.SetColor("_EmissionColor", emissionColor);
+            }
 
-            // Clear textures so the glass is crystal clear see-through
+            // Clear any main textures so material remains transparent glass
             if (glassMat.HasProperty("_BaseMap")) glassMat.SetTexture("_BaseMap", null);
             if (glassMat.HasProperty("_MainTex")) glassMat.SetTexture("_MainTex", null);
             glassMat.mainTexture = null;
 
-            foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>())
+            foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
             {
+                if (r == null) continue;
                 int slotCount = Mathf.Max(1, r.sharedMaterials.Length);
                 Material[] newMats = new Material[slotCount];
                 for (int m = 0; m < slotCount; m++)
@@ -94,10 +146,6 @@ namespace MechaFind3D.PhysicsInteraction
 
         /// <summary>
         /// Drops the camouflage: repaints the mecha in a solid white material.
-        ///
-        /// The glass look exists to hide it while it is embedded in a host item. The moment it is torn off
-        /// and flies to its box it is no longer hiding, so it turns fully opaque - both as the payoff for
-        /// spotting it, and because a near-invisible model reads as a bug once it is meant to be on show.
         /// </summary>
         public static void ApplyRevealedMaterial(GameObject mecha)
         {
@@ -106,9 +154,6 @@ namespace MechaFind3D.PhysicsInteraction
             Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             Material whiteMat = new Material(shader) { name = "RevealedMechaMat" };
 
-            // Explicitly forced back to Opaque. The renderers are coming off a transparent material, and a
-            // material built from script never runs the Inspector's shader GUI that would otherwise reset
-            // the blend state - so without this the white would inherit alpha blending and stay see-through.
             if (whiteMat.HasProperty("_Surface")) whiteMat.SetFloat("_Surface", 0f);
             if (whiteMat.HasProperty("_Blend")) whiteMat.SetFloat("_Blend", 0f);
             if (whiteMat.HasProperty("_Mode")) whiteMat.SetFloat("_Mode", 0f);
@@ -155,13 +200,27 @@ namespace MechaFind3D.PhysicsInteraction
             Rigidbody hostRb = hostObject.GetComponent<Rigidbody>();
             if (hostRb != null)
             {
-                // Allow the mecha object to tip over naturally
+                // Set mass to 1.0f matching all other pile objects for equal push force responsiveness
                 hostRb.constraints = RigidbodyConstraints.None;
-                // Increase mass so the mecha object feels heavier and more substantial
-                hostRb.mass = 8.0f;
+                hostRb.mass = 1.0f;
+                hostRb.interpolation = RigidbodyInterpolation.Interpolate;
+                hostRb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             }
 
-            // 2. Extract host item materials (e.g. Cake frosting and layer textures)
+            // Ensure child rigidbodies on mecha figure are kinematic so they don't add extra physics weight
+            foreach (Rigidbody childRb in mecha.GetComponentsInChildren<Rigidbody>())
+            {
+                if (childRb != null && childRb != hostRb)
+                {
+                    childRb.isKinematic = true;
+                }
+            }
+
+            // Ensure active contact pusher is attached to the host object
+            ColliderContactPusher hostPusher = hostObject.GetComponent<ColliderContactPusher>();
+            if (hostPusher == null) hostObject.AddComponent<ColliderContactPusher>();
+
+            // 2. Extract host item materials and dominant color
             Renderer[] hostRenderers = hostObject.GetComponentsInChildren<Renderer>();
             List<Material> hostMaterials = new List<Material>();
             Texture mainHostTex = null;
@@ -184,8 +243,9 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // 3. Apply uniform CRYSTAL GLASS material
-            ApplyGlassMaterial(mecha, opacity);
+            // 3. Apply CRYSTAL GLASS material tinted with the host object's dominant color
+            Color hostColor = GetHostDominantColor(hostObject);
+            ApplyGlassMaterial(mecha, opacity, hostColor);
 
             // 4. Pose is left at the model's imported T-pose here. A fixed "Vitruvian spread" used to be
             // forced on every mecha at this point, which meant the limbs were never actually straight and
@@ -716,7 +776,7 @@ namespace MechaFind3D.PhysicsInteraction
             host.rotation = Quaternion.FromToRotation(current.normalized, desired.normalized) * host.rotation;
 
             Rigidbody rb = host.GetComponent<Rigidbody>();
-            if (rb != null) rb.constraints |= RigidbodyConstraints.FreezeRotation;
+            if (rb != null) rb.constraints = RigidbodyConstraints.None;
 
             Physics.SyncTransforms();
         }

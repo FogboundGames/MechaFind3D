@@ -129,11 +129,15 @@ namespace MechaFind3D.PhysicsInteraction
                 CanvasUIDesignManager.Instance.HideAllOverlayPanels();
             }
 
-            // 4. Spawn camouflaged Mecha for this level
+            // 4. Spawn single camouflaged Mecha for this level
             MechaRagdollSpawner mechaSpawner = FindFirstObjectByType<MechaRagdollSpawner>();
             if (mechaSpawner != null)
             {
-                mechaSpawner.SpawnRandom();
+                mechaSpawner.ClearAllExistingMechas();
+                if (ActiveLevelData == null || ActiveLevelData.enableCamouflageMecha)
+                {
+                    mechaSpawner.SpawnRandom();
+                }
             }
 
             Debug.Log($"🎮 Seviye {currentLevelIndex + 1} Başarıyla Yüklendi! (Başlık: {ActiveLevelData.levelTitle})");

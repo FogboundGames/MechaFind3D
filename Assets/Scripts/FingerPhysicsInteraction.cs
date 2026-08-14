@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 #if ENABLE_INPUT_SYSTEM
@@ -35,7 +36,7 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("Visual Feedback")]
         [Tooltip("Create a visible touch indicator sphere at touch point.")]
-        [SerializeField] private bool showTouchIndicator = true;
+        [SerializeField] private bool showTouchIndicator = false;
 
         private Camera mainCamera;
         private GameObject indicatorObject;
@@ -65,7 +66,18 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void CreateTouchIndicator()
         {
-            if (!showTouchIndicator) return;
+            // Clean up any existing indicator object
+            Transform existing = transform.Find("Touch_Visual_Indicator");
+            if (existing != null)
+            {
+                Destroy(existing.gameObject);
+            }
+
+            if (!showTouchIndicator)
+            {
+                indicatorObject = null;
+                return;
+            }
 
             indicatorObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             indicatorObject.name = "Touch_Visual_Indicator";
@@ -215,23 +227,49 @@ namespace MechaFind3D.PhysicsInteraction
 
         private Vector3 GetTouchWorldPosition(Vector2 screenPos, out FindTargetObject hitTargetObject)
         {
+            return GetTouchWorldPosition(screenPos, out hitTargetObject, out _);
+        }
+
+        private Vector3 GetTouchWorldPosition(Vector2 screenPos, out FindTargetObject hitTargetObject, out Collider hitCollider)
+        {
             hitTargetObject = null;
+            hitCollider = null;
             if (mainCamera == null) return Vector3.zero;
 
             Ray ray = mainCamera.ScreenPointToRay(screenPos);
 
-            // RaycastAll instead of a single Raycast: the invisible Ceiling_Barrier collider (and the
-            // tray walls/floor) sit between the top-down camera and the pile, so a plain Raycast keeps
-            // returning one of THOSE — a collider with no FindTargetObject — and taps never resolve to
-            // a block. We scan every hit and keep the NEAREST one that is an interactable, un-docked item.
-            RaycastHit[] hits = Physics.RaycastAll(ray, 200f, interactableLayer, QueryTriggerInteraction.Ignore);
+            // 1. Direct RaycastAll for exact pixel hits
+            RaycastHit[] rayHits = Physics.RaycastAll(ray, 200f, ~0, QueryTriggerInteraction.Collide);
 
+            // 2. SphereCastAll with 0.35f radius for generous mobile finger-tap tolerance
+            RaycastHit[] sphereHits = Physics.SphereCastAll(ray.origin, 0.35f, ray.direction, 200f, ~0, QueryTriggerInteraction.Collide);
+
+            List<RaycastHit> allHits = new List<RaycastHit>(rayHits);
+            allHits.AddRange(sphereHits);
+
+            // HIGH-SENSITIVITY FIRST PRIORITY: Check if ANY hit in the tap radius touches a Mecha collider!
+            foreach (RaycastHit h in allHits)
+            {
+                if (h.collider == null) continue;
+                FindTargetObject item = h.collider.GetComponentInParent<FindTargetObject>();
+                if (item == null || item.isDocked) continue;
+
+                if (CanvasUIDesignManager.IsHitOnMechaCollider(item, h.collider))
+                {
+                    hitTargetObject = item;
+                    hitCollider = h.collider;
+                    return h.point;
+                }
+            }
+
+            // SECOND PRIORITY: Nearest general item under the tap point
             float nearest = float.MaxValue;
             Vector3 itemHitPoint = Vector3.zero;
             bool foundItem = false;
 
-            foreach (RaycastHit h in hits)
+            foreach (RaycastHit h in rayHits)
             {
+                if (h.collider == null) continue;
                 FindTargetObject item = h.collider.GetComponentInParent<FindTargetObject>();
                 if (item == null || item.isDocked) continue;
 
@@ -239,8 +277,28 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     nearest = h.distance;
                     hitTargetObject = item;
+                    hitCollider = h.collider;
                     itemHitPoint = h.point;
                     foundItem = true;
+                }
+            }
+
+            if (!foundItem)
+            {
+                foreach (RaycastHit h in sphereHits)
+                {
+                    if (h.collider == null) continue;
+                    FindTargetObject item = h.collider.GetComponentInParent<FindTargetObject>();
+                    if (item == null || item.isDocked) continue;
+
+                    if (h.distance < nearest)
+                    {
+                        nearest = h.distance;
+                        hitTargetObject = item;
+                        hitCollider = h.collider;
+                        itemHitPoint = h.point;
+                        foundItem = true;
+                    }
                 }
             }
 
@@ -249,8 +307,6 @@ namespace MechaFind3D.PhysicsInteraction
                 return itemHitPoint;
             }
 
-            // No interactable item under the finger (e.g. an empty-space drag): fall back to the
-            // ground plane so rummage forces still have a valid center point.
             if (groundPlane.Raycast(ray, out float enter))
             {
                 return ray.GetPoint(enter);
@@ -274,11 +330,6 @@ namespace MechaFind3D.PhysicsInteraction
                 indicatorObject.transform.position = worldPos + Vector3.up * 0.05f;
                 indicatorObject.SetActive(true);
             }
-
-            // Deliberately do NOT collect or push on touch-down: at this instant we can't tell a
-            // quick tap (collect) from the start of a rummage drag. The gesture is classified in
-            // OnTouchMoved (becomes a drag past the movement threshold) and resolved in OnTouchEnded
-            // (a tap collects the item under the finger).
         }
 
         private void OnTouchMoved(Vector2 screenPos)
@@ -289,8 +340,6 @@ namespace MechaFind3D.PhysicsInteraction
             currentTouchVelocity = Vector3.ClampMagnitude(rawVelocity, 18.0f);
             lastTouchWorldPos = newWorldPos;
 
-            // Once the finger has travelled past the tap threshold, this gesture is a rummage drag
-            // for the rest of its lifetime (it can never revert to a collect-tap).
             if (!isDragging)
             {
                 float movedPixels = Vector2.Distance(screenPos, touchStartScreenPos);
@@ -306,18 +355,14 @@ namespace MechaFind3D.PhysicsInteraction
                 indicatorObject.transform.position = newWorldPos + Vector3.up * 0.05f;
             }
 
-            // Apply the rummage push right here on every move frame (in addition to the FixedUpdate
-            // pass) once the gesture is a drag. This restores the punchy, responsive stir the tuned
-            // scene values (pushForceMultiplier/maxForceClamp) were balanced around — applying it only
-            // in FixedUpdate made rummaging feel nearly forceless.
             if (isDragging)
             {
                 ApplyMatchFactoryFluidForces(newWorldPos, currentTouchVelocity);
             }
         }
 
-        /// Continuous drag push, called every FixedUpdate while the touch is held. Uses
-        /// ForceMode.Force so Unity integrates it over each physics step correctly.
+        /// Continuous drag push: applies strictly horizontal force at offset contact points to rotate/flip
+        /// objects flat on the tray table without launching them upward into the air.
         private void ApplyMatchFactoryFluidForces(Vector3 centerPoint, Vector3 swipeVelocity)
         {
             Collider[] hits = Physics.OverlapSphere(centerPoint, interactionRadius, interactableLayer);
@@ -327,42 +372,77 @@ namespace MechaFind3D.PhysicsInteraction
             if (speed > 1e-4f) dragDir /= speed;
             else dragDir = Vector3.forward;
 
-            float uniformForceMagnitude = Mathf.Clamp(speed * pushForceMultiplier * 0.04f, 0.08f, maxForceClamp * 0.4f);
+            float forceMagnitude = Mathf.Clamp(speed * pushForceMultiplier * 0.035f, 0.05f, maxForceClamp * 0.35f);
 
             foreach (Collider col in hits)
             {
                 Rigidbody rb = col.attachedRigidbody;
                 if (rb != null && !rb.isKinematic)
                 {
-                    Vector3 diff = rb.transform.position - centerPoint;
+                    Vector3 com = rb.worldCenterOfMass;
+                    Vector3 diff = com - centerPoint;
                     diff.y = 0f;
 
                     float dist = diff.magnitude;
                     float proximity = Mathf.Clamp01(1.0f - (dist / interactionRadius));
 
                     Vector3 radialDir = dist > 1e-4f ? diff / dist : dragDir;
-                    Vector3 finalPushDir = (radialDir * 0.5f + dragDir * 0.5f).normalized;
-                    finalPushDir.y = 0f;
+                    Vector3 pushDir = (radialDir * 0.5f + dragDir * 0.5f).normalized;
 
-                    Vector3 force = finalPushDir * uniformForceMagnitude * proximity;
-                    rb.AddForce(force, ForceMode.Impulse);
+                    // Strictly horizontal push force - ZERO Y component so objects stay grounded flat on the table
+                    pushDir.y = 0f;
+                    pushDir.Normalize();
 
-                    Vector3 torque = Vector3.up * ((finalPushDir.x - finalPushDir.z) * 0.05f * proximity);
-                    rb.AddTorque(torque, ForceMode.Impulse);
+                    Vector3 force = pushDir * forceMagnitude * proximity;
+
+                    // Get impact point on object surface nearest to finger swipe
+                    Vector3 contactPoint = GetImpactPointOnCollider(col, centerPoint, com);
+
+                    // Controlled contact point offset for smooth ground tilting/flipping
+                    Vector3 pushPoint = Vector3.Lerp(com, contactPoint, 0.50f);
+
+                    // Smooth angular speed limit and damping so items settle quickly
+                    rb.maxAngularVelocity = 10f;
+
+#if UNITY_6000_0_OR_NEWER
+                    rb.angularDamping = 2.0f;
+#else
+                    rb.angularDrag = 2.0f;
+#endif
+
+                    // Strictly clamp upward vertical velocity so objects never launch into the air
+                    Vector3 curVel = rb.linearVelocity;
+                    if (curVel.y > 0.1f)
+                    {
+                        curVel.y = 0.1f;
+                        rb.linearVelocity = curVel;
+                    }
+
+                    // Apply horizontal force at offset contact position
+                    rb.AddForceAtPosition(force, pushPoint, ForceMode.Impulse);
                 }
+            }
+        }
+
+        private Vector3 GetImpactPointOnCollider(Collider col, Vector3 centerPoint, Vector3 fallbackCom)
+        {
+            if (col == null) return fallbackCom;
+            try
+            {
+                return col.ClosestPoint(centerPoint);
+            }
+            catch
+            {
+                return col.bounds.ClosestPoint(centerPoint);
             }
         }
 
         private void ClampObjectsInsideContainer()
         {
-            // Disabled: Physical border walls (Border_North/South/East/West) handle containment cleanly.
-            // Manual position clamping was forcing rigidbodies into wall colliders, causing violent physics jitter and floating.
         }
 
         private void OnTouchEnded(Vector2 screenPos)
         {
-            // A gesture that never crossed the movement threshold is a TAP: collect the item under
-            // the release point. A drag was a rummage and collects nothing.
             bool wasTap = isTouching && !isDragging;
 
             isTouching = false;
@@ -375,13 +455,10 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (!wasTap) return;
 
-            GetTouchWorldPosition(screenPos, out FindTargetObject targetItem);
+            GetTouchWorldPosition(screenPos, out FindTargetObject targetItem, out Collider hitCollider);
             if (targetItem != null && CanvasUIDesignManager.Instance != null)
             {
-                // If the dock is full or a match is mid-flight the collect is refused. We intentionally
-                // do nothing in that case rather than shoving the pile, which is exactly the "it scattered
-                // instead of collecting" behaviour we're fixing.
-                CanvasUIDesignManager.Instance.TryCollectItemToDock(targetItem);
+                CanvasUIDesignManager.Instance.TryCollectItemToDock(targetItem, hitCollider);
             }
         }
     }
