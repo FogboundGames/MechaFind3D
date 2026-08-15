@@ -93,15 +93,70 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             LevelDataSO[] levels = FindAllAssets<LevelDataSO>();
             System.Array.Sort(levels, (a, b) => a.levelNumber.CompareTo(b.levelNumber));
 
-            foreach (var lvl in levels)
+            LevelManager manager = Object.FindFirstObjectByType<LevelManager>();
+            int currentIndex = manager != null ? manager.currentLevelIndex : -1;
+
+            for (int i = 0; i < levels.Length; i++)
             {
+                LevelDataSO lvl = levels[i];
                 if (lvl == null) continue;
+
+                EditorGUILayout.BeginHorizontal();
+
+                // Reorder. The play order comes from levelNumber, so moving a level really means swapping
+                // that number with its neighbour - and every level is then renumbered 1..N, because two
+                // levels sharing a number would leave the sort order undefined.
+                using (new EditorGUI.DisabledScope(i == 0))
+                {
+                    if (GUILayout.Button("▲", GUILayout.Width(24), GUILayout.Height(28))) MoveLevel(levels, i, -1);
+                }
+                using (new EditorGUI.DisabledScope(i == levels.Length - 1))
+                {
+                    if (GUILayout.Button("▼", GUILayout.Width(24), GUILayout.Height(28))) MoveLevel(levels, i, +1);
+                }
+
+                bool isCurrent = (i == currentIndex);
                 GUI.backgroundColor = (selectedLevel == lvl) ? new Color(0.3f, 0.8f, 1.0f) : Color.white;
-                if (GUILayout.Button($"Seviye {lvl.levelNumber}: {lvl.levelTitle}", GUILayout.Height(28)))
+                string label = (isCurrent ? "▶ " : "") + $"Seviye {lvl.levelNumber}: {lvl.levelTitle}";
+                if (GUILayout.Button(label, GUILayout.Height(28)))
                 {
                     selectedLevel = lvl;
                 }
                 GUI.backgroundColor = Color.white;
+
+                // Pick which level the game starts on. LevelManager.Start() reads the saved index from
+                // PlayerPrefs, so setting the field alone would be undone the moment you pressed Play.
+                using (new EditorGUI.DisabledScope(isCurrent || manager == null))
+                {
+                    if (GUILayout.Button("Başlat", GUILayout.Width(56), GUILayout.Height(28)))
+                    {
+                        SetCurrentLevel(manager, levels, i);
+                    }
+                }
+
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.Space(4);
+
+            if (manager == null)
+            {
+                EditorGUILayout.HelpBox("Sahnede LevelManager yok, bu yüzden aktif seviye seçilemiyor.", MessageType.Warning);
+            }
+            else if (manager.debugLevelOverride != null)
+            {
+                // Worth shouting about: the override wins over currentLevelIndex entirely, so with it set
+                // the game replays that one level forever no matter what is picked here.
+                EditorGUILayout.HelpBox(
+                    $"Debug Level Override = '{manager.debugLevelOverride.name}'. Bu alan doluyken aktif seviye " +
+                    "seçimi TAMAMEN yok sayılır ve hep o seviye oynanır.", MessageType.Error);
+                if (GUILayout.Button("Override'ı temizle"))
+                {
+                    Undo.RecordObject(manager, "Override temizle");
+                    manager.debugLevelOverride = null;
+                    EditorUtility.SetDirty(manager);
+                    UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(manager.gameObject.scene);
+                }
             }
 
             EditorGUILayout.EndVertical();
@@ -119,6 +174,65 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// Swaps a level with its neighbour in play order, then renumbers every level 1..N.
+        ///
+        /// Order is read off levelNumber, so a bare swap would work - but only until two levels ended up
+        /// sharing a number, at which point the sort becomes ambiguous and the list order starts flickering.
+        /// Renumbering the whole set keeps it unambiguous.
+        /// </summary>
+        private void MoveLevel(LevelDataSO[] levels, int index, int direction)
+        {
+            int target = index + direction;
+            if (target < 0 || target >= levels.Length) return;
+
+            var ordered = new List<LevelDataSO>(levels);
+            (ordered[index], ordered[target]) = (ordered[target], ordered[index]);
+
+            for (int i = 0; i < ordered.Count; i++)
+            {
+                if (ordered[i] == null) continue;
+                Undo.RecordObject(ordered[i], "Seviye sırası değiştir");
+                ordered[i].levelNumber = i + 1;
+                EditorUtility.SetDirty(ordered[i]);
+            }
+
+            AssetDatabase.SaveAssets();
+
+            // The manager caches its own ordered list, so it has to be re-synced or it would keep playing
+            // the old sequence until someone cleared it by hand.
+            LevelManager manager = Object.FindFirstObjectByType<LevelManager>();
+            if (manager != null)
+            {
+                Undo.RecordObject(manager, "Seviye sırası değiştir");
+                manager.levels = new List<LevelDataSO>(ordered);
+                EditorUtility.SetDirty(manager);
+                UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(manager.gameObject.scene);
+            }
+        }
+
+        /// <summary>Makes the given level the one the game starts on.</summary>
+        private void SetCurrentLevel(LevelManager manager, LevelDataSO[] levels, int index)
+        {
+            if (manager == null) return;
+
+            Undo.RecordObject(manager, "Aktif seviye seç");
+            manager.levels = new List<LevelDataSO>(levels);
+            manager.currentLevelIndex = index;
+            EditorUtility.SetDirty(manager);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(manager.gameObject.scene);
+
+            // LevelManager.Start() loads PlayerPrefs["SavedCurrentLevelIndex"], so without writing that too
+            // the choice would be overwritten by the last-played level as soon as Play was pressed.
+            PlayerPrefs.SetInt("SavedCurrentLevelIndex", index);
+            PlayerPrefs.Save();
+
+            if (Application.isPlaying)
+            {
+                manager.LoadLevel(index);
+            }
         }
 
         private void DrawSelectedLevelEditor(LevelDataSO level)
@@ -771,11 +885,16 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             LevelManager manager = sceneController.GetComponent<LevelManager>();
             if (manager == null) manager = sceneController.AddComponent<LevelManager>();
 
-            manager.debugLevelOverride = level;
+            // Previewing a level makes it the CURRENT one, it does not pin it as a debug override.
+            // Setting debugLevelOverride here meant every preview permanently froze the game on that level -
+            // ActiveLevelData returns the override ahead of currentLevelIndex, so finishing a level appeared
+            // to advance while the same one kept loading. The override is cleared for the same reason.
+            manager.debugLevelOverride = null;
             manager.AutoFindLevelsIfEmpty();
 
             int targetIdx = manager.levels != null ? manager.levels.IndexOf(level) : 0;
             if (targetIdx < 0) targetIdx = 0;
+            manager.currentLevelIndex = targetIdx;
             manager.LoadLevel(targetIdx);
 
             ScenePhysicsSetup setup = sceneController.GetComponent<ScenePhysicsSetup>();

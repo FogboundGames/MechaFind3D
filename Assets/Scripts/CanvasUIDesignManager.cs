@@ -83,7 +83,9 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private int completedBoxesPerRow = 4;
 #pragma warning restore CS0414
 
-        private const int MAX_SLOTS = 3;
+        // Two slots. The third was the mecha's dedicated box, but the mecha is no longer collected
+        // at all - it runs and vanishes (MechaRunnerBehavior), so that slot could never fill.
+        private const int MAX_SLOTS = 2;
         private const int ITEMS_PER_BOX = 3;
 
         // Box.fbx ships its own lid-folding animation, baked into a single four-flap clip by
@@ -185,7 +187,19 @@ namespace MechaFind3D.PhysicsInteraction
         {
             return slotIndex >= 0 && slotIndex < MAX_SLOTS && slotProcessing[slotIndex];
         }
+
+        private bool AnySlotBusy()
+        {
+            for (int i = 0; i < MAX_SLOTS; i++)
+            {
+                if (slotProcessing[i]) return true;
+            }
+            return false;
+        }
         private bool warnedAboutFlaps = false;
+        private bool levelCompleteHandled = false;
+        [Tooltip("Pause between the last goal being met and the next level loading, so the final box finishes shipping first.")]
+        [SerializeField] private float levelCompleteDelay = 1.6f;
 
         private static readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
         private static readonly string[] GoalCardPalette = { "Pink", "Yellow", "Green", "Blue" };
@@ -459,12 +473,6 @@ namespace MechaFind3D.PhysicsInteraction
                 labelTxt.fontSize = 20;
                 labelTxt.fontStyle = FontStyle.Bold;
                 labelTxt.alignment = TextAnchor.MiddleCenter;
-                if (i == 2)
-                {
-                    labelTxt.color = new Color(0.2f, 0.95f, 1.0f);
-                    labelTxt.text = "🤖 MECHA";
-                }
-                else
                 {
                     labelTxt.color = Color.yellow;
                     labelTxt.text = $"KUTU {i + 1}";
@@ -679,17 +687,54 @@ namespace MechaFind3D.PhysicsInteraction
             return false;
         }
 
-        public void OnMechaVanished()
+        /// <summary>
+        /// Closes the level loop: once every goal is met, moves on to the next level.
+        ///
+        /// MatchGoalManager has always set isLevelComplete, but nothing ever read it and neither
+        /// LoadNextLevel nor RestartCurrentLevel was called from anywhere - so finishing every goal
+        /// produced no result at all and the game could not progress past level one.
+        /// </summary>
+        private void CheckAndAdvanceLevel()
         {
-            int mechaSlot = 2;
-            slotAssignedItemName[mechaSlot] = "Mecha";
-            if (slotRequiredCount[mechaSlot] <= 0) slotRequiredCount[mechaSlot] = 1;
+            if (levelCompleteHandled) return;
+            if (MatchGoalManager.Instance == null || !MatchGoalManager.Instance.isLevelComplete) return;
 
-            if (slotBoxContents[mechaSlot].Count < slotRequiredCount[mechaSlot])
+            levelCompleteHandled = true;
+            Debug.Log("🏁 Seviye tamamlandı — sıradaki seviye yükleniyor.");
+            StartCoroutine(AdvanceToNextLevel());
+        }
+
+        private System.Collections.IEnumerator AdvanceToNextLevel()
+        {
+            // Long enough for the last box to finish shipping, so the level does not swap out from under
+            // an animation still playing.
+            yield return new WaitForSeconds(levelCompleteDelay);
+
+            // Then hold until no slot is still shipping. A box that is mid-flight when the level swaps
+            // credits its goal from its OnComplete callback - which would land on the NEW level's freshly
+            // reset goals and start it part-scored (measured: four goals already at 9/9 on arrival).
+            float guard = 0f;
+            while (AnySlotBusy() && guard < 5f)
             {
-                slotBoxContents[mechaSlot].Add(null);
+                guard += Time.deltaTime;
+                yield return null;
             }
 
+            levelCompleteHandled = false;
+
+            if (LevelManager.Instance != null)
+            {
+                LevelManager.Instance.LoadNextLevel();
+            }
+        }
+
+        /// <summary>
+        /// Called when the mecha finishes its vanish animation. It used to fake a fill in the mecha
+        /// slot; that slot is gone, and catching the mecha is not one of the level's goals, so
+        /// there is nothing to score here - only the HUD needs a nudge.
+        /// </summary>
+        public void OnMechaVanished()
+        {
             RefreshTargetGoalsUI();
         }
 
@@ -2050,8 +2095,9 @@ namespace MechaFind3D.PhysicsInteraction
 
                     if (MatchGoalManager.Instance != null && filledItems.Count > 0)
                     {
-                        MatchGoalManager.Instance.RegisterMatchedItem(filledItems[0].shapeType, filledItems[0].colorName);
+                        MatchGoalManager.Instance.RegisterMatchedItem(filledItems[0].shapeType, filledItems[0].colorName, filledItems.Count);
                         RefreshTargetGoalsUI();
+                        CheckAndAdvanceLevel();
                     }
 
                     slotBoxContents[slotIndex].Clear();
@@ -2086,8 +2132,9 @@ namespace MechaFind3D.PhysicsInteraction
 
                     if (MatchGoalManager.Instance != null && filledItems.Count > 0)
                     {
-                        MatchGoalManager.Instance.RegisterMatchedItem(filledItems[0].shapeType, filledItems[0].colorName);
+                        MatchGoalManager.Instance.RegisterMatchedItem(filledItems[0].shapeType, filledItems[0].colorName, filledItems.Count);
                         RefreshTargetGoalsUI();
+                        CheckAndAdvanceLevel();
                     }
 
                     slotBoxContents[slotIndex].Clear();
@@ -2107,19 +2154,11 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     int count = slotBoxContents[i].Count;
                     string assignedName = slotAssignedItemName[i];
-                    int reqCount = slotRequiredCount[i] > 0 ? slotRequiredCount[i] : (i == 2 ? 1 : 3);
+                    int reqCount = slotRequiredCount[i] > 0 ? slotRequiredCount[i] : 3;
 
-                    if (i == 2 && assignedName == "Mecha_Completed")
-                    {
-                        slotBadgeTexts[i].text = "✅ MECHA";
-                    }
-                    else if (!string.IsNullOrEmpty(assignedName))
+                    if (!string.IsNullOrEmpty(assignedName))
                     {
                         slotBadgeTexts[i].text = $"{count}/{reqCount}";
-                    }
-                    else if (i == 2)
-                    {
-                        slotBadgeTexts[i].text = "🤖 MECHA";
                     }
                     else
                     {

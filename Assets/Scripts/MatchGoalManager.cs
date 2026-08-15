@@ -80,9 +80,19 @@ namespace MechaFind3D.PhysicsInteraction
             });
         }
 
-        public bool RegisterMatchedItem(ObjectShapeType shape, string colorName)
+        /// <summary>
+        /// Credits a shipped box against its goal.
+        ///
+        /// <paramref name="itemCount"/> is how many items that box actually held. It used to add a
+        /// hard-coded 3, which was right back when every box took exactly three items - but a box now takes
+        /// as many as the level contains of that type, so a level with nine watermelons ships ONE box of
+        /// nine and only scored 3 against a goal of 9. With no items left in the pile the goal could never
+        /// be finished, and the level became mathematically uncompletable.
+        /// </summary>
+        public bool RegisterMatchedItem(ObjectShapeType shape, string colorName, int itemCount = 3)
         {
             bool goalProgressed = false;
+            int credit = Mathf.Max(1, itemCount);
 
             foreach (MatchGoal goal in levelGoals)
             {
@@ -90,7 +100,7 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     if (!goal.IsCompleted)
                     {
-                        goal.currentCount += 3;
+                        goal.currentCount = Mathf.Min(goal.totalRequired, goal.currentCount + credit);
                         goalProgressed = true;
                         break;
                     }

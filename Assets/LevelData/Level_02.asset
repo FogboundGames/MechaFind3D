@@ -14,18 +14,31 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
   levelNumber: 2
   levelTitle: Seviye 2
-  totalPileCount: 30
-  foodTargetSize: 0.22
-  targetGoals: []
-  fillerItems: []
+  totalPileCount: 54
+  foodTargetSize: 1.1
+  targetGoals:
+  - itemData: {fileID: 11400000, guid: 9f6b642d76a3f754ba349a194e7b013a, type: 2}
+    requiredCount: 9
+  - itemData: {fileID: 11400000, guid: 66dc5eb7e435de942817bca27b951238, type: 2}
+    requiredCount: 9
+  - itemData: {fileID: 11400000, guid: 492f9081f7156dc499af3b717e806317, type: 2}
+    requiredCount: 9
+  - itemData: {fileID: 11400000, guid: 1ff1e987514494a40a245a9633f8f1b0, type: 2}
+    requiredCount: 9
+  - itemData: {fileID: 11400000, guid: ec21092efa4b4c443b10181fe938d639, type: 2}
+    requiredCount: 9
+  fillerItems:
+  - {fileID: 11400000, guid: b9ec21824735bc34da3685edb3d36a95, type: 2}
+  - {fileID: 11400000, guid: 65755a1709534c34d9cfeb10c42668f0, type: 2}
+  - {fileID: 11400000, guid: c3cbf892015195c468fc975fe80f5337, type: 2}
   enableCamouflageMecha: 1
-  targetPivot: 0
-  customMechaPrefab: {fileID: 0}
-  hostItemSO: {fileID: 0}
-  mechaHostKeyword: cake
+  targetPivot: 6
+  customMechaPrefab: {fileID: 919132149155446097, guid: 879efff7d1187894d90433ff940dfe40, type: 3}
+  hostItemSO: {fileID: 11400000, guid: ec21092efa4b4c443b10181fe938d639, type: 2}
+  mechaHostKeyword: sandwich_003
   mechaScaleRatio: 0.5
-  mechaWrapAmount: 0
-  mechaWorldSize: 0.5
+  mechaWrapAmount: 0.106
+  mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 0, y: 0, z: 0}
+  mechaLocalOffset: {x: 0, y: 0.25, z: 0.2}
+  mechaRotationOffset: {x: 90, y: 0, z: 0}
