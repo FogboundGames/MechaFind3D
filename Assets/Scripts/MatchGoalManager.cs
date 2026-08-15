@@ -111,7 +111,7 @@ namespace MechaFind3D.PhysicsInteraction
             return goalProgressed;
         }
 
-        private void CheckLevelCompletion()
+private void CheckLevelCompletion()
         {
             bool allComplete = true;
             foreach (MatchGoal goal in levelGoals)
@@ -126,6 +126,10 @@ namespace MechaFind3D.PhysicsInteraction
             if (allComplete && !isLevelComplete)
             {
                 isLevelComplete = true;
+                if (WinLosePanelController.Instance != null)
+                {
+                    WinLosePanelController.Instance.ShowWin();
+                }
             }
         }
     }

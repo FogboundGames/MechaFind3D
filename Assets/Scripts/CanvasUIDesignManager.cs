@@ -188,18 +188,7 @@ namespace MechaFind3D.PhysicsInteraction
             return slotIndex >= 0 && slotIndex < MAX_SLOTS && slotProcessing[slotIndex];
         }
 
-        private bool AnySlotBusy()
-        {
-            for (int i = 0; i < MAX_SLOTS; i++)
-            {
-                if (slotProcessing[i]) return true;
-            }
-            return false;
-        }
         private bool warnedAboutFlaps = false;
-        private bool levelCompleteHandled = false;
-        [Tooltip("Pause between the last goal being met and the next level loading, so the final box finishes shipping first.")]
-        [SerializeField] private float levelCompleteDelay = 1.6f;
 
         private static readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
         private static readonly string[] GoalCardPalette = { "Pink", "Yellow", "Green", "Blue" };
@@ -685,47 +674,6 @@ namespace MechaFind3D.PhysicsInteraction
                 t = t.parent;
             }
             return false;
-        }
-
-        /// <summary>
-        /// Closes the level loop: once every goal is met, moves on to the next level.
-        ///
-        /// MatchGoalManager has always set isLevelComplete, but nothing ever read it and neither
-        /// LoadNextLevel nor RestartCurrentLevel was called from anywhere - so finishing every goal
-        /// produced no result at all and the game could not progress past level one.
-        /// </summary>
-        private void CheckAndAdvanceLevel()
-        {
-            if (levelCompleteHandled) return;
-            if (MatchGoalManager.Instance == null || !MatchGoalManager.Instance.isLevelComplete) return;
-
-            levelCompleteHandled = true;
-            Debug.Log("🏁 Seviye tamamlandı — sıradaki seviye yükleniyor.");
-            StartCoroutine(AdvanceToNextLevel());
-        }
-
-        private System.Collections.IEnumerator AdvanceToNextLevel()
-        {
-            // Long enough for the last box to finish shipping, so the level does not swap out from under
-            // an animation still playing.
-            yield return new WaitForSeconds(levelCompleteDelay);
-
-            // Then hold until no slot is still shipping. A box that is mid-flight when the level swaps
-            // credits its goal from its OnComplete callback - which would land on the NEW level's freshly
-            // reset goals and start it part-scored (measured: four goals already at 9/9 on arrival).
-            float guard = 0f;
-            while (AnySlotBusy() && guard < 5f)
-            {
-                guard += Time.deltaTime;
-                yield return null;
-            }
-
-            levelCompleteHandled = false;
-
-            if (LevelManager.Instance != null)
-            {
-                LevelManager.Instance.LoadNextLevel();
-            }
         }
 
         /// <summary>
@@ -1280,6 +1228,31 @@ namespace MechaFind3D.PhysicsInteraction
             return mainCamera.ScreenToWorldPoint(screenPoint);
         }
 
+        /// <summary>
+        /// Clears the packed boxes riding the conveyor, leaving the dock's own slot boxes alone.
+        ///
+        /// A shipped box belongs to the level that packed it, but they were surviving into the next one:
+        /// the only thing that ever cleared them was CleanupAllOldCardboardBoxes, and a level load does not
+        /// go through it - so the belt still carried the previous level's boxes.
+        /// </summary>
+        private void ClearShippedBoxes()
+        {
+            for (int i = completedBoxObjects.Count - 1; i >= 0; i--)
+            {
+                GameObject box = completedBoxObjects[i];
+                if (box == null) continue;
+
+                // A box can still be mid-flight when the level ends; killing its tweens first stops them
+                // writing to a transform that is about to be destroyed.
+                tweeningDockObjects.Remove(box);
+                box.transform.DOKill();
+                Destroy(box);
+            }
+
+            completedBoxObjects.Clear();
+            completedBoxesCount = 0;
+        }
+
         private void CleanupAllOldCardboardBoxes()
         {
             for (int i = 0; i < MAX_SLOTS; i++)
@@ -1288,12 +1261,7 @@ namespace MechaFind3D.PhysicsInteraction
                 slotBox[i] = null;
             }
 
-            for (int i = completedBoxObjects.Count - 1; i >= 0; i--)
-            {
-                if (completedBoxObjects[i] != null) Destroy(completedBoxObjects[i]);
-            }
-            completedBoxObjects.Clear();
-            completedBoxesCount = 0;
+            ClearShippedBoxes();
 
             GameObject[] allObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
             foreach (GameObject go in allObjects)
@@ -2097,7 +2065,6 @@ namespace MechaFind3D.PhysicsInteraction
                     {
                         MatchGoalManager.Instance.RegisterMatchedItem(filledItems[0].shapeType, filledItems[0].colorName, filledItems.Count);
                         RefreshTargetGoalsUI();
-                        CheckAndAdvanceLevel();
                     }
 
                     slotBoxContents[slotIndex].Clear();
@@ -2134,7 +2101,6 @@ namespace MechaFind3D.PhysicsInteraction
                     {
                         MatchGoalManager.Instance.RegisterMatchedItem(filledItems[0].shapeType, filledItems[0].colorName, filledItems.Count);
                         RefreshTargetGoalsUI();
-                        CheckAndAdvanceLevel();
                     }
 
                     slotBoxContents[slotIndex].Clear();
@@ -2170,6 +2136,16 @@ namespace MechaFind3D.PhysicsInteraction
 
         public void HideAllOverlayPanels()
         {
+            // The name has always promised this, but until now it only reset the dock slots. LevelManager
+            // calls it on every load, so a Win/Lose popup opened by the previous level would otherwise stay
+            // on screen over the new one on any path that does not go through the panel's own button.
+            if (WinLosePanelController.Instance != null)
+            {
+                WinLosePanelController.Instance.HideAll();
+            }
+
+            ClearShippedBoxes();
+
             for (int i = 0; i < MAX_SLOTS; i++)
             {
                 for (int k = slotBoxContents[i].Count - 1; k >= 0; k--)
