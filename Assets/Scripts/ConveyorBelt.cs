@@ -263,7 +263,8 @@ namespace MechaFind3D.PhysicsInteraction
         public static GameObject BuildRow(GameObject tilePrefab, Transform parent, Camera cam,
                                           Vector3 topSurfaceCentre, Quaternion rotation,
                                           float rowWidth, float tileHeight, float speed, bool flipStripes,
-                                          int tileCount, int arrowGroupStride, float arrowScale)
+                                          int tileCount, int arrowGroupStride, float arrowScale,
+                                          float yScaleMultiplier = 1f)
         {
             if (tilePrefab == null || cam == null) return null;
 
@@ -275,23 +276,26 @@ namespace MechaFind3D.PhysicsInteraction
             if (unitWidth < 1e-6f || unitHeight < 1e-6f) return row;
 
             int count;
-            float scale;
+            float scaleX;
+            float scaleYZ;
 
             if (tileCount > 0)
             {
-                // Pallet count driven directly: they divide the run between them and are scaled to fill it,
-                // so asking for fewer makes each one bigger. Height follows from the pallet's own aspect.
+                // Pallet count driven directly: width scales to fit the run across the count.
+                // Height and depth scale independently from tileHeight so asking for fewer tiles doesn't blow up the belt height.
                 count = tileCount;
-                scale = (rowWidth / count) / unitWidth;
+                scaleX = (rowWidth / count) / unitWidth;
+                scaleYZ = (tileHeight / unitHeight) * yScaleMultiplier;
             }
             else
             {
                 // Auto: size a pallet from the wanted belt thickness, then fit as many as the run takes.
-                scale = tileHeight / unitHeight;
-                count = Mathf.Max(1, Mathf.CeilToInt(rowWidth / (unitWidth * scale)));
+                scaleYZ = (tileHeight / unitHeight) * yScaleMultiplier;
+                scaleX = scaleYZ;
+                count = Mathf.Max(1, Mathf.CeilToInt(rowWidth / (unitWidth * scaleX)));
             }
 
-            float tileWorldWidth = unitWidth * scale;
+            float tileWorldWidth = unitWidth * scaleX;
 
             // The belt runs along the tile's own local X, so the row is laid out along that axis rather
             // than along the camera's right - which is what keeps the tiles in the same perspective as the
@@ -304,7 +308,7 @@ namespace MechaFind3D.PhysicsInteraction
                 GameObject tile = Instantiate(tilePrefab, row.transform);
                 tile.name = $"ConveyorTile_{i}";
                 tile.transform.rotation = rotation;
-                tile.transform.localScale = Vector3.one * scale;
+                tile.transform.localScale = new Vector3(scaleX, scaleYZ, scaleYZ);
                 tile.transform.position = topSurfaceCentre
                                           + across * (-span * 0.5f + (i + 0.5f) * tileWorldWidth);
 

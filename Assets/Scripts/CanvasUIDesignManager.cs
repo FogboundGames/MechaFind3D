@@ -18,6 +18,7 @@ namespace MechaFind3D.PhysicsInteraction
     /// Professional 2-Box Cardboard Sorting & Packaging Manager.
     /// Manages 2 open cardboard box slots, item filling, item icon badges, and slow DOTween box closing & shipping animations.
     /// </summary>
+    [ExecuteAlways]
     public class CanvasUIDesignManager : MonoBehaviour
     {
         public static CanvasUIDesignManager Instance { get; private set; }
@@ -56,13 +57,30 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float conveyorSpeed = -0.2f;
         [Tooltip("Mirrors the stripe layout so the arrow heads point right, matching the belt's travel direction.")]
         [SerializeField] private bool conveyorFlipStripes = true;
-        [Tooltip("How many belt pallets to lay across the shelf. They stretch to fill the run, so fewer means bigger. 0 auto-fits them from Conveyor Height Fraction instead.")]
+        [Tooltip("How many belt pallets to lay across the shelf. 2 creates two side-by-side rectangular sections.")]
         [Min(0)]
-        [SerializeField] private int conveyorTileCount = 6;
+        [SerializeField] private int conveyorTileCount = 2;
+        [Tooltip("Y-axis height multiplier for the conveyor belt.")]
+        [Range(0.1f, 4f)]
+        [SerializeField] private float conveyorYScaleMultiplier = 1.0f;
         [Tooltip("Linear move speed of completed boxes along the conveyor belt (world units per second). Matches belt travel direction.")]
         [SerializeField] private float conveyorBoxMoveSpeed = 0.40f;
         [Tooltip("How quickly a shipped box eases into its place in the run. Higher is snappier; too low and the boxes visibly trail the belt.")]
         [SerializeField] private float conveyorBoxSettleSpeed = 12f;
+
+        [Header("3D Conveyor Belt Scene Placement")]
+        [Tooltip("If true, automatically spawns a new belt prefab if none exists in the scene. Turn OFF to strictly use your scene-placed belt.")]
+        [SerializeField] private bool autoSpawnConveyorBelt = false;
+        [Tooltip("If true, places the 3D conveyor belt directly in 3D world space (on the scene floor) instead of under UI canvas elements.")]
+        [SerializeField] private bool use3DScenePosition = true;
+        [Tooltip("3D World Position of the conveyor belt in the scene.")]
+        [SerializeField] private Vector3 conveyorWorldPosition = new Vector3(0f, 0.05f, -3.2f);
+        [Tooltip("Total width of the 3D conveyor belt run in 3D world units.")]
+        [SerializeField] private float conveyorWorldWidth = 6.0f;
+        [Tooltip("Height of the conveyor belt run in 3D world units.")]
+        [SerializeField] private float conveyorWorldHeight = 0.5f;
+        [Tooltip("Rotation of the conveyor belt in 3D scene space.")]
+        [SerializeField] private Vector3 conveyorWorldRotationEuler = new Vector3(15f, 0f, 0f);
 
         [Header("Mecha On Sealed Lid")]
         [Tooltip("How much of the lid seam the mecha stretches across, laid out full length. 1 spans the whole box.")]
@@ -73,12 +91,12 @@ namespace MechaFind3D.PhysicsInteraction
 #pragma warning disable CS0414
         [Tooltip("If true, spawns initial completed boxes on the conveyor belt at start so it moves continuously right away.")]
         [SerializeField] private bool spawnInitialConveyorBoxes = false;
-        [Tooltip("Show only every Nth arrow on a pallet. 1 shows all eight the model ships.")]
+        [Tooltip("Show only every Nth arrow on a pallet. 4 shows 1 arrow per tile face.")]
         [Min(1)]
-        [SerializeField] private int conveyorArrowStride = 1;
-        [Tooltip("Size multiplier on the arrows. 1 leaves them exactly as modelled.")]
+        [SerializeField] private int conveyorArrowStride = 4;
+        [Tooltip("Size multiplier on the arrows. 1.0 keeps the arrow proportional.")]
         [Min(0.1f)]
-        [SerializeField] private float conveyorArrowScale = 1f;
+        [SerializeField] private float conveyorArrowScale = 1.0f;
         [Tooltip("Number of completed boxes to fit side-by-side in a single horizontal row before starting a new row.")]
         [SerializeField] private int completedBoxesPerRow = 4;
 #pragma warning restore CS0414
@@ -228,6 +246,25 @@ namespace MechaFind3D.PhysicsInteraction
             EnsureCanvasStructure();
         }
 
+        private void OnEnable()
+        {
+            if (Instance == null) Instance = this;
+            if (!Application.isPlaying && use3DScenePosition)
+            {
+                EnsureConveyorBelt();
+            }
+        }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (!Application.isPlaying && use3DScenePosition)
+            {
+                EnsureConveyorBelt();
+            }
+        }
+#endif
+
         private void Start()
         {
             Ensure3DCardboardBoxes();
@@ -278,6 +315,7 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             manager.EnsureCanvasStructure();
+            manager.EnsureConveyorBelt();
             Selection.activeGameObject = sceneController;
             Debug.Log("🎨 Professional 2-Box Cardboard Packaging System Built Successfully!");
         }
@@ -1314,61 +1352,75 @@ namespace MechaFind3D.PhysicsInteraction
             EnsureConveyorBelt();
         }
 
+        private void CleanupDuplicateConveyorBelts()
+        {
+            List<GameObject> sceneBelts = new List<GameObject>();
+            GameObject[] allObjs = Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+            foreach (GameObject go in allObjs)
+            {
+                if (go == null) continue;
+                if (go.name == "Conveyor_Belt_3D" || go.name.StartsWith("Conveyor_Belt_3D"))
+                {
+                    sceneBelts.Add(go);
+                }
+            }
+
+            if (sceneBelts.Count == 0)
+            {
+                conveyorInstance = null;
+                return;
+            }
+
+            // Keep the belt closest to the camera (lowest Z coordinate = user's bottom belt)
+            sceneBelts.Sort((a, b) => a.transform.position.z.CompareTo(b.transform.position.z));
+            conveyorInstance = sceneBelts[0];
+
+            // Immediately destroy all extra top duplicate belts
+            for (int i = 1; i < sceneBelts.Count; i++)
+            {
+                GameObject extra = sceneBelts[i];
+                if (extra != null)
+                {
+#if UNITY_EDITOR
+                    if (!Application.isPlaying) DestroyImmediate(extra);
+                    else Destroy(extra);
+#else
+                    Destroy(extra);
+#endif
+                }
+            }
+        }
+
         private void EnsureConveyorBelt()
         {
+            // Sweep and remove any extra top duplicate belts from the scene
+            CleanupDuplicateConveyorBelts();
+
+            // If a conveyor belt already exists in the scene (user's bottom belt), NEVER build another!
+            if (conveyorInstance != null)
+            {
+                return;
+            }
+
+            if (!autoSpawnConveyorBelt) return;
+
             if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
             if (mainCamera == null) return;
 
             if (conveyorPrefab == null) conveyorPrefab = Resources.Load<GameObject>(ConveyorResourcePath);
-            if (conveyorPrefab == null)
-            {
-                Debug.LogError($"🎞️ Konveyör prefab'ı yok (Resources/{ConveyorResourcePath}). " +
-                               "Unity menüsünden 'MechaFind3D → Konveyör → Conveyor.fbx Prefab'ını Üret' komutunu bir kez çalıştır.");
-                return;
-            }
+            if (conveyorPrefab == null) return;
 
-            if (!TryGetShippedBoxRow(out Vector3 spanCentre, out float spanWidth, out float boxBottomY, out float boxHeight))
-            {
-                Debug.LogWarning("🎞️ Gönderilen koli rafı hesaplanamadı; 3D kayış yerleştirilemedi.");
-                return;
-            }
-
-            if (conveyorInstance != null) Destroy(conveyorInstance);
-
-            Quaternion beltRotation = Quaternion.Euler(BoxShelfTiltEuler.x, 0f, 0f)
-                                      * conveyorPrefab.transform.rotation;
-            Vector3 topSurface = new Vector3(spanCentre.x, boxBottomY + conveyorSinkIntoBoxes, spanCentre.z);
-
-            int tilesToBuild = conveyorTileCount < 6 ? 6 : conveyorTileCount;
+            Quaternion sceneBeltRotation = Quaternion.Euler(conveyorWorldRotationEuler)
+                                          * conveyorPrefab.transform.rotation;
+            int sceneTilesToBuild = conveyorTileCount <= 0 ? 2 : conveyorTileCount;
 
             conveyorInstance = ConveyorBelt.BuildRow(conveyorPrefab, transform, mainCamera,
-                                                     topSurface, beltRotation,
-                                                     spanWidth, boxHeight * conveyorHeightFraction,
+                                                     conveyorWorldPosition, sceneBeltRotation,
+                                                     conveyorWorldWidth, conveyorWorldHeight,
                                                      conveyorSpeed, conveyorFlipStripes,
-                                                     tilesToBuild, conveyorArrowStride, conveyorArrowScale);
-
-            conveyorTopOffsetY = 0f;
-            if (conveyorInstance != null)
-            {
-                Bounds beltBounds = default;
-                bool beltHas = false;
-                foreach (Renderer r in conveyorInstance.GetComponentsInChildren<Renderer>())
-                {
-                    if (!r.enabled) continue;
-                    if (!beltHas) { beltBounds = r.bounds; beltHas = true; }
-                    else beltBounds.Encapsulate(r.bounds);
-                }
-                if (beltHas) conveyorTopOffsetY = beltBounds.max.y - conveyorInstance.transform.position.y;
-            }
-
-            RectTransform legacyPanel = FindConveyorPanel();
-            if (legacyPanel != null && legacyPanel != bottomDockContainer)
-            {
-                foreach (Graphic g in legacyPanel.GetComponentsInChildren<Graphic>(true))
-                {
-                    g.enabled = false;
-                }
-            }
+                                                     sceneTilesToBuild, conveyorArrowStride, conveyorArrowScale,
+                                                     conveyorYScaleMultiplier);
         }
 
         private float GetIdealConveyorBoxSpacing()
@@ -1459,6 +1511,12 @@ namespace MechaFind3D.PhysicsInteraction
         private void FollowDockBoxesWithConveyor()
         {
             if (conveyorInstance == null) return;
+            if (use3DScenePosition)
+            {
+                // Preserve the exact transform user set in Scene View - do not overwrite!
+                return;
+            }
+
             if (!TryGetShippedBoxRow(out Vector3 centre, out _, out float bottomY, out _)) return;
 
             conveyorInstance.transform.position = new Vector3(
