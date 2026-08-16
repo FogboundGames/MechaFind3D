@@ -90,8 +90,8 @@ namespace MechaFind3D.PhysicsInteraction
 
             cam.transform.position = new Vector3(0f, 11.2f, -7.6f);
             cam.transform.rotation = Quaternion.Euler(58f, 0f, 0f);
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.06f, 0.08f, 0.12f);
+            cam.depth = 0;
+            cam.clearFlags = CameraClearFlags.Depth;
             cam.fieldOfView = 58f;
         }
 
@@ -135,21 +135,11 @@ namespace MechaFind3D.PhysicsInteraction
             floorObj.transform.position = new Vector3(0f, -containerSize.y * 0.5f, 0f);
             floorObj.transform.localScale = containerSize;
 
+            // The floor stays invisible - CanvasUIDesignManager.EnsureBackgroundCanvas draws the
+            // actual background (image or fallback color) via a dedicated screen-space camera/canvas
+            // instead, so this cube only needs to exist for its BoxCollider.
             Renderer rend = floorObj.GetComponent<Renderer>();
-            if (rend != null)
-            {
-                Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-                Material mat = new Material(shader)
-                {
-                    name = "TrayFloorMaterial"
-                };
-
-                if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", trayFloorColor);
-                if (mat.HasProperty("_Color")) mat.SetColor("_Color", trayFloorColor);
-                if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.5f);
-
-                rend.sharedMaterial = mat;
-            }
+            if (rend != null) rend.enabled = false;
 
             BoxCollider boxCol = floorObj.GetComponent<BoxCollider>();
             if (boxCol != null)

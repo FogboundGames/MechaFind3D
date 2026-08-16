@@ -124,6 +124,10 @@ namespace MechaFind3D.PhysicsInteraction
         private const string TapeMaterialPrefix = "BoxTape";
         private int nextTapeVariant;
 
+        // Matches the dark navy the main camera used to clear with directly, before it switched to
+        // ClearFlags.Depth and started relying on Background_Camera to clear color instead.
+        private static readonly Color FallbackBackgroundColor = new Color(0.06f, 0.08f, 0.12f);
+
         private const string ConveyorResourcePath = "Conveyor/ConveyorBelt";
         private GameObject conveyorInstance;
         private float conveyorTopOffsetY;
@@ -230,6 +234,22 @@ namespace MechaFind3D.PhysicsInteraction
             img.sprite = sprite;
             img.type = Image.Type.Sliced;
             img.color = Color.white;
+        }
+
+        public static Sprite LoadGameBackgroundSprite()
+        {
+            Sprite s = Resources.Load<Sprite>("GameBackground");
+            if (s != null) return s;
+
+            // Fallback for when the asset is still imported as a plain Texture2D rather than a
+            // Sprite (2D and UI) - keeps the background working even if the import type regresses.
+            Texture2D tex = Resources.Load<Texture2D>("GameBackground");
+            if (tex != null)
+            {
+                return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            }
+
+            return null;
         }
 
         private void Awake()
@@ -351,10 +371,83 @@ namespace MechaFind3D.PhysicsInteraction
 
             canvasObj.AddComponent<GraphicRaycaster>();
 
+            EnsureBackgroundCanvas();
             BuildHeaderGoalPanel(canvasObj.transform);
             BuildBottomDockPanel(canvasObj.transform);
             BuildShuffleButton(canvasObj.transform);
             Ensure3DCardboardBoxes();
+        }
+
+        public void EnsureBackgroundCanvas()
+        {
+            Transform existing = transform.Find("MatchFactory_Background_Canvas");
+            if (existing != null)
+            {
+#if UNITY_EDITOR
+                if (!Application.isPlaying) DestroyImmediate(existing.gameObject);
+                else Destroy(existing.gameObject);
+#else
+                Destroy(existing.gameObject);
+#endif
+            }
+
+            Sprite bgSprite = LoadGameBackgroundSprite();
+
+            // The main gameplay camera is set to ClearFlags.Depth (see ScenePhysicsSetup.SetupCamera),
+            // meaning it never clears the color buffer itself - it relies entirely on this background
+            // camera rendering first. So this camera must ALWAYS exist and ALWAYS clear with a solid
+            // color, even when no background image is available yet, or the screen shows whatever
+            // undefined content was left in the buffer instead of a clean fallback color.
+            Camera bgCam = null;
+            Transform bgCamTransform = transform.Find("Background_Camera");
+            if (bgCamTransform != null)
+            {
+                bgCam = bgCamTransform.GetComponent<Camera>();
+            }
+            if (bgCam == null)
+            {
+                GameObject bgCamObj = new GameObject("Background_Camera");
+                bgCamObj.transform.SetParent(transform, false);
+                bgCam = bgCamObj.AddComponent<Camera>();
+            }
+
+            bgCam.depth = -10;
+            bgCam.clearFlags = CameraClearFlags.SolidColor;
+            bgCam.backgroundColor = FallbackBackgroundColor;
+            bgCam.orthographic = true;
+            bgCam.orthographicSize = 5f;
+            bgCam.nearClipPlane = 0.1f;
+            bgCam.farClipPlane = 100f;
+
+            if (bgSprite == null) return;
+
+            GameObject bgCanvasObj = new GameObject("MatchFactory_Background_Canvas");
+            bgCanvasObj.transform.SetParent(transform);
+
+            Canvas bgCanvas = bgCanvasObj.AddComponent<Canvas>();
+            bgCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+            bgCanvas.worldCamera = bgCam;
+            bgCanvas.planeDistance = 10f;
+            bgCanvas.sortingOrder = -100;
+
+            CanvasScaler scaler = bgCanvasObj.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = referenceResolution;
+            scaler.matchWidthOrHeight = 0.5f;
+
+            GameObject bgImgObj = new GameObject("Full_Screen_Background_Image");
+            bgImgObj.transform.SetParent(bgCanvasObj.transform, false);
+
+            RectTransform rect = bgImgObj.AddComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.sizeDelta = Vector2.zero;
+
+            Image img = bgImgObj.AddComponent<Image>();
+            img.sprite = bgSprite;
+            img.type = Image.Type.Simple;
+            img.preserveAspect = false;
+            img.color = Color.white;
         }
 
         private void EnsureEventSystem()
