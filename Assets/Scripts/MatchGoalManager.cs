@@ -11,6 +11,7 @@ namespace MechaFind3D.PhysicsInteraction
         public Color targetColor;
         public int totalRequired;
         public int currentCount;
+        public GameObject displayPrefab;
 
         public bool IsCompleted => currentCount >= totalRequired;
         public int Remaining => Mathf.Max(0, totalRequired - currentCount);
@@ -52,7 +53,8 @@ namespace MechaFind3D.PhysicsInteraction
                                 colorName = req.itemData.GetEffectiveItemId(),
                                 targetColor = req.itemData.targetColor,
                                 totalRequired = req.requiredCount,
-                                currentCount = 0
+                                currentCount = 0,
+                                displayPrefab = req.itemData.prefab
                             });
                         }
                     }
