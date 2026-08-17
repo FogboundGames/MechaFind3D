@@ -261,6 +261,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             EditorGUILayout.PropertyField(so.FindProperty("levelNumber"), new GUIContent("Seviye Numarası"));
             EditorGUILayout.PropertyField(so.FindProperty("levelTitle"), new GUIContent("Seviye Başlığı"));
+            EditorGUILayout.PropertyField(so.FindProperty("timeLimit"), new GUIContent("Süre Sınırı (Saniye)"));
             EditorGUILayout.PropertyField(so.FindProperty("foodTargetSize"), new GUIContent("Obje Hedef Ölçeği (Varsayılan 0.55):"));
 
             EditorGUILayout.Space(10);

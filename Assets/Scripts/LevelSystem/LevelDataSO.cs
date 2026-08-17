@@ -34,6 +34,9 @@ namespace MechaFind3D.PhysicsInteraction
         [Header("Level Information")]
         public int levelNumber = 1;
         public string levelTitle = "Seviye 1";
+        
+        [Tooltip("Maksimum oynanış süresi (saniye).")]
+        public float timeLimit = 120f;
 
         [Header("Pile Physics Config")]
         [Tooltip("Total number of 3D objects spawned in the pile tray.")]

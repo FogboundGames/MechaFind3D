@@ -577,6 +577,37 @@ namespace MechaFind3D.PhysicsInteraction
             titleTxt.text = titleStr;
             titleTxt.alignment = TextAnchor.MiddleCenter;
 
+            GameObject timerBadgeObj = new GameObject("timer_badge");
+            timerBadgeObj.transform.SetParent(headerObj.transform, false);
+            RectTransform timerBadgeRect = timerBadgeObj.AddComponent<RectTransform>();
+            timerBadgeRect.anchorMin = new Vector2(0.04f, 0.1f);
+            timerBadgeRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
+            timerBadgeRect.sizeDelta = Vector2.zero;
+            timerBadgeRect.anchoredPosition = new Vector2(0f, -100f);
+            Image timerBadge = timerBadgeObj.AddComponent<Image>();
+            ApplySlicedSprite(timerBadge, LoadUISprite(UIAccentButton));
+            timerBadge.color = UIAccentTint;
+
+            GameObject timerTextObj = new GameObject("timer_text");
+            timerTextObj.transform.SetParent(headerObj.transform, false);
+            RectTransform timerTextRect = timerTextObj.AddComponent<RectTransform>();
+            timerTextRect.anchorMin = new Vector2(0.04f, 0.1f);
+            timerTextRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
+            timerTextRect.sizeDelta = Vector2.zero;
+            timerTextRect.anchoredPosition = new Vector2(0f, -100f);
+            Text timerTxt = timerTextObj.AddComponent<Text>();
+            timerTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            timerTxt.fontSize = titleFontSize;
+            timerTxt.fontStyle = FontStyle.Bold;
+            timerTxt.color = Color.white;
+            
+            Shadow timerShadow = timerTextObj.AddComponent<Shadow>();
+            timerShadow.effectColor = new Color(0, 0, 0, 0.8f);
+            timerShadow.effectDistance = new Vector2(2, -2);
+            
+            timerTxt.text = "00:00";
+            timerTxt.alignment = TextAnchor.MiddleCenter;
+
             GameObject goalsContainer = new GameObject("Goals_Container");
             goalsContainer.transform.SetParent(headerObj.transform, false);
 
@@ -710,6 +741,19 @@ namespace MechaFind3D.PhysicsInteraction
 
         public void RefreshTargetGoalsUI()
         {
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                GameObject levelTextObj = GameObject.Find("Level_Text");
+                if (levelTextObj != null)
+                {
+                    Text titleTxt = levelTextObj.GetComponent<Text>();
+                    if (titleTxt != null)
+                    {
+                        titleTxt.text = LevelManager.Instance.ActiveLevelData.levelTitle.ToUpperInvariant();
+                    }
+                }
+            }
+
             if (MatchGoalManager.Instance == null || topGoalContainer == null) return;
 
             foreach (Transform child in topGoalContainer)

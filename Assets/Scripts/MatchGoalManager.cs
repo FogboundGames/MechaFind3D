@@ -28,6 +28,10 @@ namespace MechaFind3D.PhysicsInteraction
         public List<MatchGoal> levelGoals = new List<MatchGoal>();
         public bool isLevelComplete = false;
 
+        public float currentTime;
+        public bool isTimerRunning = false;
+        private UnityEngine.UI.Text cachedTimerText;
+
         private void Awake()
         {
             Instance = this;
@@ -37,6 +41,16 @@ namespace MechaFind3D.PhysicsInteraction
         {
             levelGoals.Clear();
             isLevelComplete = false;
+
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                currentTime = LevelManager.Instance.ActiveLevelData.timeLimit;
+            }
+            else
+            {
+                currentTime = 120f;
+            }
+            isTimerRunning = true;
 
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
             {
@@ -127,11 +141,52 @@ private void CheckLevelCompletion()
 
             if (allComplete && !isLevelComplete)
             {
+                isTimerRunning = false;
                 isLevelComplete = true;
                 if (WinLosePanelController.Instance != null)
                 {
                     WinLosePanelController.Instance.ShowWin();
                 }
+            }
+        }
+
+        private void Update()
+        {
+            if (isTimerRunning && !isLevelComplete)
+            {
+                currentTime -= Time.deltaTime;
+                if (currentTime <= 0f)
+                {
+                    currentTime = 0f;
+                    isTimerRunning = false;
+                    TriggerLose();
+                }
+                UpdateTimerUI();
+            }
+        }
+
+        private void TriggerLose()
+        {
+            isLevelComplete = true;
+            if (WinLosePanelController.Instance != null)
+            {
+                WinLosePanelController.Instance.ShowLose();
+            }
+        }
+
+        private void UpdateTimerUI()
+        {
+            if (cachedTimerText == null)
+            {
+                GameObject timerObj = GameObject.Find("timer_text");
+                if (timerObj != null) cachedTimerText = timerObj.GetComponent<UnityEngine.UI.Text>();
+            }
+
+            if (cachedTimerText != null)
+            {
+                int minutes = Mathf.FloorToInt(currentTime / 60f);
+                int seconds = Mathf.FloorToInt(currentTime % 60f);
+                cachedTimerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
             }
         }
     }
