@@ -720,54 +720,45 @@ namespace MechaFind3D.PhysicsInteraction
         private void BuildBottomDockPanel(Transform parent)
         {
             Transform existingDock = parent.Find("Bottom_Dock_Panel");
+            GameObject dockObj;
             if (existingDock != null)
             {
-                slotRects.Clear();
-                slotBadgeTexts.Clear();
+                dockObj = existingDock.gameObject;
+            }
+            else
+            {
+                dockObj = new GameObject("Bottom_Dock_Panel");
+                dockObj.transform.SetParent(parent, false);
 
-                Transform existingSlots = existingDock.Find("Slots_Container");
-                if (existingSlots != null)
-                {
-                    bottomDockContainer = existingSlots.GetComponent<RectTransform>();
-                    for (int i = 0; i < MAX_SLOTS; i++)
-                    {
-                        Transform slotChild = existingSlots.Find($"DockSlot_{i}");
-                        if (slotChild != null)
-                        {
-                            slotRects.Add(slotChild.GetComponent<RectTransform>());
-                            Transform labelChild = slotChild.Find("LabelText");
-                            if (labelChild != null)
-                            {
-                                slotBadgeTexts.Add(labelChild.GetComponent<Text>());
-                            }
-                        }
-                    }
-                }
-                return;
+                RectTransform dockRect = dockObj.AddComponent<RectTransform>();
+                dockRect.anchorMin = new Vector2(0.5f, 0f);
+                dockRect.anchorMax = new Vector2(0.5f, 0f);
+                dockRect.pivot = new Vector2(0.5f, 0f);
+                dockRect.anchoredPosition = dockPanelAnchoredPosition;
+                dockRect.sizeDelta = dockPanelSize;
+
+                Image bg = dockObj.AddComponent<Image>();
+                bg.color = Color.clear;
             }
 
-            GameObject dockObj = new GameObject("Bottom_Dock_Panel");
-            dockObj.transform.SetParent(parent, false);
+            Transform slotsContainerTr = dockObj.transform.Find("Slots_Container");
+            GameObject slotsContainerObj;
+            if (slotsContainerTr != null)
+            {
+                slotsContainerObj = slotsContainerTr.gameObject;
+            }
+            else
+            {
+                slotsContainerObj = new GameObject("Slots_Container");
+                slotsContainerObj.transform.SetParent(dockObj.transform, false);
+            }
 
-            RectTransform dockRect = dockObj.AddComponent<RectTransform>();
-            dockRect.anchorMin = new Vector2(0.5f, 0f);
-            dockRect.anchorMax = new Vector2(0.5f, 0f);
-            dockRect.pivot = new Vector2(0.5f, 0f);
-            dockRect.anchoredPosition = dockPanelAnchoredPosition;
-            dockRect.sizeDelta = dockPanelSize;
-
-            Image bg = dockObj.AddComponent<Image>();
-            bg.color = Color.clear; // Removed the giant purple background!
-
-            GameObject slotsContainerObj = new GameObject("Slots_Container");
-            slotsContainerObj.transform.SetParent(dockObj.transform, false);
-
-            bottomDockContainer = slotsContainerObj.AddComponent<RectTransform>();
+            bottomDockContainer = slotsContainerObj.GetComponent<RectTransform>() ?? slotsContainerObj.AddComponent<RectTransform>();
             bottomDockContainer.anchorMin = Vector2.zero;
             bottomDockContainer.anchorMax = Vector2.one;
             bottomDockContainer.sizeDelta = new Vector2(-20, 0);
 
-            HorizontalLayoutGroup layout = slotsContainerObj.AddComponent<HorizontalLayoutGroup>();
+            HorizontalLayoutGroup layout = slotsContainerObj.GetComponent<HorizontalLayoutGroup>() ?? slotsContainerObj.AddComponent<HorizontalLayoutGroup>();
             layout.padding = new RectOffset(30, 30, 16, 16);
             layout.spacing = dockSlotSpacing;
             layout.childAlignment = TextAnchor.MiddleCenter;
@@ -779,42 +770,61 @@ namespace MechaFind3D.PhysicsInteraction
 
             for (int i = 0; i < MAX_SLOTS; i++)
             {
-                GameObject slotObj = new GameObject($"DockSlot_{i}");
-                slotObj.transform.SetParent(slotsContainerObj.transform, false);
+                Transform slotChild = slotsContainerObj.transform.Find($"DockSlot_{i}");
+                GameObject slotObj;
+                if (slotChild != null)
+                {
+                    slotObj = slotChild.gameObject;
+                }
+                else
+                {
+                    slotObj = new GameObject($"DockSlot_{i}");
+                    slotObj.transform.SetParent(slotsContainerObj.transform, false);
+                }
 
-                RectTransform slotRect = slotObj.AddComponent<RectTransform>();
-                Image slotBg = slotObj.AddComponent<Image>();
+                RectTransform slotRect = slotObj.GetComponent<RectTransform>() ?? slotObj.AddComponent<RectTransform>();
+                Image slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
                 slotBg.color = Color.clear;
 
-                GameObject labelObj = new GameObject("LabelText");
-                labelObj.transform.SetParent(slotObj.transform, false);
+                Transform labelChild = slotObj.transform.Find("LabelText");
+                GameObject labelObj;
+                if (labelChild != null)
+                {
+                    labelObj = labelChild.gameObject;
+                }
+                else
+                {
+                    labelObj = new GameObject("LabelText");
+                    labelObj.transform.SetParent(slotObj.transform, false);
 
-                RectTransform labelRect = labelObj.AddComponent<RectTransform>();
-                labelRect.anchorMin = new Vector2(0f, 0f);
-                labelRect.anchorMax = new Vector2(1f, 0.22f);
-                labelRect.sizeDelta = Vector2.zero;
-                // Move it slightly lower so it doesn't clip the 3D box
-                labelRect.anchoredPosition = new Vector2(0, -30);
+                    RectTransform labelRect = labelObj.AddComponent<RectTransform>();
+                    labelRect.anchorMin = new Vector2(0f, 0f);
+                    labelRect.anchorMax = new Vector2(1f, 0.22f);
+                    labelRect.sizeDelta = Vector2.zero;
+                    labelRect.anchoredPosition = new Vector2(0, -30);
 
-                Text labelTxt = labelObj.AddComponent<Text>();
-                labelTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                labelTxt.fontSize = dockSlotLabelFontSize;
-                labelTxt.fontStyle = FontStyle.Bold;
-                labelTxt.alignment = TextAnchor.MiddleCenter;
-                labelTxt.color = Color.white;
-                
-                Shadow shadow = labelObj.AddComponent<Shadow>();
-                shadow.effectColor = new Color(0, 0, 0, 0.8f);
-                shadow.effectDistance = new Vector2(2, -2);
-                
-                Outline outline = labelObj.AddComponent<Outline>();
-                outline.effectColor = new Color(0, 0, 0, 0.8f);
-                outline.effectDistance = new Vector2(1, -1);
+                    Text labelTxt = labelObj.AddComponent<Text>();
+                    labelTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                    labelTxt.fontSize = dockSlotLabelFontSize;
+                    labelTxt.fontStyle = FontStyle.Bold;
+                    labelTxt.alignment = TextAnchor.MiddleCenter;
+                    labelTxt.color = Color.white;
+                    labelTxt.text = "";
 
-                labelTxt.text = "";
+                    Shadow shadow = labelObj.AddComponent<Shadow>();
+                    shadow.effectColor = new Color(0, 0, 0, 0.8f);
+                    shadow.effectDistance = new Vector2(2, -2);
+
+                    Outline outline = labelObj.AddComponent<Outline>();
+                    outline.effectColor = new Color(0, 0, 0, 0.8f);
+                    outline.effectDistance = new Vector2(1, -1);
+                }
+
+                Text txtComp = labelObj.GetComponent<Text>();
+                if (txtComp != null) txtComp.text = "";
 
                 slotRects.Add(slotRect);
-                slotBadgeTexts.Add(labelTxt);
+                slotBadgeTexts.Add(txtComp);
             }
         }
 
@@ -1998,37 +2008,75 @@ namespace MechaFind3D.PhysicsInteraction
         {
             LoadCardboardBoxPrefabsIfNull();
 
-            if (cardboardBoxOpenedPrefab != null)
-            {
-                for (int i = 0; i < MAX_SLOTS; i++)
-                {
-                    if (slotBox[i] == null)
-                    {
-                        GameObject existingBox = GameObject.Find($"Slot3DBox_Closed_{i}");
-                        if (existingBox != null)
-                        {
-                            slotBox[i] = existingBox;
-                        }
-                        else
-                        {
-                            GameObject box = CreatePackagingBox(i);
-                            if (box != null)
-                            {
-                                slotBox[i] = box;
-                            }
-                        }
-                    }
+            if (cardboardBoxOpenedPrefab == null) return;
 
-                    if (slotBox[i] != null)
+            // 1. Gather all existing box objects in the scene to deduplicate
+            GameObject[] allObjs = Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            List<GameObject> existingBoxes0 = new List<GameObject>();
+            List<GameObject> existingBoxes1 = new List<GameObject>();
+
+            foreach (GameObject go in allObjs)
+            {
+                if (go == null) continue;
+                string name = go.name;
+                if (name.StartsWith("Slot3DBox_0") || name.StartsWith("Slot3DBox_Closed_0"))
+                {
+                    existingBoxes0.Add(go);
+                }
+                else if (name.StartsWith("Slot3DBox_1") || name.StartsWith("Slot3DBox_Closed_1"))
+                {
+                    existingBoxes1.Add(go);
+                }
+                else if (!Application.isPlaying && (name.Contains("Slot3DBox") || name.Contains("Delivery_3DBox") || name.StartsWith("PackagingBox")))
+                {
+                    SafeDestroy(go);
+                }
+            }
+
+            // 2. Slot 0: Keep EXACTLY ONE box, destroy all duplicate extras
+            if (existingBoxes0.Count > 0)
+            {
+                slotBox[0] = existingBoxes0[0];
+                slotBox[0].name = "Slot3DBox_0";
+                for (int k = 1; k < existingBoxes0.Count; k++)
+                {
+                    SafeDestroy(existingBoxes0[k]);
+                }
+            }
+            else
+            {
+                slotBox[0] = CreatePackagingBox(0);
+                if (slotBox[0] != null) slotBox[0].name = "Slot3DBox_0";
+            }
+
+            // 3. Slot 1: Keep EXACTLY ONE box, destroy all duplicate extras
+            if (existingBoxes1.Count > 0)
+            {
+                slotBox[1] = existingBoxes1[0];
+                slotBox[1].name = "Slot3DBox_1";
+                for (int k = 1; k < existingBoxes1.Count; k++)
+                {
+                    SafeDestroy(existingBoxes1[k]);
+                }
+            }
+            else
+            {
+                slotBox[1] = CreatePackagingBox(1);
+                if (slotBox[1] != null) slotBox[1].name = "Slot3DBox_1";
+            }
+
+            // 4. Position and scale the 2 primary dock boxes
+            for (int i = 0; i < MAX_SLOTS; i++)
+            {
+                if (slotBox[i] != null)
+                {
+                    float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * 1.25f;
+                    slotBox[i].transform.localScale = Vector3.one * fitScale;
+                    slotBox[i].transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
+                    Vector3 slotPos = GetSlotWorldPosition(i);
+                    if (slotPos != Vector3.zero)
                     {
-                        float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * 1.25f;
-                        slotBox[i].transform.localScale = Vector3.one * fitScale;
-                        slotBox[i].transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
-                        Vector3 slotPos = GetSlotWorldPosition(i);
-                        if (slotPos != Vector3.zero)
-                        {
-                            slotBox[i].transform.position = slotPos;
-                        }
+                        slotBox[i].transform.position = slotPos;
                     }
                 }
             }
