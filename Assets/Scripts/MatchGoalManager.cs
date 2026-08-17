@@ -72,6 +72,18 @@ namespace MechaFind3D.PhysicsInteraction
                             });
                         }
                     }
+
+                    // Add Mecha goal for the level
+                    levelGoals.Add(new MatchGoal
+                    {
+                        shapeType = ObjectShapeType.Cube,
+                        colorName = "Mecha",
+                        targetColor = new Color(0.4f, 0.95f, 1f),
+                        totalRequired = 1,
+                        currentCount = 0,
+                        displayPrefab = null
+                    });
+
                     return;
                 }
             }

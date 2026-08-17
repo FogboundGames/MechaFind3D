@@ -45,6 +45,7 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float goalCardIconSize = 65f;
         [SerializeField] private int goalCardFontSize = 28;
         [SerializeField] private float goalCard3DModelScale = 450f;
+        [SerializeField] private float goalCard3DModelTargetSize = 85f;
         [SerializeField] private Vector3 goalCard3DModelLocalPosition = new Vector3(32.5f, 0f, -25f);
         [SerializeField] private float goalCard3DModelTiltX = 15f;
 
@@ -252,6 +253,23 @@ namespace MechaFind3D.PhysicsInteraction
             return slotIndex >= 0 && slotIndex < MAX_SLOTS && slotProcessing[slotIndex];
         }
 
+        private List<DockItemData> GetSlotBoxContent(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= MAX_SLOTS) return null;
+            if (slotBoxContents[slotIndex] == null)
+            {
+                slotBoxContents[slotIndex] = new List<DockItemData>();
+            }
+            return slotBoxContents[slotIndex];
+        }
+
+        private static void SafeDestroy(UnityEngine.Object obj)
+        {
+            if (obj == null) return;
+            if (Application.isPlaying) UnityEngine.Object.Destroy(obj);
+            else UnityEngine.Object.DestroyImmediate(obj);
+        }
+
         private bool warnedAboutFlaps = false;
 
         private static readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
@@ -341,6 +359,10 @@ namespace MechaFind3D.PhysicsInteraction
 #if UNITY_EDITOR
         private void OnValidate()
         {
+            if (goalCard3DModelTargetSize > 100f || goalCard3DModelTargetSize <= 0f)
+            {
+                goalCard3DModelTargetSize = 85f;
+            }
             if (!Application.isPlaying && use3DScenePosition)
             {
                 EnsureConveyorBelt();
@@ -408,31 +430,33 @@ namespace MechaFind3D.PhysicsInteraction
         {
             EnsureEventSystem();
 
-            Transform existingCanvas = transform.Find("MatchFactory_Canvas");
-            if (existingCanvas != null)
+            Transform canvasTr = transform.Find("MatchFactory_Canvas");
+            GameObject canvasObj;
+            if (canvasTr != null)
             {
-#if UNITY_EDITOR
-                DestroyImmediate(existingCanvas.gameObject);
-#else
-                Destroy(existingCanvas.gameObject);
-#endif
+                canvasObj = canvasTr.gameObject;
+            }
+            else
+            {
+                canvasObj = new GameObject("MatchFactory_Canvas");
+                canvasObj.transform.SetParent(transform);
             }
 
-            GameObject canvasObj = new GameObject("MatchFactory_Canvas");
-            canvasObj.transform.SetParent(transform);
-
-            mainCanvas = canvasObj.AddComponent<Canvas>();
+            mainCanvas = canvasObj.GetComponent<Canvas>() ?? canvasObj.AddComponent<Canvas>();
             mainCanvas.renderMode = RenderMode.ScreenSpaceCamera;
             mainCanvas.worldCamera = mainCamera;
             mainCanvas.planeDistance = uiPlaneDistance;
             mainCanvas.sortingOrder = 100;
 
-            CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
+            CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>() ?? canvasObj.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = referenceResolution;
             scaler.matchWidthOrHeight = 0.5f;
 
-            canvasObj.AddComponent<GraphicRaycaster>();
+            if (canvasObj.GetComponent<GraphicRaycaster>() == null)
+            {
+                canvasObj.AddComponent<GraphicRaycaster>();
+            }
 
             EnsureBackgroundCanvas();
             BuildHeaderGoalPanel(canvasObj.transform);
@@ -444,15 +468,7 @@ namespace MechaFind3D.PhysicsInteraction
         public void EnsureBackgroundCanvas()
         {
             Transform existing = transform.Find("MatchFactory_Background_Canvas");
-            if (existing != null)
-            {
-#if UNITY_EDITOR
-                if (!Application.isPlaying) DestroyImmediate(existing.gameObject);
-                else Destroy(existing.gameObject);
-#else
-                Destroy(existing.gameObject);
-#endif
-            }
+            if (existing != null) return;
 
             Sprite bgSprite = LoadGameBackgroundSprite();
 
@@ -528,104 +544,208 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void BuildHeaderGoalPanel(Transform parent)
         {
-            GameObject headerObj = new GameObject("Header_Goal_Panel");
-            headerObj.transform.SetParent(parent, false);
-
-            RectTransform headerRect = headerObj.AddComponent<RectTransform>();
-            headerRect.anchorMin = new Vector2(0.5f, 1f);
-            headerRect.anchorMax = new Vector2(0.5f, 1f);
-            headerRect.pivot = new Vector2(0.5f, 1f);
-            headerRect.anchoredPosition = headerAnchoredPosition;
-            headerRect.sizeDelta = headerSize;
-
-            // No full-width background — each element carries its own badge.
-
-            // Badge and Text must be on separate GameObjects; both derive from Graphic.
-            GameObject titleBadgeObj = new GameObject("Level_Badge");
-            titleBadgeObj.transform.SetParent(headerObj.transform, false);
-            RectTransform titleBadgeRect = titleBadgeObj.AddComponent<RectTransform>();
-            titleBadgeRect.anchorMin = new Vector2(0.04f, 0.1f);
-            titleBadgeRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
-            titleBadgeRect.sizeDelta = Vector2.zero;
-            Image titleBadge = titleBadgeObj.AddComponent<Image>();
-            ApplySlicedSprite(titleBadge, LoadUISprite(UIAccentButton));
-            titleBadge.color = UIAccentTint;
-
-            GameObject titleTextObj = new GameObject("Level_Text");
-            titleTextObj.transform.SetParent(headerObj.transform, false);
-
-            RectTransform titleTextRect = titleTextObj.AddComponent<RectTransform>();
-            titleTextRect.anchorMin = new Vector2(0.04f, 0.1f);
-            titleTextRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
-            titleTextRect.sizeDelta = Vector2.zero;
-
-            Text titleTxt = titleTextObj.AddComponent<Text>();
-            titleTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            titleTxt.fontSize = titleFontSize;
-            titleTxt.fontStyle = FontStyle.Bold;
-            titleTxt.color = Color.white;
-            
-            Shadow shadow = titleTextObj.AddComponent<Shadow>();
-            shadow.effectColor = new Color(0, 0, 0, 0.8f);
-            shadow.effectDistance = new Vector2(2, -2);
-
-            string titleStr = "SEVİYE 1";
-            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            Transform existingHeader = parent.Find("Header_Goal_Panel");
+            GameObject headerObj;
+            if (existingHeader != null)
             {
-                titleStr = LevelManager.Instance.ActiveLevelData.levelTitle.ToUpperInvariant();
+                headerObj = existingHeader.gameObject;
             }
-            titleTxt.text = titleStr;
-            titleTxt.alignment = TextAnchor.MiddleCenter;
+            else
+            {
+                headerObj = new GameObject("Header_Goal_Panel");
+                headerObj.transform.SetParent(parent, false);
 
-            GameObject timerBadgeObj = new GameObject("timer_badge");
-            timerBadgeObj.transform.SetParent(headerObj.transform, false);
-            RectTransform timerBadgeRect = timerBadgeObj.AddComponent<RectTransform>();
-            timerBadgeRect.anchorMin = new Vector2(0.04f, 0.1f);
-            timerBadgeRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
-            timerBadgeRect.sizeDelta = Vector2.zero;
-            timerBadgeRect.anchoredPosition = new Vector2(0f, -100f);
-            Image timerBadge = timerBadgeObj.AddComponent<Image>();
-            ApplySlicedSprite(timerBadge, LoadUISprite(UIAccentButton));
-            timerBadge.color = UIAccentTint;
+                RectTransform headerRect = headerObj.AddComponent<RectTransform>();
+                headerRect.anchorMin = new Vector2(0.5f, 1f);
+                headerRect.anchorMax = new Vector2(0.5f, 1f);
+                headerRect.pivot = new Vector2(0.5f, 1f);
+                headerRect.anchoredPosition = headerAnchoredPosition;
+                headerRect.sizeDelta = headerSize;
+            }
 
-            GameObject timerTextObj = new GameObject("timer_text");
-            timerTextObj.transform.SetParent(headerObj.transform, false);
-            RectTransform timerTextRect = timerTextObj.AddComponent<RectTransform>();
-            timerTextRect.anchorMin = new Vector2(0.04f, 0.1f);
-            timerTextRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
-            timerTextRect.sizeDelta = Vector2.zero;
-            timerTextRect.anchoredPosition = new Vector2(0f, -100f);
-            Text timerTxt = timerTextObj.AddComponent<Text>();
-            timerTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            timerTxt.fontSize = titleFontSize;
-            timerTxt.fontStyle = FontStyle.Bold;
-            timerTxt.color = Color.white;
-            
-            Shadow timerShadow = timerTextObj.AddComponent<Shadow>();
-            timerShadow.effectColor = new Color(0, 0, 0, 0.8f);
-            timerShadow.effectDistance = new Vector2(2, -2);
-            
-            timerTxt.text = "00:00";
-            timerTxt.alignment = TextAnchor.MiddleCenter;
+            // 1. Level Badge & Text
+            if (headerObj.transform.Find("Level_Badge") == null)
+            {
+                GameObject titleBadgeObj = new GameObject("Level_Badge");
+                titleBadgeObj.transform.SetParent(headerObj.transform, false);
+                RectTransform titleBadgeRect = titleBadgeObj.AddComponent<RectTransform>();
+                titleBadgeRect.anchorMin = new Vector2(0.04f, 0.1f);
+                titleBadgeRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
+                titleBadgeRect.sizeDelta = Vector2.zero;
+                Image titleBadge = titleBadgeObj.AddComponent<Image>();
+                ApplySlicedSprite(titleBadge, LoadUISprite(UIAccentButton));
+                titleBadge.color = UIAccentTint;
+            }
 
-            GameObject goalsContainer = new GameObject("Goals_Container");
-            goalsContainer.transform.SetParent(headerObj.transform, false);
+            if (headerObj.transform.Find("Level_Text") == null)
+            {
+                GameObject titleTextObj = new GameObject("Level_Text");
+                titleTextObj.transform.SetParent(headerObj.transform, false);
 
-            topGoalContainer = goalsContainer.AddComponent<RectTransform>();
-            topGoalContainer.anchorMin = new Vector2(titleAreaWidthRatio, 0f);
-            topGoalContainer.anchorMax = new Vector2(0.98f, 1f);
-            topGoalContainer.sizeDelta = Vector2.zero;
+                RectTransform titleTextRect = titleTextObj.AddComponent<RectTransform>();
+                titleTextRect.anchorMin = new Vector2(0.04f, 0.1f);
+                titleTextRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
+                titleTextRect.sizeDelta = Vector2.zero;
 
-            HorizontalLayoutGroup layout = goalsContainer.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(10, 10, 10, 10);
-            layout.spacing = goalContainerSpacing;
-            layout.childAlignment = TextAnchor.MiddleRight;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
+                Text titleTxt = titleTextObj.AddComponent<Text>();
+                titleTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                titleTxt.fontSize = titleFontSize;
+                titleTxt.fontStyle = FontStyle.Bold;
+                titleTxt.color = Color.white;
+                
+                Shadow shadow = titleTextObj.AddComponent<Shadow>();
+                shadow.effectColor = new Color(0, 0, 0, 0.8f);
+                shadow.effectDistance = new Vector2(2, -2);
+                titleTxt.alignment = TextAnchor.MiddleCenter;
+            }
+
+            Transform lt = headerObj.transform.Find("Level_Text");
+            if (lt != null)
+            {
+                Text titleTxt = lt.GetComponent<Text>();
+                if (titleTxt != null)
+                {
+                    string titleStr = "SEVİYE 1";
+                    if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+                    {
+                        titleStr = LevelManager.Instance.ActiveLevelData.levelTitle.ToUpperInvariant();
+                    }
+                    titleTxt.text = titleStr;
+                }
+            }
+
+            // 2. Timer Badge & Text
+            if (headerObj.transform.Find("timer_badge") == null)
+            {
+                GameObject timerBadgeObj = new GameObject("timer_badge");
+                timerBadgeObj.transform.SetParent(headerObj.transform, false);
+                RectTransform timerBadgeRect = timerBadgeObj.AddComponent<RectTransform>();
+                timerBadgeRect.anchorMin = new Vector2(0.04f, 0.1f);
+                timerBadgeRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
+                timerBadgeRect.sizeDelta = Vector2.zero;
+                timerBadgeRect.anchoredPosition = new Vector2(0f, -100f);
+                Image timerBadge = timerBadgeObj.AddComponent<Image>();
+                ApplySlicedSprite(timerBadge, LoadUISprite(UIAccentButton));
+                timerBadge.color = UIAccentTint;
+            }
+
+            if (headerObj.transform.Find("timer_text") == null)
+            {
+                GameObject timerTextObj = new GameObject("timer_text");
+                timerTextObj.transform.SetParent(headerObj.transform, false);
+                RectTransform timerTextRect = timerTextObj.AddComponent<RectTransform>();
+                timerTextRect.anchorMin = new Vector2(0.04f, 0.1f);
+                timerTextRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
+                timerTextRect.sizeDelta = Vector2.zero;
+                timerTextRect.anchoredPosition = new Vector2(0f, -100f);
+                Text timerTxt = timerTextObj.AddComponent<Text>();
+                timerTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                timerTxt.fontSize = titleFontSize;
+                timerTxt.fontStyle = FontStyle.Bold;
+                timerTxt.color = Color.white;
+                
+                Shadow timerShadow = timerTextObj.AddComponent<Shadow>();
+                timerShadow.effectColor = new Color(0, 0, 0, 0.8f);
+                timerShadow.effectDistance = new Vector2(2, -2);
+                
+                timerTxt.text = "00:00";
+                timerTxt.alignment = TextAnchor.MiddleCenter;
+            }
+
+            // 3. Mecha Goal Badge & Text
+            if (headerObj.transform.Find("Mecha_Goal_Badge") == null)
+            {
+                GameObject mechaBadgeObj = new GameObject("Mecha_Goal_Badge");
+                mechaBadgeObj.transform.SetParent(headerObj.transform, false);
+                RectTransform mechaBadgeRect = mechaBadgeObj.AddComponent<RectTransform>();
+                mechaBadgeRect.anchorMin = new Vector2(0.04f, 0.1f);
+                mechaBadgeRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
+                mechaBadgeRect.sizeDelta = Vector2.zero;
+                mechaBadgeRect.anchoredPosition = new Vector2(0f, -200f);
+                Image mechaBadge = mechaBadgeObj.AddComponent<Image>();
+                ApplySlicedSprite(mechaBadge, LoadUISprite(UIAccentButton));
+                mechaBadge.color = new Color(0.12f, 0.28f, 0.55f, 1f);
+            }
+
+            if (headerObj.transform.Find("Mecha_Goal_Text") == null)
+            {
+                GameObject mechaTextObj = new GameObject("Mecha_Goal_Text");
+                mechaTextObj.transform.SetParent(headerObj.transform, false);
+                RectTransform mechaTextRect = mechaTextObj.AddComponent<RectTransform>();
+                mechaTextRect.anchorMin = new Vector2(0.04f, 0.1f);
+                mechaTextRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
+                mechaTextRect.sizeDelta = Vector2.zero;
+                mechaTextRect.anchoredPosition = new Vector2(0f, -200f);
+                Text mechaTxt = mechaTextObj.AddComponent<Text>();
+                mechaTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                mechaTxt.fontSize = titleFontSize - 4;
+                mechaTxt.fontStyle = FontStyle.Bold;
+                mechaTxt.color = new Color(0.4f, 0.95f, 1f);
+                mechaTxt.alignment = TextAnchor.MiddleCenter;
+
+                Shadow mechaShadow = mechaTextObj.AddComponent<Shadow>();
+                mechaShadow.effectColor = new Color(0, 0, 0, 0.8f);
+                mechaShadow.effectDistance = new Vector2(2, -2);
+
+                mechaTxt.text = "MECHA x1";
+            }
+
+            // NOTE: Custom user objects like kutu_badge are untouched!
+
+            // 4. Goals Container
+            Transform existingGoalsContainer = headerObj.transform.Find("Goals_Container");
+            if (existingGoalsContainer == null)
+            {
+                GameObject goalsContainer = new GameObject("Goals_Container");
+                goalsContainer.transform.SetParent(headerObj.transform, false);
+
+                topGoalContainer = goalsContainer.AddComponent<RectTransform>();
+                topGoalContainer.anchorMin = new Vector2(titleAreaWidthRatio, 0f);
+                topGoalContainer.anchorMax = new Vector2(0.98f, 1f);
+                topGoalContainer.sizeDelta = Vector2.zero;
+
+                HorizontalLayoutGroup layout = goalsContainer.AddComponent<HorizontalLayoutGroup>();
+                layout.padding = new RectOffset(10, 10, 10, 10);
+                layout.spacing = goalContainerSpacing;
+                layout.childAlignment = TextAnchor.MiddleRight;
+                layout.childControlWidth = false;
+                layout.childControlHeight = false;
+            }
+            else
+            {
+                topGoalContainer = existingGoalsContainer.GetComponent<RectTransform>();
+            }
         }
 
         private void BuildBottomDockPanel(Transform parent)
         {
+            Transform existingDock = parent.Find("Bottom_Dock_Panel");
+            if (existingDock != null)
+            {
+                slotRects.Clear();
+                slotBadgeTexts.Clear();
+
+                Transform existingSlots = existingDock.Find("Slots_Container");
+                if (existingSlots != null)
+                {
+                    bottomDockContainer = existingSlots.GetComponent<RectTransform>();
+                    for (int i = 0; i < MAX_SLOTS; i++)
+                    {
+                        Transform slotChild = existingSlots.Find($"DockSlot_{i}");
+                        if (slotChild != null)
+                        {
+                            slotRects.Add(slotChild.GetComponent<RectTransform>());
+                            Transform labelChild = slotChild.Find("LabelText");
+                            if (labelChild != null)
+                            {
+                                slotBadgeTexts.Add(labelChild.GetComponent<Text>());
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+
             GameObject dockObj = new GameObject("Bottom_Dock_Panel");
             dockObj.transform.SetParent(parent, false);
 
@@ -691,7 +811,7 @@ namespace MechaFind3D.PhysicsInteraction
                 outline.effectColor = new Color(0, 0, 0, 0.8f);
                 outline.effectDistance = new Vector2(1, -1);
 
-                labelTxt.text = $"KUTU {i + 1}";
+                labelTxt.text = "";
 
                 slotRects.Add(slotRect);
                 slotBadgeTexts.Add(labelTxt);
@@ -700,43 +820,59 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void BuildShuffleButton(Transform parent)
         {
-            GameObject btnObj = new GameObject("Shuffle_Button");
-            btnObj.transform.SetParent(parent, false);
+            Transform existingBtn = parent.Find("Shuffle_Button");
+            GameObject btnObj;
+            if (existingBtn != null)
+            {
+                btnObj = existingBtn.gameObject;
+            }
+            else
+            {
+                btnObj = new GameObject("Shuffle_Button");
+                btnObj.transform.SetParent(parent, false);
 
-            RectTransform btnRect = btnObj.AddComponent<RectTransform>();
-            btnRect.anchorMin = new Vector2(0f, 0f);
-            btnRect.anchorMax = new Vector2(0f, 0f);
-            btnRect.pivot = new Vector2(0f, 0f);
-            btnRect.anchoredPosition = shuffleButtonPosition;
-            btnRect.sizeDelta = shuffleButtonSize;
+                RectTransform btnRect = btnObj.AddComponent<RectTransform>();
+                btnRect.anchorMin = new Vector2(0f, 0f);
+                btnRect.anchorMax = new Vector2(0f, 0f);
+                btnRect.pivot = new Vector2(0f, 0f);
+                btnRect.anchoredPosition = shuffleButtonPosition;
+                btnRect.sizeDelta = shuffleButtonSize;
 
-            Image btnBg = btnObj.AddComponent<Image>();
-            ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
-            btnBg.color = UIAccentTint;
+                Image btnBg = btnObj.AddComponent<Image>();
+                ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
+                btnBg.color = UIAccentTint;
 
-            Button btn = btnObj.AddComponent<Button>();
-            btn.targetGraphic = btnBg;
+                GameObject btnIconObj = new GameObject("Icon");
+                btnIconObj.transform.SetParent(btnObj.transform, false);
+
+                RectTransform btnIconRect = btnIconObj.AddComponent<RectTransform>();
+                btnIconRect.anchorMin = new Vector2(0.5f, 0.5f);
+                btnIconRect.anchorMax = new Vector2(0.5f, 0.5f);
+                btnIconRect.pivot = new Vector2(0.5f, 0.5f);
+                btnIconRect.anchoredPosition = Vector2.zero;
+                btnIconRect.sizeDelta = new Vector2(shuffleIconSize, shuffleIconSize);
+
+                Image btnIconImg = btnIconObj.AddComponent<Image>();
+                btnIconImg.sprite = IconSprite("Cycle");
+                btnIconImg.type = Image.Type.Simple;
+                btnIconImg.preserveAspect = true;
+            }
+
+            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
+            if (btn.targetGraphic == null) btn.targetGraphic = btnObj.GetComponent<Image>();
+            btn.onClick.RemoveAllListeners();
             btn.onClick.AddListener(() =>
             {
                 PhysicsObjectSpawner spawner = Object.FindFirstObjectByType<PhysicsObjectSpawner>();
-                if (spawner != null) spawner.GatherAndReshuffleRemaining();
+                if (spawner != null)
+                {
+                    spawner.GatherAndReshuffleRemaining();
+                }
+                else
+                {
+                    Debug.LogWarning("⚠️ PhysicsObjectSpawner not found in scene for Shuffle action!");
+                }
             });
-
-            GameObject btnIconObj = new GameObject("Icon");
-            btnIconObj.transform.SetParent(btnObj.transform, false);
-
-            RectTransform btnIconRect = btnIconObj.AddComponent<RectTransform>();
-            btnIconRect.anchorMin = new Vector2(0.5f, 0.5f);
-            btnIconRect.anchorMax = new Vector2(0.5f, 0.5f);
-            btnIconRect.pivot = new Vector2(0.5f, 0.5f);
-            btnIconRect.anchoredPosition = Vector2.zero;
-            btnIconRect.sizeDelta = new Vector2(shuffleIconSize, shuffleIconSize);
-
-            Image btnIconImg = btnIconObj.AddComponent<Image>();
-            btnIconImg.sprite = IconSprite("Cycle");
-            btnIconImg.type = Image.Type.Simple;
-            btnIconImg.preserveAspect = true;
-            btnIconImg.color = Color.white;
         }
 
         public void RefreshTargetGoalsUI()
@@ -758,16 +894,80 @@ namespace MechaFind3D.PhysicsInteraction
 
             foreach (Transform child in topGoalContainer)
             {
-                Destroy(child.gameObject);
+                SafeDestroy(child.gameObject);
             }
 
             List<MatchGoal> goals = MatchGoalManager.Instance.levelGoals;
+
+            // Separate Mecha goals from normal item goals
+            MatchGoal mechaGoal = null;
+            if (goals != null)
+            {
+                foreach (MatchGoal g in goals)
+                {
+                    if (g.colorName.Equals("Mecha", System.StringComparison.OrdinalIgnoreCase) ||
+                        g.colorName.Contains("Mecha") || g.colorName.Contains("meccha"))
+                    {
+                        mechaGoal = g;
+                        break;
+                    }
+                }
+            }
+
+            // Update dedicated Mecha Badge under the timer on the left UI panel
+            GameObject mBadgeObj = GameObject.Find("Mecha_Goal_Badge");
+            GameObject mTextObj = GameObject.Find("Mecha_Goal_Text");
+            if (mBadgeObj == null && topGoalContainer != null && topGoalContainer.parent != null)
+            {
+                Transform mb = topGoalContainer.parent.Find("Mecha_Goal_Badge");
+                if (mb != null) mBadgeObj = mb.gameObject;
+                Transform mt = topGoalContainer.parent.Find("Mecha_Goal_Text");
+                if (mt != null) mTextObj = mt.gameObject;
+            }
+
+            if (mechaGoal != null)
+            {
+                if (mBadgeObj != null) mBadgeObj.SetActive(true);
+                if (mTextObj != null)
+                {
+                    mTextObj.SetActive(true);
+                    Text txt = mTextObj.GetComponent<Text>();
+                    if (txt != null)
+                    {
+                        if (mechaGoal.IsCompleted)
+                        {
+                            txt.text = "MECHA ✓";
+                            txt.color = new Color(0.45f, 1f, 0.55f);
+                        }
+                        else
+                        {
+                            txt.text = $"MECHA x{mechaGoal.Remaining}";
+                            txt.color = new Color(0.4f, 0.95f, 1f);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // In Editor Mode (Tool View / Scene Preview) keep visible so developer can see & inspect it!
+                bool isEditorPreview = !Application.isPlaying;
+                if (mBadgeObj != null) mBadgeObj.SetActive(isEditorPreview);
+                if (mTextObj != null) mTextObj.SetActive(isEditorPreview);
+            }
+
             if (goals == null || goals.Count == 0) return;
 
             for (int i = 0; i < goals.Count; i++)
             {
                 MatchGoal goal = goals[i];
-                if (goal.IsCompleted) continue; // SKIP COMPLETED GOALS! They are destroyed when shipped.
+                if (goal.IsCompleted) continue; // SKIP COMPLETED GOALS!
+
+                // SKIP MECHA GOAL from topGoalContainer — it has its own dedicated spot under the timer!
+                if (goal.colorName.Equals("Mecha", System.StringComparison.OrdinalIgnoreCase) ||
+                    goal.colorName.Contains("Mecha") || goal.colorName.Contains("meccha"))
+                {
+                    continue;
+                }
 
                 GameObject cardObj = new GameObject($"GoalCard_{goal.colorName}_{goal.shapeType}");
                 cardObj.transform.SetParent(topGoalContainer, false);
@@ -792,28 +992,78 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (goal.displayPrefab != null)
                 {
-                    GameObject modelObj = Instantiate(goal.displayPrefab, iconObj.transform);
+                    GameObject modelWrapper = new GameObject("3D_Icon_Wrapper");
+                    modelWrapper.transform.SetParent(iconObj.transform, false);
+                    modelWrapper.transform.localPosition = goalCard3DModelLocalPosition;
+                    modelWrapper.transform.localRotation = Quaternion.Euler(goalCard3DModelTiltX, 0f, 0f);
+                    modelWrapper.transform.localScale = Vector3.one;
+
+                    GameObject modelObj = Instantiate(goal.displayPrefab, modelWrapper.transform);
                     modelObj.name = "3D_Icon_Model";
-                    
-                    // Strip physics components
-                    foreach (var c in modelObj.GetComponentsInChildren<Collider>()) Destroy(c);
-                    foreach (var c in modelObj.GetComponentsInChildren<Rigidbody>()) Destroy(c);
-                    foreach (var c in modelObj.GetComponentsInChildren<MonoBehaviour>()) Destroy(c);
-                    
-                    // Add rotator
-                    modelObj.AddComponent<MechaFind3D.UI.UIRotator>();
-                    
-                    // Fix layer
+                    modelObj.transform.localPosition = Vector3.zero;
+                    modelObj.transform.localRotation = Quaternion.identity;
+                    modelObj.transform.localScale = Vector3.one;
+
+                    // Strip physics components and scripts from model
+                    foreach (var c in modelObj.GetComponentsInChildren<Collider>(true)) SafeDestroy(c);
+                    foreach (var c in modelObj.GetComponentsInChildren<Rigidbody>(true)) SafeDestroy(c);
+                    foreach (var c in modelObj.GetComponentsInChildren<MonoBehaviour>(true)) SafeDestroy(c);
+
+                    // Fix layer for UI camera
                     int uiLayer = LayerMask.NameToLayer("UI");
-                    Transform[] allChildren = modelObj.GetComponentsInChildren<Transform>(true);
+                    Transform[] allChildren = modelWrapper.GetComponentsInChildren<Transform>(true);
                     foreach (Transform t in allChildren)
                     {
                         t.gameObject.layer = uiLayer;
                     }
-                    
-                    modelObj.transform.localPosition = goalCard3DModelLocalPosition;
-                    modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
-                    modelObj.transform.localRotation = Quaternion.Euler(goalCard3DModelTiltX, 0f, 0f);
+
+                    // Calculate combined bounding box in modelWrapper space to normalize scale & visual center
+                    Renderer[] renderers = modelObj.GetComponentsInChildren<Renderer>(true);
+                    if (renderers != null && renderers.Length > 0)
+                    {
+                        Bounds combinedBounds = new Bounds();
+                        bool hasBounds = false;
+                        foreach (Renderer r in renderers)
+                        {
+                            if (r == null || !r.enabled) continue;
+                            if (!hasBounds)
+                            {
+                                combinedBounds = r.bounds;
+                                hasBounds = true;
+                            }
+                            else
+                            {
+                                combinedBounds.Encapsulate(r.bounds);
+                            }
+                        }
+
+                        if (hasBounds)
+                        {
+                            Vector3 localCenterOffset = modelWrapper.transform.InverseTransformPoint(combinedBounds.center);
+                            Vector3 worldSize = combinedBounds.size;
+                            float maxWorldDim = Mathf.Max(worldSize.x, worldSize.y, worldSize.z);
+
+                            float worldUnitInUIPixels = modelWrapper.transform.lossyScale.x;
+                            float rawMeshSizeInUIPixels = (worldUnitInUIPixels > 0.00001f) ? (maxWorldDim / worldUnitInUIPixels) : maxWorldDim;
+
+                            float effectiveTargetSize = (goalCard3DModelTargetSize > 100f || goalCard3DModelTargetSize <= 0f) ? 85f : goalCard3DModelTargetSize;
+                            float scaleFactor = (rawMeshSizeInUIPixels > 0.0001f) ? (effectiveTargetSize / rawMeshSizeInUIPixels) : 1f;
+
+                            modelObj.transform.localScale = Vector3.one * scaleFactor;
+                            modelObj.transform.localPosition = -localCenterOffset * scaleFactor;
+                        }
+                        else
+                        {
+                            modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
+                        }
+                    }
+                    else
+                    {
+                        modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
+                    }
+
+                    // Add smooth rotator to wrapper
+                    modelWrapper.AddComponent<MechaFind3D.UI.UIRotator>();
                 }
                 else
                 {
@@ -868,10 +1118,109 @@ namespace MechaFind3D.PhysicsInteraction
         
         private void SetGoalUIVisualTick(string colorName)
         {
+            if (colorName.Equals("Mecha", System.StringComparison.OrdinalIgnoreCase) ||
+                colorName.Contains("Mecha") || colorName.Contains("meccha"))
+            {
+                GameObject mBadgeObj = GameObject.Find("Mecha_Goal_Badge");
+                GameObject mTextObj = GameObject.Find("Mecha_Goal_Text");
+                if (mBadgeObj == null && topGoalContainer != null && topGoalContainer.parent != null)
+                {
+                    Transform mb = topGoalContainer.parent.Find("Mecha_Goal_Badge");
+                    if (mb != null) mBadgeObj = mb.gameObject;
+                    Transform mt = topGoalContainer.parent.Find("Mecha_Goal_Text");
+                    if (mt != null) mTextObj = mt.gameObject;
+                }
+
+                MatchGoal mechaGoal = null;
+                if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null)
+                {
+                    foreach (var g in MatchGoalManager.Instance.levelGoals)
+                    {
+                        if (g.colorName.Equals("Mecha", System.StringComparison.OrdinalIgnoreCase) ||
+                            g.colorName.Contains("Mecha") || g.colorName.Contains("meccha"))
+                        {
+                            mechaGoal = g;
+                            break;
+                        }
+                    }
+                }
+
+                if (mTextObj != null)
+                {
+                    Text txt = mTextObj.GetComponent<Text>();
+                    if (txt != null)
+                    {
+                        if (mechaGoal != null)
+                        {
+                            if (mechaGoal.IsCompleted)
+                            {
+                                txt.text = "MECHA ✓";
+                                txt.color = new Color(0.45f, 1f, 0.55f);
+                            }
+                            else
+                            {
+                                txt.text = $"MECHA x{mechaGoal.Remaining}";
+                            }
+                        }
+                        txt.DOColor(new Color(1f, 0.92f, 0.25f), 0.12f)
+                            .OnComplete(() => txt.DOColor(mechaGoal != null && mechaGoal.IsCompleted ? new Color(0.45f, 1f, 0.55f) : new Color(0.4f, 0.95f, 1f), 0.3f));
+                        mTextObj.transform.DOKill();
+                        mTextObj.transform.DOPunchScale(Vector3.one * goalTickTextPunchStrength, goalTickTextPunchDuration, 7, 0.9f);
+                    }
+                }
+
+                if (mBadgeObj != null)
+                {
+                    Image cardBg = mBadgeObj.GetComponent<Image>();
+                    if (cardBg != null)
+                    {
+                        Color orig = cardBg.color;
+                        cardBg.DOColor(new Color(0.45f, 1f, 0.55f, orig.a), 0.12f)
+                            .SetEase(Ease.OutQuad)
+                            .OnComplete(() => cardBg.DOColor(orig, 0.25f).SetEase(Ease.InQuad));
+                    }
+                    mBadgeObj.transform.DOKill();
+                    mBadgeObj.transform.DOPunchScale(Vector3.one * goalTickCardPunchStrength, goalTickCardPunchDuration, 8, 0.8f);
+                }
+                return;
+            }
+
             if (topGoalContainer == null) return;
+
+            MatchGoal goal = null;
+            if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null)
+            {
+                foreach (var g in MatchGoalManager.Instance.levelGoals)
+                {
+                    if (g.colorName.Equals(colorName, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        goal = g;
+                        break;
+                    }
+                }
+            }
+
             foreach (Transform child in topGoalContainer)
             {
                 if (!child.name.Contains($"GoalCard_{colorName}_")) continue;
+
+                // Bounce + flash + update the count text immediately
+                Transform textObj = child.Find("Text");
+                if (textObj != null)
+                {
+                    Text txt = textObj.GetComponent<Text>();
+                    if (txt != null)
+                    {
+                        if (goal != null)
+                        {
+                            txt.text = $"x{goal.Remaining}";
+                        }
+                        txt.DOColor(new Color(1f, 0.92f, 0.25f), 0.12f)
+                            .OnComplete(() => txt.DOColor(Color.white, 0.3f));
+                        textObj.DOKill();
+                        textObj.DOPunchScale(Vector3.one * goalTickTextPunchStrength, goalTickTextPunchDuration, 7, 0.9f);
+                    }
+                }
 
                 // Flash the card green, then restore
                 Image cardBg = child.GetComponent<Image>();
@@ -887,17 +1236,9 @@ namespace MechaFind3D.PhysicsInteraction
                 child.DOKill();
                 child.DOPunchScale(Vector3.one * goalTickCardPunchStrength, goalTickCardPunchDuration, 8, 0.8f);
 
-                // Bounce + flash the count text
-                Transform textObj = child.Find("Text");
-                if (textObj != null)
+                if (goal != null && goal.IsCompleted)
                 {
-                    Text txt = textObj.GetComponent<Text>();
-                    if (txt != null)
-                    {
-                        txt.DOColor(new Color(1f, 0.92f, 0.25f), 0.12f)
-                            .OnComplete(() => txt.DOColor(Color.white, 0.3f));
-                        textObj.DOPunchScale(Vector3.one * goalTickTextPunchStrength, goalTickTextPunchDuration, 7, 0.9f);
-                    }
+                    RemoveGoalUI(colorName);
                 }
                 break;
             }
@@ -1030,13 +1371,20 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>
-        /// Called when the mecha finishes its vanish animation. It used to fake a fill in the mecha
-        /// slot; that slot is gone, and catching the mecha is not one of the level's goals, so
-        /// there is nothing to score here - only the HUD needs a nudge.
+        /// Called when the mecha is found or vanishes. Registers Mecha goal completion and updates the Mecha badge checkmark (tik).
         /// </summary>
         public void OnMechaVanished()
         {
-            RefreshTargetGoalsUI();
+            OnMechaFoundOrVanished();
+        }
+
+        public void OnMechaFoundOrVanished()
+        {
+            if (MatchGoalManager.Instance != null)
+            {
+                MatchGoalManager.Instance.RegisterMatchedItem(ObjectShapeType.Cube, "Mecha", 1);
+            }
+            SetGoalUIVisualTick("Mecha");
         }
 
         public bool TryCollectItemToDock(FindTargetObject item)
@@ -1122,7 +1470,7 @@ namespace MechaFind3D.PhysicsInteraction
                     if (IsSlotBusy(i)) continue;
 
                     int req = slotRequiredCount[i] > 0 ? slotRequiredCount[i] : 3;
-                    if (slotAssignedItemName[i] == itemType && slotBoxContents[i].Count < req)
+                    if (slotAssignedItemName[i] == itemType && GetSlotBoxContent(i).Count < req)
                     {
                         targetSlot = i;
                         break;
@@ -1239,10 +1587,16 @@ namespace MechaFind3D.PhysicsInteraction
                     objectColor = mechaTarget.objectColor
                 };
 
-                slotBoxContents[targetSlot].Add(data);
+                GetSlotBoxContent(targetSlot).Add(data);
+
+                if (MatchGoalManager.Instance != null)
+                {
+                    MatchGoalManager.Instance.RegisterMatchedItem(mechaTarget.shapeType, "Mecha", 1);
+                    SetGoalUIVisualTick("Mecha");
+                }
 
                 int reqCount = slotRequiredCount[targetSlot] > 0 ? slotRequiredCount[targetSlot] : 1;
-                bool willShip = slotBoxContents[targetSlot].Count >= reqCount;
+                bool willShip = GetSlotBoxContent(targetSlot).Count >= reqCount;
                 if (willShip)
                 {
                     slotProcessing[targetSlot] = true;
@@ -1317,10 +1671,16 @@ namespace MechaFind3D.PhysicsInteraction
                     objectColor = item.objectColor
                 };
 
-                slotBoxContents[targetSlot].Add(data);
+                GetSlotBoxContent(targetSlot).Add(data);
+
+                if (MatchGoalManager.Instance != null)
+                {
+                    MatchGoalManager.Instance.RegisterMatchedItem(item.shapeType, item.colorName, 1);
+                    SetGoalUIVisualTick(item.colorName);
+                }
 
                 int reqCount = slotRequiredCount[targetSlot] > 0 ? slotRequiredCount[targetSlot] : 3;
-                bool willShip = slotBoxContents[targetSlot].Count >= reqCount;
+                bool willShip = GetSlotBoxContent(targetSlot).Count >= reqCount;
                 if (willShip)
                 {
                     slotProcessing[targetSlot] = true;
@@ -1604,7 +1964,7 @@ namespace MechaFind3D.PhysicsInteraction
                 // writing to a transform that is about to be destroyed.
                 tweeningDockObjects.Remove(box);
                 box.transform.DOKill();
-                Destroy(box);
+                SafeDestroy(box);
             }
 
             completedBoxObjects.Clear();
@@ -1615,7 +1975,7 @@ namespace MechaFind3D.PhysicsInteraction
         {
             for (int i = 0; i < MAX_SLOTS; i++)
             {
-                if (slotBox[i] != null) Destroy(slotBox[i]);
+                if (slotBox[i] != null) SafeDestroy(slotBox[i]);
                 slotBox[i] = null;
             }
 
@@ -1637,21 +1997,39 @@ namespace MechaFind3D.PhysicsInteraction
         private void Ensure3DCardboardBoxes()
         {
             LoadCardboardBoxPrefabsIfNull();
-            CleanupAllOldCardboardBoxes();
 
             if (cardboardBoxOpenedPrefab != null)
             {
                 for (int i = 0; i < MAX_SLOTS; i++)
                 {
-                    GameObject box = CreatePackagingBox(i);
-                    if (box == null) continue;
+                    if (slotBox[i] == null)
+                    {
+                        GameObject existingBox = GameObject.Find($"Slot3DBox_Closed_{i}");
+                        if (existingBox != null)
+                        {
+                            slotBox[i] = existingBox;
+                        }
+                        else
+                        {
+                            GameObject box = CreatePackagingBox(i);
+                            if (box != null)
+                            {
+                                slotBox[i] = box;
+                            }
+                        }
+                    }
 
-                    float fitScale = ComputeFitScaleForSlot(i, box) * 1.25f;
-                    box.transform.localScale = Vector3.one * fitScale;
-                    box.transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
-                    box.transform.position = GetSlotWorldPosition(i);
-
-                    slotBox[i] = box;
+                    if (slotBox[i] != null)
+                    {
+                        float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * 1.25f;
+                        slotBox[i].transform.localScale = Vector3.one * fitScale;
+                        slotBox[i].transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
+                        Vector3 slotPos = GetSlotWorldPosition(i);
+                        if (slotPos != Vector3.zero)
+                        {
+                            slotBox[i].transform.position = slotPos;
+                        }
+                    }
                 }
             }
         }
@@ -1950,44 +2328,27 @@ namespace MechaFind3D.PhysicsInteraction
             tweeningDockObjects.Add(obj3D);
             obj3D.transform.DOKill();
 
-            Vector3 initScale = obj3D.transform.localScale;
-
             Sequence seq = DOTween.Sequence();
 
-            // Phase 1: Lift-off Pop / Anticipation (snappy 0.10s pulse scale up +25%)
-            seq.Append(obj3D.transform.DOScale(initScale * 1.25f, 0.10f).SetEase(Ease.OutBack));
-
-            // Phase 2: Parabolic Arc Flight into box (0.38s smooth jump + spin)
+            // Parabolic Arc Flight into box
             seq.Append(obj3D.transform.DOJump(boxItemPos, GetDockJumpPower(1.15f), 1, 0.38f).SetEase(Ease.OutCubic));
-
-            // Shrink finishes well before the flight does. Both tweens used to run the full 0.38s, but the
-            // position ease (OutCubic) outruns the scale ease (OutQuad) - a third of the way through, the
-            // item is already 66% of the way to the box while only 51% shrunk. Arriving still oversized is
-            // what let it poke through the box floor and flash underneath for a frame.
-            seq.Join(obj3D.transform.DOScale(targetScale, 0.24f).SetEase(Ease.OutQuad));
+            seq.Join(obj3D.transform.DOScale(targetScale, 0.38f).SetEase(Ease.OutQuad));
             seq.Join(obj3D.transform.DORotateQuaternion(targetRot, 0.38f).SetEase(Ease.OutQuad));
 
-            // Phase 3: Impact Bounce & Box Squash & Stretch Reaction!
             seq.OnComplete(() =>
             {
                 tweeningDockObjects.Remove(obj3D);
 
                 if (obj3D != null)
                 {
-                    // Landing reaction is a SQUASH, not a uniform punch. A uniform punch grew the item on
-                    // every axis, including downward, which pushed it back through the box floor right
-                    // after it had landed - the same flash the shrink fix above is meant to remove.
-                    obj3D.transform.DOPunchScale(
-                        new Vector3(0.20f, -0.24f, 0.20f) * targetScaleVal, 0.22f, 8, 1f);
+                    obj3D.transform.DOPunchScale(Vector3.one * 0.15f, 0.20f, 5, 0.5f);
                 }
 
-                // Heavy impact squash-and-stretch punch on the box!
                 if (slotIndex >= 0 && slotIndex < MAX_SLOTS && slotBox[slotIndex] != null)
                 {
-                    PunchBox(slotBox[slotIndex], new Vector3(0.24f, -0.16f, 0.24f), 0.35f, 8, 0.8f);
+                    PunchBox(slotBox[slotIndex], new Vector3(0.20f, -0.12f, 0.20f), 0.30f, 6, 0.7f);
                 }
 
-                // Badge text punch pulse
                 if (slotIndex >= 0 && slotIndex < slotBadgeTexts.Count && slotBadgeTexts[slotIndex] != null)
                 {
                     slotBadgeTexts[slotIndex].transform.DOKill();
@@ -2009,10 +2370,17 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (slotBox[i] != null && !tweeningDockObjects.Contains(slotBox[i]))
                 {
-                    slotBox[i].transform.position = Vector3.Lerp(slotBox[i].transform.position, slotWorldPos, Time.deltaTime * 22f);
+                    if ((slotBox[i].transform.position - slotWorldPos).sqrMagnitude > 0.00001f)
+                    {
+                        slotBox[i].transform.position = Vector3.Lerp(slotBox[i].transform.position, slotWorldPos, Time.deltaTime * 22f);
+                    }
                     float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * 1.25f;
                     slotBox[i].transform.localScale = Vector3.one * fitScale;
-                    slotBox[i].transform.rotation = Quaternion.Slerp(slotBox[i].transform.rotation, BoxDisplayRotation(BoxSlotTiltEuler), Time.deltaTime * 15f);
+                    Quaternion targetRot = BoxDisplayRotation(BoxSlotTiltEuler);
+                    if (Quaternion.Angle(slotBox[i].transform.rotation, targetRot) > 0.05f)
+                    {
+                        slotBox[i].transform.rotation = Quaternion.Slerp(slotBox[i].transform.rotation, targetRot, Time.deltaTime * 15f);
+                    }
                 }
 
                 List<DockItemData> itemsInBox = slotBoxContents[i];
@@ -2020,6 +2388,7 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     int reqCount = slotRequiredCount[i] > 0 ? slotRequiredCount[i] : 3;
                     float scaleRatio = GetItemFitScaleRatioInsideBox(reqCount);
+                    Quaternion itemTargetRot = GetDockItemSidewaysRotation();
 
                     for (int k = 0; k < itemsInBox.Count; k++)
                     {
@@ -2027,10 +2396,16 @@ namespace MechaFind3D.PhysicsInteraction
                         if (data != null && data.targetObject != null && !tweeningDockObjects.Contains(data.targetObject.gameObject))
                         {
                             Vector3 boxItemPos = GetItemPositionInsideBox(k, reqCount, slotWorldPos);
-                            data.targetObject.transform.position = Vector3.Lerp(data.targetObject.transform.position, boxItemPos, Time.deltaTime * 22f);
+                            if ((data.targetObject.transform.position - boxItemPos).sqrMagnitude > 0.00001f)
+                            {
+                                data.targetObject.transform.position = Vector3.Lerp(data.targetObject.transform.position, boxItemPos, Time.deltaTime * 22f);
+                            }
                             float fitScale = ComputeFitScaleForSlot(i, data.targetObject.gameObject) * scaleRatio;
                             data.targetObject.transform.localScale = Vector3.one * fitScale;
-                            data.targetObject.transform.rotation = Quaternion.Slerp(data.targetObject.transform.rotation, GetDockItemSidewaysRotation(), Time.deltaTime * 15f);
+                            if (Quaternion.Angle(data.targetObject.transform.rotation, itemTargetRot) > 0.05f)
+                            {
+                                data.targetObject.transform.rotation = Quaternion.Slerp(data.targetObject.transform.rotation, itemTargetRot, Time.deltaTime * 15f);
+                            }
                         }
                     }
                 }
@@ -2395,6 +2770,9 @@ namespace MechaFind3D.PhysicsInteraction
                     {
                         if (box == null) return;
 
+                        // Clear slot reference so dock slot is empty while closed box flies to conveyor belt
+                        if (slotBox[slotIndex] == box) slotBox[slotIndex] = null;
+
                         Vector3 target = GetRedMarkedCompletedBoxWorldPos(shipIndex);
                         if (mainCamera != null)
                         {
@@ -2409,7 +2787,8 @@ namespace MechaFind3D.PhysicsInteraction
                     boxSeq.AppendInterval(shipFlight);
                 }
 
-                boxSeq.OnComplete(() =>
+                // Closed box has touched down on conveyor belt - let it ride along the conveyor belt
+                boxSeq.AppendCallback(() =>
                 {
                     if (box != null)
                     {
@@ -2417,8 +2796,14 @@ namespace MechaFind3D.PhysicsInteraction
                         PunchBox(box, new Vector3(0.14f, -0.10f, 0.14f), 0.32f, 10, 1f);
                         completedBoxObjects.Add(box);
                     }
+                });
 
-                    // Spawn a fresh open box for this slot so a new item can start filling it
+                // Let closed box ride on walking conveyor belt for 0.40s before spawning new box
+                boxSeq.AppendInterval(0.40f);
+
+                boxSeq.OnComplete(() =>
+                {
+                    // Spawn fresh open box AFTER closed box is riding on the conveyor belt
                     GameObject newBox = CreatePackagingBox(slotIndex);
                     if (newBox != null)
                     {
@@ -2429,7 +2814,7 @@ namespace MechaFind3D.PhysicsInteraction
 
                         float openBaseScale = ComputeFitScaleForSlot(slotIndex, newBox) * 1.25f;
                         tweeningDockObjects.Add(newBox);
-                        newBox.transform.DOScale(openBaseScale, 0.55f).SetEase(Ease.OutBack).OnComplete(() =>
+                        newBox.transform.DOScale(openBaseScale, 0.50f).SetEase(Ease.OutBack).OnComplete(() =>
                         {
                             tweeningDockObjects.Remove(newBox);
                         });
@@ -2446,7 +2831,6 @@ namespace MechaFind3D.PhysicsInteraction
 
                     if (MatchGoalManager.Instance != null && filledItems.Count > 0)
                     {
-                        MatchGoalManager.Instance.RegisterMatchedItem(filledItems[0].shapeType, filledItems[0].colorName, filledItems.Count);
                         RefreshTargetGoalsUI();
                     }
 
@@ -2482,7 +2866,6 @@ namespace MechaFind3D.PhysicsInteraction
 
                     if (MatchGoalManager.Instance != null && filledItems.Count > 0)
                     {
-                        MatchGoalManager.Instance.RegisterMatchedItem(filledItems[0].shapeType, filledItems[0].colorName, filledItems.Count);
                         RefreshTargetGoalsUI();
                     }
 
@@ -2499,20 +2882,9 @@ namespace MechaFind3D.PhysicsInteraction
         {
             for (int i = 0; i < MAX_SLOTS; i++)
             {
-                if (i < slotRects.Count)
+                if (i < slotBadgeTexts.Count && slotBadgeTexts[i] != null)
                 {
-                    int count = slotBoxContents[i].Count;
-                    string assignedName = slotAssignedItemName[i];
-                    int reqCount = slotRequiredCount[i] > 0 ? slotRequiredCount[i] : 3;
-
-                    if (!string.IsNullOrEmpty(assignedName))
-                    {
-                        slotBadgeTexts[i].text = $"{count}/{reqCount}";
-                    }
-                    else
-                    {
-                        slotBadgeTexts[i].text = $"KUTU {i + 1}";
-                    }
+                    slotBadgeTexts[i].text = "";
                 }
             }
         }
@@ -2531,14 +2903,15 @@ namespace MechaFind3D.PhysicsInteraction
 
             for (int i = 0; i < MAX_SLOTS; i++)
             {
-                for (int k = slotBoxContents[i].Count - 1; k >= 0; k--)
+                List<DockItemData> content = GetSlotBoxContent(i);
+                for (int k = content.Count - 1; k >= 0; k--)
                 {
-                    if (slotBoxContents[i][k].targetObject != null)
+                    if (content[k] != null && content[k].targetObject != null)
                     {
-                        Destroy(slotBoxContents[i][k].targetObject.gameObject);
+                        SafeDestroy(content[k].targetObject.gameObject);
                     }
                 }
-                slotBoxContents[i].Clear();
+                content.Clear();
                 slotAssignedItemName[i] = null;
                 slotRequiredCount[i] = 0;
                 slotProcessing[i] = false;

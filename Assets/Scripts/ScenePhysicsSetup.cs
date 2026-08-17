@@ -71,9 +71,11 @@ namespace MechaFind3D.PhysicsInteraction
         [ContextMenu("Build Scene Environment Now")]
         public void SetupSceneEnvironment()
         {
+            Application.targetFrameRate = 60;
+            QualitySettings.vSyncCount = 0;
             Physics.gravity = new Vector3(0f, -15.0f, 0f);
-            Physics.defaultSolverIterations = 30;
-            Physics.defaultSolverVelocityIterations = 15;
+            Physics.defaultSolverIterations = 8;
+            Physics.defaultSolverVelocityIterations = 2;
             Physics.defaultContactOffset = 0.008f;
 
             SetupCamera();

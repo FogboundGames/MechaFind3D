@@ -66,9 +66,14 @@ namespace MechaFind3D.PhysicsInteraction
         private void Awake()
         {
             Instance = this;
+
+            // Frame Rate & Mobile VSync Optimization
+            Application.targetFrameRate = 60;
+            QualitySettings.vSyncCount = 0;
+
             Physics.gravity = new Vector3(0f, -15.0f, 0f);
-            Physics.defaultSolverIterations = 30;
-            Physics.defaultSolverVelocityIterations = 15;
+            Physics.defaultSolverIterations = 8;
+            Physics.defaultSolverVelocityIterations = 2;
             Physics.defaultContactOffset = 0.008f;
             InitializeNamedColors();
             InitializePhysicsMaterial();
@@ -336,9 +341,9 @@ namespace MechaFind3D.PhysicsInteraction
                 rb.angularDamping = angularDrag;
                 rb.sleepThreshold = 0.05f;
                 rb.interpolation = RigidbodyInterpolation.Interpolate;
-                rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-                rb.solverIterations = 30;
-                rb.solverVelocityIterations = 15;
+                rb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                rb.solverIterations = 8;
+                rb.solverVelocityIterations = 2;
                 rb.WakeUp();
 
                 // Attach active contact pusher so colliding objects immediately push each other away
@@ -452,19 +457,20 @@ namespace MechaFind3D.PhysicsInteraction
         /// walls or corners get pulled back into easy reach and rejumbled.
         public void GatherAndReshuffleRemaining()
         {
-            foreach (GameObject obj in spawnedObjects)
+            Debug.Log("🎲 Reshuffling remaining pile items back to center...");
+
+            FindTargetObject[] allTargets = Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None);
+            foreach (FindTargetObject targetComp in allTargets)
             {
-                if (obj == null) continue;
+                if (targetComp == null || targetComp.isDocked) continue;
 
-                FindTargetObject targetComp = obj.GetComponent<FindTargetObject>();
-                if (targetComp != null && targetComp.isDocked) continue;
-
+                GameObject obj = targetComp.gameObject;
                 Rigidbody rb = obj.GetComponent<Rigidbody>();
                 if (rb == null) continue;
 
-                float posX = Random.Range(-spawnAreaSize.x * 0.3f, spawnAreaSize.x * 0.3f);
-                float posZ = Random.Range(-spawnAreaSize.y * 0.3f, spawnAreaSize.y * 0.3f);
-                float posY = Random.Range(spawnHeightMin, spawnHeightMax * 0.6f);
+                float posX = Random.Range(-spawnAreaSize.x * 0.30f, spawnAreaSize.x * 0.30f);
+                float posZ = Random.Range(-spawnAreaSize.y * 0.30f, spawnAreaSize.y * 0.30f);
+                float posY = Random.Range(spawnHeightMin + 0.10f, spawnHeightMax + 0.35f);
                 Vector3 targetPos = transform.position + new Vector3(posX, posY, posZ);
                 Quaternion targetRot = Random.rotation;
 
@@ -475,11 +481,15 @@ namespace MechaFind3D.PhysicsInteraction
                 obj.transform.DOKill();
 
                 Sequence seq = DOTween.Sequence();
-                seq.Join(obj.transform.DOMove(targetPos, 0.5f).SetEase(Ease.InOutSine));
-                seq.Join(obj.transform.DORotateQuaternion(targetRot, 0.5f).SetEase(Ease.InOutSine));
+                seq.Join(obj.transform.DOMove(targetPos, 0.45f).SetEase(Ease.OutCubic));
+                seq.Join(obj.transform.DORotateQuaternion(targetRot, 0.45f).SetEase(Ease.OutCubic));
                 seq.OnComplete(() =>
                 {
-                    if (rb != null) rb.isKinematic = false;
+                    if (rb != null)
+                    {
+                        rb.isKinematic = false;
+                        rb.WakeUp();
+                    }
                 });
             }
         }
