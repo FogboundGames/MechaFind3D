@@ -130,9 +130,12 @@ namespace MechaFind3D.PhysicsInteraction
 #pragma warning disable CS0414
         [Tooltip("If true, spawns initial completed boxes on the conveyor belt at start so it moves continuously right away.")]
         [SerializeField] private bool spawnInitialConveyorBoxes = false;
-        [Tooltip("Show only every Nth arrow on a pallet. 4 shows 1 arrow per tile face.")]
+        [Tooltip("Colour of the UI badges, goal cards and the shuffle button - the elements that used to be the kit's violet. Set to the colour you actually want to see; the sprite tint is worked out from it.")]
+        [SerializeField] private Color uiAccentColor = new Color(0f, 26f / 255f, 112f / 255f, 1f); // #001A70
+
+        [Tooltip("Show only every Nth arrow on a pallet. 1 is the authored density of ConveyorTile.fbx (10 groups per tile); 4 was for the old, far denser Conveyor.fbx.")]
         [Min(1)]
-        [SerializeField] private int conveyorArrowStride = 4;
+        [SerializeField] private int conveyorArrowStride = 1;
         [Tooltip("Size multiplier on the arrows. 1.0 keeps the arrow proportional.")]
         [Min(0.1f)]
         [SerializeField] private float conveyorArrowScale = 1.0f;
@@ -265,6 +268,27 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         private static Sprite ButtonSprite(string colorName) => LoadUISprite($"Buttons/Button {colorName}");
+
+        // The badges, goal cards and the shuffle button used to be the kit's violet ones, which clashed
+        // with the navy conveyor frame. The kit ships no navy button, so the BLUE sprite is tinted instead.
+        private const string UIAccentButton = "Buttons/Button Blue";
+        // Note the Misc/ subfolder - the blue square button lives there, unlike the violet one it replaces,
+        // and loading it from "Buttons/" silently returns null and leaves the shuffle button spriteless.
+        private const string UIAccentSquareButton = "Buttons/Misc/Small Square Button Blue";
+
+        /// <summary>Measured mid-tone of both blue button sprites, which is what the tint multiplies.</summary>
+        private static readonly Color UIAccentSpriteMidtone = new Color(0.18f, 0.612f, 1f);
+
+        /// <summary>
+        /// Image tint MULTIPLIES the sprite, so asking for #001A70 and assigning it straight would land
+        /// somewhere much darker. The wanted colour is divided by the sprite's own mid-tone instead, which
+        /// makes the button read as exactly this colour while keeping the sprite's bevel and shading.
+        /// </summary>
+        private Color UIAccentTint => new Color(
+            Mathf.Clamp01(uiAccentColor.r / UIAccentSpriteMidtone.r),
+            Mathf.Clamp01(uiAccentColor.g / UIAccentSpriteMidtone.g),
+            Mathf.Clamp01(uiAccentColor.b / UIAccentSpriteMidtone.b),
+            uiAccentColor.a);
         private static Sprite IconSprite(string iconName) => LoadUISprite($"Icons/{iconName}");
 
         private static void ApplySlicedSprite(Image img, Sprite sprite)
@@ -524,8 +548,8 @@ namespace MechaFind3D.PhysicsInteraction
             titleBadgeRect.anchorMax = new Vector2(titleAreaWidthRatio, 0.9f);
             titleBadgeRect.sizeDelta = Vector2.zero;
             Image titleBadge = titleBadgeObj.AddComponent<Image>();
-            ApplySlicedSprite(titleBadge, LoadUISprite("Buttons/Button Violet"));
-            titleBadge.color = Color.white;
+            ApplySlicedSprite(titleBadge, LoadUISprite(UIAccentButton));
+            titleBadge.color = UIAccentTint;
 
             GameObject titleTextObj = new GameObject("Level_Text");
             titleTextObj.transform.SetParent(headerObj.transform, false);
@@ -656,8 +680,8 @@ namespace MechaFind3D.PhysicsInteraction
             btnRect.sizeDelta = shuffleButtonSize;
 
             Image btnBg = btnObj.AddComponent<Image>();
-            ApplySlicedSprite(btnBg, LoadUISprite("Buttons/Small Square Button Violet"));
-            btnBg.color = Color.white;
+            ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
+            btnBg.color = UIAccentTint;
 
             Button btn = btnObj.AddComponent<Button>();
             btn.targetGraphic = btnBg;
@@ -709,8 +733,8 @@ namespace MechaFind3D.PhysicsInteraction
 
                 // Badge sized to the card — renders behind children.
                 Image cardBg = cardObj.AddComponent<Image>();
-                ApplySlicedSprite(cardBg, LoadUISprite("Buttons/Button Violet"));
-                cardBg.color = Color.white;
+                ApplySlicedSprite(cardBg, LoadUISprite(UIAccentButton));
+                cardBg.color = UIAccentTint;
 
                 GameObject iconObj = new GameObject("Icon");
                 iconObj.transform.SetParent(cardObj.transform, false);
@@ -2288,12 +2312,14 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // Phase 2: The box's own four lid flaps fold shut in place - the box never moves or scales,
-            // so it can't appear to sink into the ground; only the cardboard flaps rotate closed (0.65s).
+            // Phase 2: The box's own four lid flaps fold shut in place and the tape gun then runs over the
+            // seam - the box never moves or scales, so it can't appear to sink into the ground.
+            // The duration was 0.65s while the clip was flaps-only (70 frames); the taping re-export
+            // doubled it to 140 frames, which played the whole thing at twice the intended speed.
             if (box != null)
             {
                 tweeningDockObjects.Add(box);
-                AnimateBoxFlaps(boxSeq, box, true, 0.65f);
+                AnimateBoxFlaps(boxSeq, box, true, 1.1f);
             }
 
             // Phase 3: Rest a small replica of the packed item on the sealed lid

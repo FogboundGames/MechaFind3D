@@ -4,22 +4,24 @@ using UnityEngine;
 namespace MechaFind3D.PhysicsInteraction.EditorTools
 {
     /// <summary>
-    /// Publishes Assets/Conveyor.fbx into Resources as a ready-to-spawn 3D conveyor belt, replacing the
-    /// old flat UI conveyor (MatchFactory_Canvas/Conveyor_Belt_Panel and its Chevron_Arrows Text).
+    /// Publishes Assets/Prefabs/ConveyorTile.fbx into Resources as a ready-to-spawn 3D conveyor belt,
+    /// replacing the old flat UI conveyor (MatchFactory_Canvas/Conveyor_Belt_Panel and its Chevron_Arrows Text).
     ///
     /// The model needs no clip baking - it ships no animation at all - so this only assembles the prefab:
-    /// attaches <see cref="ConveyorBelt"/>, and hides BeltPath, whose mesh is a degenerate zero-thickness
-    /// guide strip that would otherwise render as a stray sliver.
+    /// attaches <see cref="ConveyorBelt"/>, and hides BeltPath if the model still carries one (the old
+    /// Conveyor.fbx had a degenerate zero-thickness guide strip that rendered as a stray sliver;
+    /// ConveyorTile.fbx no longer ships it).
     /// </summary>
     public static class ConveyorPrefabBaker
     {
         // Located by NAME rather than a fixed path - the models were moved from Assets/ to Assets/Prefabs/
-        // once already, which silently broke this tool.
-        private const string FbxName = "Conveyor";
+        // once already, which silently broke this tool. Exact name: the superseded Conveyor.fbx is still
+        // in the project, and a prefix match would happily pick it up instead.
+        private const string FbxName = "ConveyorTile";
         private const string OutputFolder = "Assets/Resources/Conveyor";
         private const string PrefabPath = OutputFolder + "/ConveyorBelt.prefab";
 
-        [MenuItem("MechaFind3D/Konveyör/Conveyor.fbx Prefab'ını Üret")]
+        [MenuItem("MechaFind3D/Konveyör/ConveyorTile.fbx Prefab'ını Üret")]
         public static void Bake()
         {
             string fbxPath = BoxCloseClipBaker.FindModelPath(FbxName);

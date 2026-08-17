@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: 204f2fce2245568459efc826a8bb2e8c
+guid: e9c10ad02c8e2c41e9cf29c15bef86a9
 ModelImporter:
   serializedVersion: 24200
   internalIDToNameTable: []
@@ -7,18 +7,18 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: TapeGun
-    second: {fileID: 2100000, guid: 697e8f4c25b448939d46adad591580ea, type: 2}
+      name: Conveyor_Arrows
+    second: {fileID: 2100000, guid: 4929ab7dff95b4702b83c4195efee7ef, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: BoxTape
-    second: {fileID: 2100000, guid: 5eabc77943bf7d787beed3b26f3c7ee8, type: 2}
+      name: Conveyor_Belt
+    second: {fileID: 2100000, guid: b2c4a7ed7e457335fabce7531c14253d, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
-      name: Cardboard
-    second: {fileID: 2100000, guid: 526709430d8a4f6acbd18b58591e0245, type: 2}
+      name: Conveyor_Frame
+    second: {fileID: 2100000, guid: cd17f60231b218534989f526f26e205a, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
@@ -62,7 +62,7 @@ ModelImporter:
     fileIdsGeneration: 2
     swapUVChannels: 0
     generateSecondaryUV: 0
-    useFileUnits: 0
+    useFileUnits: 1
     keepQuads: 0
     weldVertices: 1
     bakeAxisConversion: 0

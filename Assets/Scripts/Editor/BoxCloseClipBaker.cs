@@ -8,7 +8,9 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
     /// <summary>
     /// Publishes the packaging box out of Assets/Box.fbx into Resources, so runtime code can load it.
     ///
-    /// Box.fbx ships a single "BoxClose" take that folds all four lid flaps shut over ~70 frames.
+    /// Box.fbx ships one take per animated object (four lid flaps, the tape gun and the three tape
+    /// strips), all authored on one shared 1-140 frame timeline: the flaps fold shut over the first
+    /// ~70 frames, then the gun runs the tape over the seam. They are merged here into one clip.
     /// Two things still need doing at edit time:
     ///   1. Box.fbx lives outside Resources, so a prefab of it is saved into Resources.
     ///   2. The imported clip is a read-only sub-asset of the model and is not marked legacy, so a legacy
@@ -47,19 +49,14 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 .Where(c => !c.name.StartsWith("__preview__"))
                 .ToList();
 
-            AnimationClip source = clips.FirstOrDefault(c => c.name == SourceClipName)
-                                   ?? (clips.Count == 1 ? clips[0] : null);
-
-            if (source == null)
+            if (clips.Count == 0)
             {
-                string found = clips.Count == 0 ? "(hiç yok)" : string.Join(", ", clips.Select(c => c.name));
                 EditorUtility.DisplayDialog("Kutu Klibi",
-                    $"'{SourceClipName}' adında klip bulunamadı.\n\nFBX içindeki klipler: {found}\n\n" +
-                    "Import Animation açık mı, ve take adı BoxClose mı?", "Tamam");
+                    $"{FbxPath} içinde hiç animasyon klibi yok.\n\nImport Animation açık mı?", "Tamam");
                 return;
             }
 
-            AnimationClip baked = BuildLegacyCopy(source, out int copied, out int skippedRootCurves);
+            AnimationClip baked = BuildLegacyCopy(clips, out int copied, out int skippedRootCurves);
 
             EnsureOutputFolder();
             AnimationClip existing = AssetDatabase.LoadAssetAtPath<AnimationClip>(ClipPath);
@@ -80,7 +77,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log($"📦 Kutu paketlendi: '{source.name}' → {ClipPath}\n" +
+            Debug.Log($"📦 Kutu paketlendi: {clips.Count} klip birleştirildi → {ClipPath}\n" +
                       $"  süre {baked.length:0.00}s @ {baked.frameRate:0}fps, {copied} eğri kopyalandı" +
                       (skippedRootCurves > 0 ? $", {skippedRootCurves} kök eğrisi atlandı" : "") + "\n" +
                       $"  prefab → {PrefabPath}");
@@ -88,7 +85,14 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         }
 
         /// <summary>
-        /// Copies the model's clip into a standalone legacy clip.
+        /// Merges the model's clips into one standalone legacy clip.
+        ///
+        /// A correctly exported Box.fbx holds ONE take covering the whole 1-140 frame timeline, so normally
+        /// there is a single clip and every curve is copied. A re-export with Blender's "all actions" bake
+        /// option on instead emits one stack per (object x action) pair; those are merged here, and in that
+        /// case constant curves are dropped, since another clip's flat hold for an object would otherwise
+        /// overwrite the real motion. (That export is still worth avoiding: it also applies each action to
+        /// objects it was never authored for, which no merge can undo.)
         ///
         /// Bindings with an empty path are dropped: those drive the box ROOT, whose position, rotation and
         /// scale are set per slot and then tweened for the jump-to-shelf move. Sampling would overwrite all
@@ -96,29 +100,45 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         /// CardboardBox child so no binding is actually root-level, but a re-export with the root stripped
         /// would silently produce exactly that.
         /// </summary>
-        private static AnimationClip BuildLegacyCopy(AnimationClip source, out int copied, out int skippedRootCurves)
+        private static AnimationClip BuildLegacyCopy(List<AnimationClip> sources, out int copied, out int skippedRootCurves)
         {
-            AnimationClip clip = new AnimationClip { name = SourceClipName, frameRate = source.frameRate };
+            AnimationClip clip = new AnimationClip { name = SourceClipName, frameRate = sources[0].frameRate };
             copied = 0;
             skippedRootCurves = 0;
+            bool dropHolds = sources.Count > 1;
 
-            foreach (EditorCurveBinding binding in AnimationUtility.GetCurveBindings(source))
+            foreach (AnimationClip source in sources)
             {
-                if (string.IsNullOrEmpty(binding.path))
+                foreach (EditorCurveBinding binding in AnimationUtility.GetCurveBindings(source))
                 {
-                    skippedRootCurves++;
-                    continue;
+                    if (string.IsNullOrEmpty(binding.path))
+                    {
+                        skippedRootCurves++;
+                        continue;
+                    }
+
+                    AnimationCurve curve = AnimationUtility.GetEditorCurve(source, binding);
+                    if (curve == null || curve.length == 0) continue;
+                    if (dropHolds && IsConstant(curve)) continue;
+
+                    AnimationUtility.SetEditorCurve(clip, binding, curve);
+                    copied++;
                 }
-
-                AnimationCurve curve = AnimationUtility.GetEditorCurve(source, binding);
-                if (curve == null || curve.length == 0) continue;
-
-                AnimationUtility.SetEditorCurve(clip, binding, curve);
-                copied++;
             }
 
             clip.legacy = true;
             return clip;
+        }
+
+        /// <summary>True when the curve never leaves its first value, i.e. it is a hold rather than motion.</summary>
+        private static bool IsConstant(AnimationCurve curve)
+        {
+            float first = curve[0].value;
+            for (int i = 1; i < curve.length; i++)
+            {
+                if (!Mathf.Approximately(curve[i].value, first)) return false;
+            }
+            return true;
         }
 
         /// <summary>Finds a model asset anywhere in the project by file name, so moving it cannot break the tool.</summary>

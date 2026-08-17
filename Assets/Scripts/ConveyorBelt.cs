@@ -30,27 +30,35 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private bool flipStripes;
 
         [Header("Arrow Density")]
-        [Tooltip("Show only every Nth arrow group. The tile ships 8 groups of 5 stripes, which is far too dense once several tiles are lined up - at 1 they end up about 3px apart. Hidden groups still take part in the path, so the loop keeps its full fidelity.")]
+        [Tooltip("Show only every Nth arrow group. ConveyorTile.fbx ships 10 groups of 5 stripes across a tile that is already the full belt width, so 1 is the authored density; the old squashed Conveyor.fbx needed 4. Hidden groups still take part in the path, so the loop keeps its full fidelity.")]
         [Min(1)]
-        [SerializeField] private int arrowGroupStride = 4;
+        [SerializeField] private int arrowGroupStride = 1;
 
-        [Tooltip("Uniform scale on each visible stripe. Enlarges the arrows without changing the belt's own thickness or how many tiles fit.")]
+        [Tooltip("Uniform scale on each visible stripe. LEAVE AT 1 for ConveyorTile.fbx: its stripes are modelled at final size with the gaps that make the chevron read, and scaling each one about its own pivot closes those gaps and smears the arrow into blobs. It exists for the old Conveyor.fbx, whose stripes were authored too small.")]
         [Min(0.1f)]
-        [SerializeField] private float arrowScale = 1.6f;
+        [SerializeField] private float arrowScale = 1f;
 
         [Tooltip("Lifts each stripe off the pallet surface, as a fraction of the loop length. The stripes are zero-thickness quads sitting exactly ON the surface, so with no lift the depth buffer cannot tell which is in front and the arrows break up into speckle. Raise if they still shimmer, lower if they look detached.")]
         [SerializeField] private float arrowSurfaceLift = 0.006f;
 
-        // Deliberately NOT readonly: Unity skips readonly fields when it serializes component state across
-        // a domain reload, so on a script recompile during Play these three came back empty while
-        // loopLength and dashes survived. Advance() then sailed past its guard and indexed an empty list,
-        // throwing every frame and silently freezing the belt.
-        private List<Vector3> pathPoints = new List<Vector3>();
-        private List<Quaternion> pathRotations = new List<Quaternion>();
-        private List<float> pathArc = new List<float>();
+        [Tooltip("Shrinks a stripe away as it wraps around an end cap. An arrow bending over the cap is what a real belt does, but on the tile's rounded end it reads as a skewed, broken arrow. 0 shows the bend; 1 hides the whole cap. Only the very ends of the tile are affected either way.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float capFadeStrength = 1f;
+
+        // The loop is now four analytic segments rather than a knotted polyline, so there are no path
+        // lists left to survive a domain reload - but the arrays below still have to, and a recompile
+        // during Play used to bring them back empty while loopLength and dashes survived. Advance()
+        // therefore re-checks all of them and rebuilds rather than indexing into nothing.
         private Transform[] dashes;
-        private float[] dashRestArc;
+        private int[] dashGroup;
+        private Vector3[] dashLocalPos;
+        private Quaternion[] dashLocalRot;
+        private float[] groupRestArc;
         private float loopLength;
+        private float loopRadius;
+        private float loopCentreZ;
+        private float loopCapX;
+        private float loopStraight;
         private float offset;
 
         public float Speed { get => speed; set => speed = value; }
@@ -97,14 +105,15 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (dashes == null) return;
 
-            // Belt and braces for the same hazard: if the path ever comes back out of step with the rest of
-            // the state, rebuild it from the dashes' current poses rather than index into nothing. They are
-            // still sitting on the loop, so the rebuilt path describes the same shape.
-            if (pathPoints.Count < 2 || pathArc.Count != pathPoints.Count)
+            // Belt and braces for the domain-reload hazard above: if the state ever comes back out of step,
+            // rebuild it rather than index into nothing.
+            if (loopLength <= 1e-5f
+                || dashGroup == null || dashGroup.Length != dashes.Length
+                || dashLocalPos == null || dashLocalRot == null || groupRestArc == null)
             {
                 BuildPathFromRestPose();
                 offset = 0f;
-                if (dashes == null || pathPoints.Count < 2) return;
+                if (dashes == null) return;
             }
 
             if (loopLength <= 1e-5f) return;
@@ -115,15 +124,32 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 if (dashes[i] == null) continue;
 
-                float arc = Mathf.Repeat(dashRestArc[i] + offset, loopLength);
-                SamplePath(arc, out Vector3 pos, out Quaternion rot);
+                // Each stripe rides the loop at its OWN arc - its offset along the belt, measured inside its
+                // arrow's frame - so the arrow behaves like paint on the belt: rigid along the straights
+                // (where the frame never changes, so the chevron is reproduced exactly) and bending round
+                // the drum at the caps. Carrying the whole arrow rigidly instead kept it flat over the cap
+                // and the arrow at the tile's edge came out visibly skewed.
+                //
+                // In frame coordinates x is the outward normal, y runs across the belt's width and z runs
+                // along travel, because the frame is LookRotation(tangent, Vector3.up) and the loop lies in
+                // the tile's local XZ plane.
+                int g = dashGroup[i];
+                Vector3 local = dashLocalPos[i];
+                float groupArc = groupRestArc[g] + offset;
 
-                // A stripe is a flat quad whose normal is its local +Z, and it is authored exactly ON the
-                // pallet surface. Nudging it out along that normal is what stops the two coplanar surfaces
-                // from z-fighting into speckle; the normal rotates with the loop, so this stays correct
-                // around the end caps as well as along the straights.
-                dashes[i].localPosition = pos + (rot * Vector3.forward) * (loopLength * arrowSurfaceLift);
-                dashes[i].localRotation = rot;
+                // Faded by the ARROW's arc, and its offsets shrink with it, so the whole chevron scales
+                // about its own centre. Scaling only the stripes pulls them apart instead - each shrinks
+                // about its own pivot and the gaps between them stay put, which is the same thing that
+                // wrecked the arrows back when arrowScale was 1.8.
+                float fade = CapFade(groupArc);
+                float arc = groupArc + local.z * fade;
+                SamplePath(arc, out Vector3 onLoop, out Quaternion frame);
+
+                dashes[i].localPosition = onLoop
+                                          + frame * new Vector3(local.x, local.y * fade, 0f)
+                                          + (frame * Vector3.right) * (loopLength * arrowSurfaceLift);
+                dashes[i].localRotation = frame * dashLocalRot[i];
+                dashes[i].localScale = Vector3.one * (arrowScale * fade);
             }
         }
 
@@ -157,36 +183,86 @@ namespace MechaFind3D.PhysicsInteraction
             dashes = new Transform[found.Count];
             found.Values.CopyTo(dashes, 0);
 
-            pathPoints.Clear();
-            pathRotations.Clear();
-            pathArc.Clear();
-
-            foreach (Transform t in dashes)
-            {
-                pathPoints.Add(t.localPosition);
-                pathRotations.Add(t.localRotation);
-            }
-
-            // Cumulative arc length around the CLOSED loop, so the last segment wraps back to point 0.
-            float total = 0f;
-            for (int i = 0; i < pathPoints.Count; i++)
-            {
-                pathArc.Add(total);
-                Vector3 next = pathPoints[(i + 1) % pathPoints.Count];
-                total += Vector3.Distance(pathPoints[i], next);
-            }
-            loopLength = total;
-
-            // Mirroring the arc each stripe is seeded at reverses the order the tapering 5-stripe motif is
-            // read in, so the arrow heads point the other way. The stripes still land on the loop, because
-            // SamplePath returns the pose authored for wherever they end up.
-            dashRestArc = new float[dashes.Length];
+            // Group each stripe by the ROW in its Arrow_row_col name: one row is one complete arrow.
+            dashGroup = new int[dashes.Length];
+            var rowIds = new List<int>();
             for (int i = 0; i < dashes.Length; i++)
             {
-                dashRestArc[i] = flipStripes ? Mathf.Repeat(loopLength - pathArc[i], loopLength) : pathArc[i];
+                int row = int.Parse(dashes[i].name.Split('_')[1]);
+                int g = rowIds.IndexOf(row);
+                if (g < 0) { rowIds.Add(row); g = rowIds.Count - 1; }
+                dashGroup[i] = g;
+            }
+            int groupCount = rowIds.Count;
+
+            // The loop is measured from the PALLET, not from the arrows: it is the stadium outline of the
+            // tile's own mesh in the local XZ plane (the arrows only ride on it).
+            if (!TryMeasureLoop())
+            {
+                Debug.LogWarning($"🎞️ ConveyorBelt '{name}': palet mesh'i ölçülemedi, kayış durağan kalacak.");
+                dashes = null;
+                return;
+            }
+
+            // Each arrow's centre, projected onto the loop, gives the frame it was authored in; every
+            // stripe's pose is stored inside that frame so the arrow travels as one rigid body.
+            var centre = new Vector3[groupCount];
+            var members = new int[groupCount];
+            for (int i = 0; i < dashes.Length; i++)
+            {
+                centre[dashGroup[i]] += dashes[i].localPosition;
+                members[dashGroup[i]]++;
+            }
+
+            var restFrame = new Quaternion[groupCount];
+            for (int g = 0; g < groupCount; g++)
+            {
+                if (members[g] > 0) centre[g] /= members[g];
+                SamplePath(ProjectOntoLoop(centre[g]), out Vector3 onLoop, out restFrame[g]);
+                centre[g] = onLoop;
+            }
+
+            dashLocalPos = new Vector3[dashes.Length];
+            dashLocalRot = new Quaternion[dashes.Length];
+            for (int i = 0; i < dashes.Length; i++)
+            {
+                Quaternion inv = Quaternion.Inverse(restFrame[dashGroup[i]]);
+                dashLocalPos[i] = inv * (dashes[i].localPosition - centre[dashGroup[i]]);
+                dashLocalRot[i] = inv * dashes[i].localRotation;
+            }
+
+            // Seeded at EVEN arc intervals. The model spaces its arrows evenly, and with a true arc length
+            // to seed against, even spacing is preserved everywhere including across the caps.
+            float spacing = loopLength / groupCount;
+            groupRestArc = new float[groupCount];
+            for (int g = 0; g < groupCount; g++)
+            {
+                float arc = g * spacing;
+                // Mirroring reverses the order the tapering motif is read in, turning the heads round.
+                groupRestArc[g] = flipStripes ? Mathf.Repeat(loopLength - arc, loopLength) : arc;
             }
 
             ApplyArrowStyling();
+        }
+
+        /// <summary>
+        /// Reads the stadium loop off the PALLET's own mesh - its local XZ footprint, with caps whose
+        /// radius is half the belt's thickness. Measuring the pallet rather than the arrows is what makes
+        /// the arc length true, and it also means the loop is correct even if every arrow is hidden.
+        /// </summary>
+        private bool TryMeasureLoop()
+        {
+            var filter = GetComponentInChildren<MeshFilter>();
+            if (filter == null || filter.sharedMesh == null) return false;
+
+            Bounds local = filter.sharedMesh.bounds;
+            loopRadius = (local.max.z - local.min.z) * 0.5f;
+            loopCentreZ = (local.max.z + local.min.z) * 0.5f;
+            loopCapX = (local.max.x - local.min.x) * 0.5f - loopRadius;
+            loopStraight = loopCapX * 2f;
+            loopLength = loopStraight * 2f + 2f * Mathf.PI * loopRadius;
+
+            return loopRadius > 1e-5f && loopStraight > 1e-5f;
         }
 
         /// <summary>
@@ -207,8 +283,9 @@ namespace MechaFind3D.PhysicsInteraction
                 Transform dash = dashes[i];
                 if (dash == null) continue;
 
-                // dashes[] is gathered in Arrow_R_C order, five stripes per row, so the row is i / 5.
-                bool visible = (i / 5) % stride == 0;
+                // Group index comes from the stripe's own name rather than i / 5: the tile no longer ships a
+                // fixed five stripes per arrow.
+                bool visible = dashGroup == null || (dashGroup[i] % stride == 0);
 
                 foreach (Renderer r in dash.GetComponentsInChildren<Renderer>(true))
                 {
@@ -219,22 +296,91 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
-        /// <summary>Position and rotation at an arc length around the loop, interpolated between rest samples.</summary>
+        /// <summary>
+        /// Position and frame at an arc length around the loop, evaluated ANALYTICALLY as a stadium: the
+        /// top run, a true half-circle cap, the bottom run, the other cap.
+        ///
+        /// The path used to be a polyline knotted at the arrows themselves. Its cap was two chords cutting
+        /// the corner, so the arc across a cap came out far shorter than the real curve, and an arrow
+        /// coming round it closed right up on the one ahead - the run bunched every few seconds no matter
+        /// how the arrows were seeded (measured gaps 0.63 / 0.64 / 0.35 / 0.64). With true arc length,
+        /// evenly seeded arrows stay evenly spaced everywhere.
+        /// </summary>
         private void SamplePath(float arc, out Vector3 position, out Quaternion rotation)
         {
-            int count = pathPoints.Count;
+            arc = Mathf.Repeat(arc, loopLength);
 
-            int i = 0;
-            while (i < count - 1 && pathArc[i + 1] <= arc) i++;
+            float capLen = Mathf.PI * loopRadius;
+            Vector3 tangent;
 
-            float segStart = pathArc[i];
-            float segEnd = (i + 1 < count) ? pathArc[i + 1] : loopLength;
-            float segLen = segEnd - segStart;
-            float t = segLen > 1e-6f ? (arc - segStart) / segLen : 0f;
+            if (arc < loopStraight)                                   // top run, travelling -X
+            {
+                position = new Vector3(loopCapX - arc, 0f, loopCentreZ + loopRadius);
+                tangent = Vector3.left;
+            }
+            else if (arc < loopStraight + capLen)                     // left cap
+            {
+                float a = (arc - loopStraight) / loopRadius;          // 0 -> PI, from top round to bottom
+                position = new Vector3(-loopCapX - Mathf.Sin(a) * loopRadius, 0f,
+                                       loopCentreZ + Mathf.Cos(a) * loopRadius);
+                tangent = new Vector3(-Mathf.Cos(a), 0f, Mathf.Sin(a));
+            }
+            else if (arc < loopStraight * 2f + capLen)                // bottom run, travelling +X
+            {
+                position = new Vector3(-loopCapX + (arc - loopStraight - capLen), 0f, loopCentreZ - loopRadius);
+                tangent = Vector3.right;
+            }
+            else                                                      // right cap
+            {
+                float a = (arc - loopStraight * 2f - capLen) / loopRadius;
+                position = new Vector3(loopCapX + Mathf.Sin(a) * loopRadius, 0f,
+                                       loopCentreZ - Mathf.Cos(a) * loopRadius);
+                tangent = new Vector3(Mathf.Cos(a), 0f, -Mathf.Sin(a));
+            }
 
-            int next = (i + 1) % count;
-            position = Vector3.Lerp(pathPoints[i], pathPoints[next], t);
-            rotation = Quaternion.Slerp(pathRotations[i], pathRotations[next], t);
+            rotation = Quaternion.LookRotation(tangent, Vector3.up);
+        }
+
+        /// <summary>
+        /// 1 along the straight runs, easing to <c>1 - capFadeStrength</c> across an end cap.
+        ///
+        /// The stripes are painted flat on the belt, so over a cap they genuinely bend round the drum -
+        /// correct, but on a tile whose rounded end sits in the middle of the screen it reads as a skewed,
+        /// half-crumpled arrow. Shrinking them away over the cap and back on the straight trades that for a
+        /// gap at the very end of the tile, where the belt visibly turns anyway.
+        /// </summary>
+        private float CapFade(float arc)
+        {
+            if (capFadeStrength <= 0f) return 1f;
+
+            arc = Mathf.Repeat(arc, loopLength);
+            float capLen = Mathf.PI * loopRadius;
+            float ease = Mathf.Min(capLen, loopStraight * 0.25f);   // ramp in over the tail of the straight
+
+            // Distance to the nearest point that is safely on a straight run.
+            float intoCap;
+            if (arc < loopStraight) intoCap = -Mathf.Min(arc, loopStraight - arc);
+            else if (arc < loopStraight + capLen) intoCap = Mathf.Min(arc - loopStraight, loopStraight + capLen - arc);
+            else if (arc < loopStraight * 2f + capLen) intoCap = -Mathf.Min(arc - loopStraight - capLen, loopStraight * 2f + capLen - arc);
+            else intoCap = Mathf.Min(arc - loopStraight * 2f - capLen, loopLength - arc);
+
+            float t = Mathf.Clamp01((intoCap + ease) / (ease * 2f));   // 0 on the straight, 1 inside the cap
+            return Mathf.Lerp(1f, 1f - capFadeStrength, Mathf.SmoothStep(0f, 1f, t));
+        }
+
+        /// <summary>Arc length whose point on the loop is closest to <paramref name="local"/>.</summary>
+        private float ProjectOntoLoop(Vector3 local)
+        {
+            const int samples = 512;
+            float best = 0f, bestSqr = float.MaxValue;
+            for (int i = 0; i < samples; i++)
+            {
+                float arc = loopLength * i / samples;
+                SamplePath(arc, out Vector3 p, out _);
+                float d = (p - local).sqrMagnitude;
+                if (d < bestSqr) { bestSqr = d; best = arc; }
+            }
+            return best;
         }
 
         /// <summary>
