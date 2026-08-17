@@ -457,20 +457,35 @@ namespace MechaFind3D.PhysicsInteraction
         /// walls or corners get pulled back into easy reach and rejumbled.
         public void GatherAndReshuffleRemaining()
         {
-            Debug.Log("🎲 Reshuffling remaining pile items back to center...");
+            HashSet<GameObject> targetObjs = new HashSet<GameObject>();
 
-            FindTargetObject[] allTargets = Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None);
-            foreach (FindTargetObject targetComp in allTargets)
+            foreach (GameObject obj in spawnedObjects)
             {
-                if (targetComp == null || targetComp.isDocked) continue;
+                if (obj != null) targetObjs.Add(obj);
+            }
 
-                GameObject obj = targetComp.gameObject;
+            FindTargetObject[] sceneItems = Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None);
+            foreach (FindTargetObject item in sceneItems)
+            {
+                if (item != null && !item.isDocked && item.gameObject != null)
+                {
+                    targetObjs.Add(item.gameObject);
+                }
+            }
+
+            foreach (GameObject obj in targetObjs)
+            {
+                if (obj == null) continue;
+
+                FindTargetObject targetComp = obj.GetComponent<FindTargetObject>();
+                if (targetComp != null && targetComp.isDocked) continue;
+
                 Rigidbody rb = obj.GetComponent<Rigidbody>();
                 if (rb == null) continue;
 
-                float posX = Random.Range(-spawnAreaSize.x * 0.30f, spawnAreaSize.x * 0.30f);
-                float posZ = Random.Range(-spawnAreaSize.y * 0.30f, spawnAreaSize.y * 0.30f);
-                float posY = Random.Range(spawnHeightMin + 0.10f, spawnHeightMax + 0.35f);
+                float posX = Random.Range(-spawnAreaSize.x * 0.35f, spawnAreaSize.x * 0.35f);
+                float posZ = Random.Range(-spawnAreaSize.y * 0.35f, spawnAreaSize.y * 0.35f);
+                float posY = Random.Range(spawnHeightMin + 0.1f, spawnHeightMax + 0.5f);
                 Vector3 targetPos = transform.position + new Vector3(posX, posY, posZ);
                 Quaternion targetRot = Random.rotation;
 
@@ -481,8 +496,8 @@ namespace MechaFind3D.PhysicsInteraction
                 obj.transform.DOKill();
 
                 Sequence seq = DOTween.Sequence();
-                seq.Join(obj.transform.DOMove(targetPos, 0.45f).SetEase(Ease.OutCubic));
-                seq.Join(obj.transform.DORotateQuaternion(targetRot, 0.45f).SetEase(Ease.OutCubic));
+                seq.Join(obj.transform.DOMove(targetPos, 0.45f).SetEase(Ease.OutQuad));
+                seq.Join(obj.transform.DORotateQuaternion(targetRot, 0.45f).SetEase(Ease.OutQuad));
                 seq.OnComplete(() =>
                 {
                     if (rb != null)

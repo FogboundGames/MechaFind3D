@@ -317,6 +317,15 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void OnTouchBegan(Vector2 screenPos)
         {
+            if (UnityEngine.EventSystems.EventSystem.current != null)
+            {
+                if (UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject() ||
+                    (Input.touchCount > 0 && UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject(Input.GetTouch(0).fingerId)))
+                {
+                    return;
+                }
+            }
+
             isTouching = true;
             isDragging = false;
             touchStartScreenPos = screenPos;
