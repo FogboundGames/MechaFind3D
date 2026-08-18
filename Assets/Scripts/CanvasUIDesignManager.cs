@@ -40,7 +40,16 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private int goalContainerSpacing = 5;
 
         [Header("Goal Cards")]
-        [SerializeField] private Vector2 goalCardSize = new Vector2(110f, 80f);
+        [SerializeField] private Vector2 goalCardSize = new Vector2(250f, 80f);
+        [Tooltip("Where the rule down an order card sits, as a fraction of its width. Left of it: the item and how many are still wanted. Right of it: the customer the order belongs to.")]
+        [Range(0.3f, 0.9f)]
+        [SerializeField] private float goalCardDividerX = 0.60f;
+        [Tooltip("Thickness of that rule, in pixels.")]
+        [SerializeField] private float goalCardDividerWidth = 3f;
+        [Tooltip("Colour of that rule. Faint values wash out against the card at game resolution.")]
+        [SerializeField] private Color goalCardDividerColor = new Color(1f, 1f, 1f, 0.65f);
+        [Tooltip("Portrait for the customer half of an order card. Left empty, a plain placeholder panel is drawn so the zone is still visible.")]
+        [SerializeField] private Sprite customerPortraitSprite;
         [SerializeField] private float goalCardIconSize = 65f;
         [SerializeField] private int goalCardFontSize = 28;
         [SerializeField] private float goalCard3DModelScale = 450f;
@@ -838,8 +847,19 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (topGoalContainer == null) return;
 
+            // Detached from the container BEFORE being destroyed. In Play, SafeDestroy is Destroy(), which
+            // only takes effect at the end of the frame - so the cards rebuilt further down this same call
+            // still found these as an "existing" card and skipped themselves as already showing, and then
+            // the old card really did get destroyed, leaving that box with no card at all. That is the
+            // order card that went missing after a retry, whenever the re-rolled order kept the same item.
+            var staleCards = new List<Transform>();
             foreach (Transform child in topGoalContainer)
             {
+                staleCards.Add(child);
+            }
+            foreach (Transform child in staleCards)
+            {
+                child.SetParent(null, false);
                 SafeDestroy(child.gameObject);
             }
 
@@ -978,11 +998,19 @@ namespace MechaFind3D.PhysicsInteraction
             GameObject iconObj = new GameObject("Icon");
             iconObj.transform.SetParent(cardObj.transform, false);
 
+            // ID-card layout: the item and its count share the left half, a rule divides the card, and the
+            // customer this order belongs to sits on the right.
+            //
+            // The icon zone is sized from the 3D model's own target size rather than from goalCardIconSize.
+            // The model is not clipped by its RectTransform, so a zone narrower than the model simply let it
+            // hang off the card - which is what put the item half outside the left edge.
+            float iconZone = Mathf.Max(goalCardIconSize, goalCard3DModelTargetSize) + 10f;
+
             RectTransform iconRect = iconObj.AddComponent<RectTransform>();
             iconRect.anchorMin = new Vector2(0f, 0.5f);
             iconRect.anchorMax = new Vector2(0f, 0.5f);
-            iconRect.pivot = new Vector2(0f, 0.5f);
-            iconRect.anchoredPosition = new Vector2(10, 0);
+            iconRect.pivot = new Vector2(0.5f, 0.5f);
+            iconRect.anchoredPosition = new Vector2(iconZone * 0.5f, 0f);
             iconRect.sizeDelta = new Vector2(goalCardIconSize, goalCardIconSize);
 
             GameObject displayPrefab = FindDisplayPrefabForItem(itemId);
@@ -991,7 +1019,9 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 GameObject modelWrapper = new GameObject("3D_Icon_Wrapper");
                 modelWrapper.transform.SetParent(iconObj.transform, false);
-                modelWrapper.transform.localPosition = goalCard3DModelLocalPosition;
+                // Centred in the icon zone; only the DEPTH is taken from the serialized offset. Its x/y were
+                // tuned for the old single-column card and pushed the model off the left edge of this one.
+                modelWrapper.transform.localPosition = new Vector3(0f, 0f, goalCard3DModelLocalPosition.z);
                 modelWrapper.transform.localRotation = Quaternion.Euler(goalCard3DModelTiltX, 0f, 0f);
                 modelWrapper.transform.localScale = Vector3.one;
 
@@ -1082,10 +1112,12 @@ namespace MechaFind3D.PhysicsInteraction
             GameObject textObj = new GameObject("Text");
             textObj.transform.SetParent(cardObj.transform, false);
 
+            // Count sits beside the item, filling what is left of the zone before the divider.
             RectTransform textRect = textObj.AddComponent<RectTransform>();
-            textRect.anchorMin = new Vector2(0.5f, 0f);
-            textRect.anchorMax = new Vector2(1f, 1f);
-            textRect.sizeDelta = Vector2.zero;
+            textRect.anchorMin = new Vector2(0f, 0f);
+            textRect.anchorMax = new Vector2(goalCardDividerX, 1f);
+            textRect.offsetMin = new Vector2(iconZone, 0f);
+            textRect.offsetMax = Vector2.zero;
 
             Text txt = textObj.AddComponent<Text>();
             txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -1093,12 +1125,51 @@ namespace MechaFind3D.PhysicsInteraction
             txt.fontStyle = FontStyle.Bold;
             txt.alignment = TextAnchor.MiddleCenter;
             txt.color = Color.white;
+            // "x2" is two glyphs and must never wrap; a zone a few pixels too narrow was breaking it onto
+            // two lines rather than simply overflowing.
+            txt.horizontalOverflow = HorizontalWrapMode.Overflow;
+            txt.verticalOverflow = VerticalWrapMode.Overflow;
 
             Shadow shadow = textObj.AddComponent<Shadow>();
             shadow.effectColor = new Color(0, 0, 0, 0.8f);
             shadow.effectDistance = new Vector2(2, -2);
 
             txt.text = $"x{remaining}";
+
+            GameObject dividerObj = new GameObject("Divider");
+            dividerObj.transform.SetParent(cardObj.transform, false);
+
+            RectTransform dividerRect = dividerObj.AddComponent<RectTransform>();
+            dividerRect.anchorMin = new Vector2(goalCardDividerX, 0.16f);
+            dividerRect.anchorMax = new Vector2(goalCardDividerX, 0.84f);
+            dividerRect.pivot = new Vector2(0.5f, 0.5f);
+            dividerRect.sizeDelta = new Vector2(goalCardDividerWidth, 0f);
+
+            Image dividerImg = dividerObj.AddComponent<Image>();
+            dividerImg.color = goalCardDividerColor;
+
+            GameObject portraitObj = new GameObject("CustomerPortrait");
+            portraitObj.transform.SetParent(cardObj.transform, false);
+
+            RectTransform portraitRect = portraitObj.AddComponent<RectTransform>();
+            portraitRect.anchorMin = new Vector2(goalCardDividerX, 0f);
+            portraitRect.anchorMax = new Vector2(1f, 1f);
+            portraitRect.offsetMin = new Vector2(8f, 8f);
+            portraitRect.offsetMax = new Vector2(-8f, -8f);
+
+            Image portraitImg = portraitObj.AddComponent<Image>();
+            if (customerPortraitSprite != null)
+            {
+                portraitImg.sprite = customerPortraitSprite;
+                portraitImg.preserveAspect = true;
+                portraitImg.color = Color.white;
+            }
+            else
+            {
+                // Placeholder until the customer artwork exists - a plain panel, so the zone is visible
+                // and sized correctly while it is being designed.
+                portraitImg.color = new Color(1f, 1f, 1f, 0.20f);
+            }
 
             // Staggered pop-in: scale from 0 with OutBack, then fade in
             int capturedIndex = spawnIndex;
