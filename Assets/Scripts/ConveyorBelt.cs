@@ -63,6 +63,12 @@ namespace MechaFind3D.PhysicsInteraction
 
         public float Speed { get => speed; set => speed = value; }
 
+        /// <summary>
+        /// Whether the belt scrolls by itself each frame. Turned off, the stripes simply hold their pose,
+        /// which is how the belt idles until a packed box actually lands on it.
+        /// </summary>
+        public bool AutoScroll { get => autoScroll; set => autoScroll = value; }
+
         /// <summary>Show only every Nth arrow group. 1 shows all eight the tile ships.</summary>
         public int ArrowGroupStride
         {

@@ -21,14 +21,20 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
     {
         // Located by NAME rather than a fixed path: the model has already been moved once (Assets/ ->
         // Assets/Prefabs/), which silently broke this tool until the path was chased down.
-        private const string FbxName = "Box";
         private const string SourceClipName = "BoxClose";
         private const string OutputFolder = "Assets/Resources/CardboardBox";
         private const string ClipPath = OutputFolder + "/BoxClose.anim";
         private const string PrefabPath = OutputFolder + "/PackagingBox.prefab";
 
-        [MenuItem("MechaFind3D/Kutu/Box.fbx Kapanma Klibini Üret")]
-        public static void Bake()
+        // Both boxes bake to the SAME clip and prefab paths, so swapping which one the game uses is a menu
+        // click rather than a code edit. Whichever was baked last is what PackagingBoxFlaps loads.
+        [MenuItem("MechaFind3D/Kutu/Pastane Kutusunu Üret (BakeryBox.fbx)")]
+        public static void BakeBakeryBox() => Bake("BakeryBox");
+
+        [MenuItem("MechaFind3D/Kutu/Eski Koliyi Üret (Box.fbx)")]
+        public static void BakeCardboardBox() => Bake("Box");
+
+        public static void Bake(string FbxName)
         {
             string FbxPath = FindModelPath(FbxName);
             if (string.IsNullOrEmpty(FbxPath))
@@ -193,6 +199,14 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 if (instance.GetComponent<PackagingBoxFlaps>() == null)
                 {
                     instance.AddComponent<PackagingBoxFlaps>();
+                }
+
+                // The bakery box ships four recolourable material zones; its palette component is what
+                // makes them switchable from the Inspector instead of by editing materials. Added only
+                // when the model actually has those parts, so the old cardboard box is left alone.
+                if (instance.transform.Find("Ribbon_Bow") != null && instance.GetComponent<BakeryBoxPalette>() == null)
+                {
+                    instance.AddComponent<BakeryBoxPalette>();
                 }
 
                 PrefabUtility.SaveAsPrefabAsset(instance, PrefabPath);

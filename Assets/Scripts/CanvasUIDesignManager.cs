@@ -102,10 +102,22 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Y-axis height multiplier for the conveyor belt.")]
         [Range(0.1f, 4f)]
         [SerializeField] private float conveyorYScaleMultiplier = 1.0f;
-        [Tooltip("Linear move speed of completed boxes along the conveyor belt (world units per second). Matches belt travel direction.")]
-        [SerializeField] private float conveyorBoxMoveSpeed = 0.40f;
+        [Tooltip("Linear move speed of completed boxes along the conveyor belt (world units per second). The belt is about 6 units long, so 2 crosses it in roughly 3 seconds.")]
+        [SerializeField] private float conveyorBoxMoveSpeed = 2.0f;
         [Tooltip("How quickly a shipped box eases into its place in the run. Higher is snappier; too low and the boxes visibly trail the belt.")]
         [SerializeField] private float conveyorBoxSettleSpeed = 12f;
+
+        [Tooltip("Size of the open packing box sitting in a dock slot, as a multiplier on the size that exactly fits the slot. 1 fills the slot; above 1 lets the box overhang it.")]
+        [Min(0.1f)]
+        [SerializeField] private float boxSlotScaleMultiplier = 1.60f;
+        [Tooltip("Fallback size for a sealed box when no belt can be measured, on the slot-fit basis.")]
+        [Min(0.1f)]
+        [SerializeField] private float boxShelfScaleMultiplier = 1.65f;
+        [Tooltip("How much of the belt's width a sealed box takes up while riding it. 1 spans the belt exactly; lower leaves margin either side.")]
+        [Range(0.1f, 2f)]
+        [SerializeField] private float conveyorBoxFillRatio = 0.75f;
+        [Tooltip("Nudge for where a box sits on the belt, measured from the belt's own top centre. Y lifts it off the surface, Z moves it towards or away from the camera.")]
+        [SerializeField] private Vector3 conveyorBoxRideOffset = Vector3.zero;
 
         [Header("3D Conveyor Belt Scene Placement")]
         [Tooltip("If true, automatically spawns a new belt prefab if none exists in the scene. Turn OFF to strictly use your scene-placed belt.")]
@@ -132,6 +144,11 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private bool spawnInitialConveyorBoxes = false;
         [Tooltip("Colour of the UI badges, goal cards and the shuffle button - the elements that used to be the kit's violet. Set to the colour you actually want to see; the sprite tint is worked out from it.")]
         [SerializeField] private Color uiAccentColor = new Color(0f, 26f / 255f, 112f / 255f, 1f); // #001A70
+
+        [Tooltip("Flash/text colour used everywhere something is marked complete - a fulfilled order card, the Mecha badge once found, a ticked-down goal count. Was seven separate inline literals; now one place to reskin.")]
+        [SerializeField] private Color successAccentColor = new Color(0.45f, 1f, 0.55f);
+        [Tooltip("Text colour for the Mecha goal badge while it's still outstanding.")]
+        [SerializeField] private Color mechaAccentColor = new Color(0.4f, 0.95f, 1f);
 
         [Tooltip("Show only every Nth arrow on a pallet. 1 is the authored density of ConveyorTile.fbx (10 groups per tile); 4 was for the old, far denser Conveyor.fbx.")]
         [Min(1)]
@@ -166,13 +183,21 @@ namespace MechaFind3D.PhysicsInteraction
         private const string TapeMaterialPrefix = "BoxTape";
         private int nextTapeVariant;
 
-        // The whole background now - no image, just this solid navy fill cleared by Background_Camera,
-        // since ClearFlags.Depth on the main camera means it never clears colour itself.
-        private static readonly Color FallbackBackgroundColor = new Color(0.06f, 0.09f, 0.24f);
+        // The whole background now - no image, just this solid fill cleared by Background_Camera, since
+        // ClearFlags.Depth on the main camera means it never clears colour itself. Exposed to the Inspector
+        // so the background can be reskinned without touching code.
+        [Tooltip("Solid fill colour behind the whole scene.")]
+        [SerializeField] private Color backgroundColor = new Color(0.06f, 0.09f, 0.24f);
 
         private const string ConveyorResourcePath = "Conveyor/ConveyorBelt";
         private GameObject conveyorInstance;
         private float conveyorTopOffsetY;
+
+        // Cached so the belt is not searched for every frame. Deliberately NOT readonly/serialized: it is
+        // rebuilt on demand, and conveyorRunning starts true so the first SetConveyorRunning(false) call
+        // actually reaches the tiles and parks the idle belt.
+        private ConveyorBelt[] conveyorTiles;
+        private bool conveyorRunning = true;
 
         private Quaternion BoxDisplayRotation(Vector3 tiltEuler)
         {
@@ -201,8 +226,13 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (box == null) return;
 
-            float scale = box.transform.localScale.x;
+            // Read the scale AFTER the kill, not before. DOKill(true) COMPLETES whatever scale tween is
+            // still running - the ship flight's grow-to-shelf-size, typically - so reading first captured a
+            // half-finished, smaller value, and the punch's OnComplete then snapped the box down to it.
+            // That is the box visibly shrinking the instant it settles on the belt and starts moving: the
+            // punch ends, and with it the box leaves tweeningDockObjects and the belt takes over.
             box.transform.DOKill(true);
+            float scale = box.transform.localScale.x;
 
             tweeningDockObjects.Add(box);
             box.transform.DOPunchScale(relativePunch * scale, duration, vibrato, elasticity)
@@ -483,7 +513,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             bgCam.depth = -10;
             bgCam.clearFlags = CameraClearFlags.SolidColor;
-            bgCam.backgroundColor = FallbackBackgroundColor;
+            bgCam.backgroundColor = backgroundColor;
             bgCam.orthographic = true;
             bgCam.orthographicSize = 5f;
             bgCam.nearClipPlane = 0.1f;
@@ -853,12 +883,12 @@ namespace MechaFind3D.PhysicsInteraction
                         if (mechaGoal.IsCompleted)
                         {
                             txt.text = "MECHA ✓";
-                            txt.color = new Color(0.45f, 1f, 0.55f);
+                            txt.color = successAccentColor;
                         }
                         else
                         {
                             txt.text = $"MECHA x{mechaGoal.Remaining}";
-                            txt.color = new Color(0.4f, 0.95f, 1f);
+                            txt.color = mechaAccentColor;
                         }
                     }
                 }
@@ -1119,7 +1149,7 @@ namespace MechaFind3D.PhysicsInteraction
             if (cardBg != null)
             {
                 Color orig = cardBg.color;
-                cardBg.DOColor(new Color(0.45f, 1f, 0.55f, orig.a), 0.12f)
+                cardBg.DOColor(new Color(successAccentColor.r, successAccentColor.g, successAccentColor.b, orig.a), 0.12f)
                     .SetEase(Ease.OutQuad)
                     .OnComplete(() => cardBg.DOColor(orig, 0.25f).SetEase(Ease.InQuad));
             }
@@ -1154,7 +1184,7 @@ namespace MechaFind3D.PhysicsInteraction
                 Image ci = checkObj.AddComponent<Image>();
                 Sprite checkSprite = LoadUISprite("Icons/Check");
                 if (checkSprite != null) { ci.sprite = checkSprite; ci.preserveAspect = true; }
-                else ci.color = new Color(0.45f, 1f, 0.55f);
+                else ci.color = successAccentColor;
                 checkObj.transform.localScale = Vector3.zero;
                 checkObj.transform.DOScale(Vector3.one * 1.3f, 0.2f).SetEase(Ease.OutBack);
             }
@@ -1211,7 +1241,7 @@ namespace MechaFind3D.PhysicsInteraction
                         if (mechaGoal.IsCompleted)
                         {
                             txt.text = "MECHA ✓";
-                            txt.color = new Color(0.45f, 1f, 0.55f);
+                            txt.color = successAccentColor;
                         }
                         else
                         {
@@ -1219,7 +1249,7 @@ namespace MechaFind3D.PhysicsInteraction
                         }
                     }
                     txt.DOColor(new Color(1f, 0.92f, 0.25f), 0.12f)
-                        .OnComplete(() => txt.DOColor(mechaGoal != null && mechaGoal.IsCompleted ? new Color(0.45f, 1f, 0.55f) : new Color(0.4f, 0.95f, 1f), 0.3f));
+                        .OnComplete(() => txt.DOColor(mechaGoal != null && mechaGoal.IsCompleted ? successAccentColor : mechaAccentColor, 0.3f));
                     mTextObj.transform.DOKill();
                     mTextObj.transform.DOPunchScale(Vector3.one * goalTickTextPunchStrength, goalTickTextPunchDuration, 7, 0.9f);
                 }
@@ -1231,7 +1261,7 @@ namespace MechaFind3D.PhysicsInteraction
                 if (cardBg != null)
                 {
                     Color orig = cardBg.color;
-                    cardBg.DOColor(new Color(0.45f, 1f, 0.55f, orig.a), 0.12f)
+                    cardBg.DOColor(new Color(successAccentColor.r, successAccentColor.g, successAccentColor.b, orig.a), 0.12f)
                         .SetEase(Ease.OutQuad)
                         .OnComplete(() => cardBg.DOColor(orig, 0.25f).SetEase(Ease.InQuad));
                 }
@@ -1818,8 +1848,9 @@ namespace MechaFind3D.PhysicsInteraction
             if (!warnedAboutFlaps && !HasFlapParts(box))
             {
                 warnedAboutFlaps = true;
-                Debug.LogError($"📦 '{cardboardBoxOpenedPrefab.name}' üzerinde BoxFlap_* parçaları yok; " +
-                               "kapanma klibinin yolları tutmaz ve kapaklar hiç katlanmaz.");
+                Debug.LogError($"📦 '{cardboardBoxOpenedPrefab.name}' kapanma klibinden hiç etkilenmiyor; " +
+                               "klibin yolları bu modelin hiyerarşisiyle tutmuyor, kutu hiç kapanmaz. " +
+                               "Menüden kutunun kendi 'Üret' komutunu çalıştır.");
             }
 
             SetBoxFlapsInstant(box, false);
@@ -1889,12 +1920,38 @@ namespace MechaFind3D.PhysicsInteraction
             foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true)) Destroy(rb);
         }
 
+        /// <summary>
+        /// True when the baked closing clip actually drives some part of this box.
+        ///
+        /// This used to test for "BoxFlap_*" children, which only ever described the old cardboard carton.
+        /// The bakery box animates BoxLid and Ribbon_* instead, so the check fired a false alarm on every
+        /// box it created. Sampling the clip at both ends and looking for anything that moved is what the
+        /// check was really after, and it survives the next box swap too.
+        /// </summary>
         private static bool HasFlapParts(GameObject box)
         {
-            foreach (Transform t in box.GetComponentsInChildren<Transform>(true))
+            PackagingBoxFlaps flaps = box.GetComponent<PackagingBoxFlaps>();
+            AnimationClip clip = flaps != null ? flaps.Clip : null;
+
+            // No clip is a separate failure with its own error; don't report it twice.
+            if (clip == null) return true;
+
+            Transform[] parts = box.GetComponentsInChildren<Transform>(true);
+            var openPose = new Matrix4x4[parts.Length];
+
+            clip.SampleAnimation(box, 0f);
+            for (int i = 0; i < parts.Length; i++)
             {
-                if (t.name.StartsWith("BoxFlap")) return true;
+                openPose[i] = Matrix4x4.TRS(parts[i].localPosition, parts[i].localRotation, parts[i].localScale);
             }
+
+            clip.SampleAnimation(box, clip.length);
+            for (int i = 0; i < parts.Length; i++)
+            {
+                Matrix4x4 sealedPose = Matrix4x4.TRS(parts[i].localPosition, parts[i].localRotation, parts[i].localScale);
+                if (sealedPose != openPose[i]) return true;
+            }
+
             return false;
         }
 
@@ -1988,7 +2045,7 @@ namespace MechaFind3D.PhysicsInteraction
 
                     if (slotBox[i] != null)
                     {
-                        float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * 1.25f;
+                        float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * boxSlotScaleMultiplier;
                         slotBox[i].transform.localScale = Vector3.one * fitScale;
                         slotBox[i].transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
                         Vector3 slotPos = GetSlotWorldPosition(i);
@@ -2124,17 +2181,56 @@ namespace MechaFind3D.PhysicsInteraction
         /// Moves completed boxes continuously along the belt towards the right, maintaining perfect, uniform spacing
         /// between consecutive boxes and wrapping off-screen right back to off-screen left.
         /// </summary>
+        /// <summary>
+        /// Carries shipped boxes off to the right and runs the belt only while there is something on it.
+        ///
+        /// Boxes used to loop forever: one reaching the right edge was wrapped back to the left, and the
+        /// belt scrolled the whole time. Now a box is a one-way delivery - it rides off the right edge and
+        /// is destroyed - and the belt idles whenever the run is empty, so it only comes to life when a
+        /// packed box actually lands on it.
+        /// </summary>
         private void UpdateConveyorBoxes()
         {
-            if (mainCamera == null || completedBoxObjects == null || completedBoxObjects.Count == 0) return;
+            if (mainCamera == null || completedBoxObjects == null) return;
 
-            float shelfDepth = dockCameraDepth + 0.40f;
-            Vector3 leftBoundWorld = mainCamera.ViewportToWorldPoint(new Vector3(-0.15f, 0.235f, shelfDepth));
-            Vector3 rightBoundWorld = mainCamera.ViewportToWorldPoint(new Vector3(1.15f, 0.235f, shelfDepth));
+            // The run's ends come from the BELT, not from a viewport reading at dock depth. The frustum
+            // widens with distance, so a "screen edge" measured 2.4 units from the camera lands well inside
+            // a belt sitting 11 units away - the box was being deleted halfway along the belt.
+            float minX, maxX;
+            if (TryGetBeltBounds(out Bounds beltBounds))
+            {
+                minX = beltBounds.min.x;
+                maxX = beltBounds.max.x + GetShippedBoxWorldSize() * 0.5f;   // clear of the end before it goes
+            }
+            else
+            {
+                float shelfDepth = dockCameraDepth + 0.40f;
+                minX = mainCamera.ViewportToWorldPoint(new Vector3(-0.15f, 0.235f, shelfDepth)).x;
+                maxX = mainCamera.ViewportToWorldPoint(new Vector3(1.15f, 0.235f, shelfDepth)).x;
+            }
 
-            float minX = leftBoundWorld.x;
-            float maxX = rightBoundWorld.x;
-            float spanX = maxX - minX;
+            // Drop anything that has ridden clear of the right edge before deciding whether the belt runs,
+            // so the last box leaving stops it on the very same frame.
+            for (int i = completedBoxObjects.Count - 1; i >= 0; i--)
+            {
+                GameObject shipped = completedBoxObjects[i];
+                if (shipped == null)
+                {
+                    completedBoxObjects.RemoveAt(i);
+                    continue;
+                }
+
+                if (!tweeningDockObjects.Contains(shipped) && shipped.transform.position.x > maxX)
+                {
+                    completedBoxObjects.RemoveAt(i);
+                    shipped.transform.DOKill();
+                    SafeDestroy(shipped);
+                }
+            }
+
+            SetConveyorRunning(completedBoxObjects.Count > 0);
+
+            if (completedBoxObjects.Count == 0) return;
 
             Vector3 camRight = mainCamera.transform.right;
             float step = conveyorBoxMoveSpeed * Time.deltaTime;
@@ -2152,10 +2248,15 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (leadIndex < 0) return;
 
+            // Boxes travel along the belt, so only their X is advanced; the height and depth are held on the
+            // belt's own centre line every frame, which keeps them riding down its middle even if the belt
+            // is repositioned at runtime.
+            bool onBelt = TryGetBeltRideCentre(out Vector3 rideCentre);
+
             GameObject leadBox = completedBoxObjects[leadIndex];
             Vector3 leadPos = leadBox.transform.position + camRight * step;
-            if (leadPos.x > maxX) leadPos.x = minX + (leadPos.x - maxX);
-            else if (leadPos.x < minX) leadPos.x = maxX - (minX - leadPos.x);
+            if (leadPos.x < minX) leadPos.x = minX;
+            if (onBelt) { leadPos.y = rideCentre.y; leadPos.z = rideCentre.z; }
 
             leadBox.transform.position = leadPos;
             leadBox.transform.rotation = BoxDisplayRotation(BoxShelfTiltEuler);
@@ -2168,29 +2269,113 @@ namespace MechaFind3D.PhysicsInteraction
 
                 int relativeOffset = i - leadIndex;
                 Vector3 targetPos = leadPos - camRight * (relativeOffset * idealSpacing);
-
-                while (targetPos.x < minX) targetPos.x += spanX;
-                while (targetPos.x > maxX) targetPos.x -= spanX;
+                if (onBelt) { targetPos.y = rideCentre.y; targetPos.z = rideCentre.z; }
 
                 // Eased into place rather than assigned outright. Every box's target is recomputed from the
                 // lead box's spacing, so the moment a newly shipped box joined the run, all the others were
                 // teleported to their new even spacing in a single frame - the visible snap. Only the lead
                 // box keeps a hard assignment, because it IS the motion reference; the followers all lag by
                 // the same tiny amount, so the spacing between them stays exactly even.
-                float gap = Vector3.Distance(box.transform.position, targetPos);
-                if (gap > spanX * 0.5f)
-                {
-                    // Wrapped around the far edge - easing across would drag it back over the whole screen.
-                    box.transform.position = targetPos;
-                }
-                else
-                {
-                    box.transform.position = Vector3.Lerp(box.transform.position, targetPos,
-                                                          Time.deltaTime * conveyorBoxSettleSpeed);
-                }
-
+                box.transform.position = Vector3.Lerp(box.transform.position, targetPos,
+                                                      Time.deltaTime * conveyorBoxSettleSpeed);
                 box.transform.rotation = BoxDisplayRotation(BoxShelfTiltEuler);
             }
+        }
+
+        /// <summary>
+        /// Where a box should sit to ride the belt: the top of the belt's own geometry, centred across it.
+        ///
+        /// The height and depth used to come from a viewport guess (y = 0.235 of the screen), which had no
+        /// relation to where the belt actually is - so the box rode along its edge rather than down the
+        /// middle. Measuring the belt itself keeps the two together however the belt is moved or resized.
+        /// </summary>
+        private bool TryGetBeltRideCentre(out Vector3 centre)
+        {
+            centre = Vector3.zero;
+            if (!TryGetBeltBounds(out Bounds belt)) return false;
+
+            centre = new Vector3(belt.center.x, belt.max.y, belt.center.z) + conveyorBoxRideOffset;
+            return true;
+        }
+
+        /// <summary>Combined world bounds of every belt tile.</summary>
+        private bool TryGetBeltBounds(out Bounds belt)
+        {
+            belt = default;
+
+            if (conveyorTiles == null || conveyorTiles.Length == 0)
+            {
+                conveyorTiles = Object.FindObjectsByType<ConveyorBelt>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            }
+
+            bool has = false;
+            foreach (ConveyorBelt tile in conveyorTiles)
+            {
+                if (tile == null) continue;
+                foreach (Renderer r in tile.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (!r.enabled) continue;
+                    if (!has) { belt = r.bounds; has = true; }
+                    else belt.Encapsulate(r.bounds);
+                }
+            }
+
+            return has;
+        }
+
+        /// <summary>
+        /// World size a sealed box should be while riding the belt: a fraction of how wide the belt is
+        /// ACROSS its run.
+        ///
+        /// Sizing it off the dock slot instead is what made it come out minuscule. The slot sits ~2.2 units
+        /// from the camera and the belt ~11.3, so the same world size reads five times smaller up there -
+        /// and the boxes only ever looked right before because they were parked at dock depth, overlapping
+        /// the belt on screen rather than actually resting on it.
+        /// </summary>
+        private float GetShippedBoxWorldSize()
+        {
+            if (!TryGetBeltBounds(out Bounds belt))
+            {
+                return ComputeFitScaleForSlot(0) * boxShelfScaleMultiplier;
+            }
+
+            // The belt is a long strip: its longest world axis is the run itself, and the larger of the
+            // other two is its width across, whatever tilt it is sitting at.
+            float across = Mathf.Max(Mathf.Min(belt.size.x, belt.size.y),
+                                     Mathf.Min(Mathf.Max(belt.size.x, belt.size.y), belt.size.z));
+            return across * conveyorBoxFillRatio;
+        }
+
+        /// <summary>Scale that gives <paramref name="box"/> the on-belt size from <see cref="GetShippedBoxWorldSize"/>.</summary>
+        private float ComputeShippedBoxScale(GameObject box)
+        {
+            float extent = GetObjectStaticUnscaledMaxExtent(box);
+            if (extent <= 1e-4f) return miniObjectDockScale;
+            return GetShippedBoxWorldSize() / extent;
+        }
+
+        /// <summary>
+        /// Starts or stops every belt tile's scroll.
+        ///
+        /// The tiles are looked up in the scene rather than through <c>conveyorInstance</c>: the belt in
+        /// SampleScene is hand-placed with autoSpawnConveyorBelt off, so that field is never assigned and
+        /// driving the belt through it would silently do nothing.
+        /// </summary>
+        private void SetConveyorRunning(bool running)
+        {
+            if (conveyorRunning == running && conveyorTiles != null) return;
+
+            if (conveyorTiles == null || conveyorTiles.Length == 0)
+            {
+                conveyorTiles = Object.FindObjectsByType<ConveyorBelt>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            }
+
+            foreach (ConveyorBelt tile in conveyorTiles)
+            {
+                if (tile != null) tile.AutoScroll = running;
+            }
+
+            conveyorRunning = running;
         }
 
         private static RectTransform FindConveyorPanel()
@@ -2367,7 +2552,7 @@ namespace MechaFind3D.PhysicsInteraction
                     {
                         slotBox[i].transform.position = Vector3.Lerp(slotBox[i].transform.position, slotWorldPos, Time.deltaTime * 22f);
                     }
-                    float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * 1.25f;
+                    float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * boxSlotScaleMultiplier;
                     slotBox[i].transform.localScale = Vector3.one * fitScale;
                     Quaternion targetRot = BoxDisplayRotation(BoxSlotTiltEuler);
                     if (Quaternion.Angle(slotBox[i].transform.rotation, targetRot) > 0.05f)
@@ -2633,12 +2818,14 @@ namespace MechaFind3D.PhysicsInteraction
         /// The unscaled mesh extent cancels out of ComputeFitScaleForSlot's ratio, so this reproduces
         /// the exact final on-shelf size (dock fit * 1.30 ship base * 1.15 shelf scale) deterministically.
         /// </summary>
+        /// <summary>
+        /// How much room one shipped box takes up along the belt, which is what the spacing between them is
+        /// built from. Derived from the same on-belt size the boxes are actually scaled to, so spacing and
+        /// size can no longer drift apart.
+        /// </summary>
         private float EstimateShippedBoxFootprint()
         {
-            if (slotRects.Count == 0) return 0.5f;
-
-            float targetWorldSize = ComputeFitScaleForSlot(0);
-            float footprint = targetWorldSize * 1.30f * 1.15f;
+            float footprint = GetShippedBoxWorldSize();
             return footprint > 1e-4f ? footprint : 0.5f;
         }
 
@@ -2691,6 +2878,14 @@ namespace MechaFind3D.PhysicsInteraction
                 targetPos = mainCamera.ViewportToWorldPoint(new Vector3(0.25f, 0.235f, depth));
             }
 
+            // Only the position ALONG the belt is worked out above; the height and depth come from the belt
+            // itself, so a box lands centred on it rather than on a viewport guess.
+            if (TryGetBeltRideCentre(out Vector3 rideCentre))
+            {
+                targetPos.y = rideCentre.y;
+                targetPos.z = rideCentre.z;
+            }
+
             return targetPos;
         }
 
@@ -2708,7 +2903,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             DockItemData firstItemData = filledItems.Count > 0 ? filledItems[0] : null;
 
-            float baseScale = box != null ? ComputeFitScaleForSlot(slotIndex, box) * 1.30f : 0.18f;
+            float baseScale = box != null ? ComputeShippedBoxScale(box) : 0.18f;
 
             Sequence boxSeq = DOTween.Sequence();
 
@@ -2792,7 +2987,7 @@ namespace MechaFind3D.PhysicsInteraction
                         newBox.transform.localScale = Vector3.zero;
                         slotBox[slotIndex] = newBox;
 
-                        float openBaseScale = ComputeFitScaleForSlot(slotIndex, newBox) * 1.25f;
+                        float openBaseScale = ComputeFitScaleForSlot(slotIndex, newBox) * boxSlotScaleMultiplier;
                         tweeningDockObjects.Add(newBox);
                         newBox.transform.DOScale(openBaseScale, 0.55f).SetEase(Ease.OutBack).OnComplete(() =>
                         {
