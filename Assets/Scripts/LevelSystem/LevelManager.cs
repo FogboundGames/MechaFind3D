@@ -122,6 +122,14 @@ namespace MechaFind3D.PhysicsInteraction
                 MatchGoalManager.Instance.SetupLevelGoals();
             }
 
+            // 2b. Re-roll customer orders for this level - the header row's cards are driven by these,
+            // not directly by MatchGoalManager, so without this it would keep showing the previous
+            // level's customers.
+            if (CustomerOrderManager.Instance != null)
+            {
+                CustomerOrderManager.Instance.SetupCustomerOrders();
+            }
+
             // 3. Refresh HUD UI cards and title
             if (CanvasUIDesignManager.Instance != null)
             {

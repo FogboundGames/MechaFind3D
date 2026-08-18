@@ -6,12 +6,6 @@ using UnityEditor;
 
 namespace MechaFind3D.PhysicsInteraction
 {
-    public enum BackdropMode
-    {
-        FloorMapped,
-        CameraFacing
-    }
-
     /// <summary>
     /// Automatic scene builder for Match Factory Style 3D Search & Canvas UI Game.
     /// Configures high-angle camera, clean tray container, CanvasUIDesignManager, MatchGoalManager,
@@ -23,20 +17,15 @@ namespace MechaFind3D.PhysicsInteraction
     [ExecuteAlways]
     public class ScenePhysicsSetup : MonoBehaviour
     {
-        [Header("Background Settings")]
-        [SerializeField] private bool showBackgroundOnFloor = true;
-        [SerializeField] private string backgroundTextureName = "GameBackground";
-        [SerializeField] private BackdropMode backdropMode = BackdropMode.CameraFacing;
-
         [Header("Play Area Line Boundary (Adjustable in Inspector)")]
         [Tooltip("Adjustable boundary line dimensions. Objects are strictly kept inside this line by code constraint.")]
         [SerializeField] private Vector2 boundaryAreaSize = new Vector2(6.35f, 6.35f);
-        [SerializeField] private Color boundaryLineColor = new Color(0f, 0f, 0f, 0f);
-        [SerializeField] private float boundaryLineWidth = 0.0f;
+        [Tooltip("Line colour drawn around the play area so its edge reads clearly against the solid navy background.")]
+        [SerializeField] private Color boundaryLineColor = new Color(0.85f, 0.92f, 1f, 0.9f);
+        [SerializeField] private float boundaryLineWidth = 0.06f;
 
         [Header("Match Factory Floor Tray Dimensions")]
         [SerializeField] private Vector3 containerSize = new Vector3(8.5f, 0.1f, 8.5f);
-        [SerializeField] private Color trayFloorColor = new Color(0.12f, 0.15f, 0.20f);
 
         private void Start()
         {
@@ -167,7 +156,11 @@ namespace MechaFind3D.PhysicsInteraction
                     frictionCombine = PhysicsMaterialCombine.Maximum,
                     bounceCombine = PhysicsMaterialCombine.Minimum
                 };
-            // Remove previous visual backgrounds if any
+            }
+
+            // Drop any textured background quad left over from an older build - the background is a flat
+            // navy fill from CanvasUIDesignManager.EnsureBackgroundCanvas now, not an image plane in the
+            // 3D scene, so this quad would otherwise keep showing behind everything.
             Transform existingVisual = floorObj.transform.Find("Visual_Background");
             if (existingVisual != null)
             {
@@ -177,7 +170,7 @@ namespace MechaFind3D.PhysicsInteraction
                 Destroy(existingVisual.gameObject);
 #endif
             }
-            
+
             Transform existingVisual2 = transform.Find("Visual_Background");
             if (existingVisual2 != null)
             {
@@ -186,66 +179,6 @@ namespace MechaFind3D.PhysicsInteraction
 #else
                 Destroy(existingVisual2.gameObject);
 #endif
-            }
-
-            if (showBackgroundOnFloor)
-            {
-                // Create Visual Background Quad
-                GameObject bgVisual = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                bgVisual.name = "Visual_Background";
-                
-                if (backdropMode == BackdropMode.CameraFacing)
-                {
-                    // Parent directly to controller so it isn't squashed by floor bounds
-                    bgVisual.transform.SetParent(transform);
-                    // Find the actual Main Camera, not the Background Camera
-                    Camera cam = null;
-                    GameObject mainCamObj = GameObject.FindGameObjectWithTag("MainCamera");
-                    if (mainCamObj != null) cam = mainCamObj.GetComponent<Camera>();
-                    if (cam == null) cam = Camera.main;
-                    
-                    if (cam != null)
-                    {
-                        float distance = 20f; // Push it back so shadows and physics items fit in front
-                        bgVisual.transform.position = cam.transform.position + cam.transform.forward * distance;
-                        bgVisual.transform.rotation = cam.transform.rotation;
-                        
-                        float frustumHeight = 2.0f * distance * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-                        // Force the quad to exactly fill the screen frustum, regardless of image aspect ratio
-                        float frustumWidth = frustumHeight * cam.aspect;
-                        bgVisual.transform.localScale = new Vector3(frustumWidth, frustumHeight, 1f);
-                    }
-                }
-                else
-                {
-                    // Floor mapped
-                    bgVisual.transform.SetParent(floorObj.transform);
-                    bgVisual.transform.localPosition = new Vector3(0f, 0.51f, 0f); // Just above the cube's top face
-                    bgVisual.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                    bgVisual.transform.localScale = new Vector3(1.5f, 1.5f * (1024f / 682f), 1f);
-                }
-
-                Renderer bgRend = bgVisual.GetComponent<Renderer>();
-                if (bgRend != null)
-                {
-                    bgRend.receiveShadows = false;
-                    Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Texture");
-                    Material mat = new Material(shader);
-                    Texture2D bgTex = Resources.Load<Texture2D>(backgroundTextureName);
-                    if (bgTex != null)
-                    {
-                        mat.mainTexture = bgTex;
-                        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
-                        if (mat.HasProperty("_Color")) mat.SetColor("_Color", Color.white);
-                    }
-                    else
-                    {
-                        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", trayFloorColor);
-                        if (mat.HasProperty("_Color")) mat.SetColor("_Color", trayFloorColor);
-                    }
-                    bgRend.sharedMaterial = mat;
-                }
-            }
             }
 
             return floorObj;
@@ -291,12 +224,15 @@ namespace MechaFind3D.PhysicsInteraction
             lineObj.transform.position = Vector3.zero;
 
             LineRenderer line = lineObj.AddComponent<LineRenderer>();
-            line.enabled = false;
+            line.enabled = true;
             line.useWorldSpace = true;
             line.loop = true;
             line.positionCount = 4;
+            line.numCornerVertices = 4;
             line.startWidth = boundaryLineWidth;
             line.endWidth = boundaryLineWidth;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
 
             Shader lineShader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
             Material lineMat = new Material(lineShader);
