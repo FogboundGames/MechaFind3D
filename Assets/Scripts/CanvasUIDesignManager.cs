@@ -127,6 +127,18 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float conveyorBoxFillRatio = 0.75f;
         [Tooltip("Nudge for where a box sits on the belt, measured from the belt's own top centre. Y lifts it off the surface, Z moves it towards or away from the camera.")]
         [SerializeField] private Vector3 conveyorBoxRideOffset = Vector3.zero;
+        [Tooltip("Where along the belt a box lands when the run is empty. 0 is the very start of the belt, 1 the far end - so lower values give it more belt to travel before it leaves.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float conveyorBoxEntryFraction = 0.12f;
+
+        [Header("Conveyor Curtain Portal")]
+        [Tooltip("Size of the strip curtain standing at the end of the belt.")]
+        [Min(0.01f)]
+        [SerializeField] private float curtainPortalScale = 1f;
+        [Tooltip("Nudge for the curtain, measured from the end of the belt: X along the run, Y up from the belt's underside, Z towards or away from the camera.")]
+        [SerializeField] private Vector3 curtainPortalOffset = Vector3.zero;
+        [Tooltip("Extra rotation applied on top of the model's own imported orientation, so it can be squared up to the belt's tilt.")]
+        [SerializeField] private Vector3 curtainPortalRotationEuler = Vector3.zero;
 
         [Header("3D Conveyor Belt Scene Placement")]
         [Tooltip("If true, automatically spawns a new belt prefab if none exists in the scene. Turn OFF to strictly use your scene-placed belt.")]
@@ -207,6 +219,12 @@ namespace MechaFind3D.PhysicsInteraction
         // actually reaches the tiles and parks the idle belt.
         private ConveyorBelt[] conveyorTiles;
         private bool conveyorRunning = true;
+
+        private const string CurtainResourcePath = "Curtain/CurtainPortal";
+        private CurtainPortal curtainPortal;
+        private bool spawnedCurtainPortal;
+        private Quaternion curtainRestRotation = Quaternion.identity;
+        private readonly HashSet<GameObject> boxesThroughCurtain = new HashSet<GameObject>();
 
         private Quaternion BoxDisplayRotation(Vector3 tiltEuler)
         {
@@ -2301,6 +2319,24 @@ namespace MechaFind3D.PhysicsInteraction
 
             SetConveyorRunning(completedBoxObjects.Count > 0);
 
+            // The curtain swings once per box, as that box's leading edge reaches it. Boxes already counted
+            // are remembered so a box sitting on the threshold cannot retrigger it every frame.
+            CurtainPortal portal = EnsureCurtainPortal();
+            if (portal != null)
+            {
+                float thresholdX = portal.transform.position.x - GetShippedBoxWorldSize() * 0.5f;
+                boxesThroughCurtain.RemoveWhere(b => b == null || !completedBoxObjects.Contains(b));
+
+                foreach (GameObject shipped in completedBoxObjects)
+                {
+                    if (shipped == null || tweeningDockObjects.Contains(shipped)) continue;
+                    if (shipped.transform.position.x < thresholdX) continue;
+                    if (!boxesThroughCurtain.Add(shipped)) continue;
+
+                    portal.Push();
+                }
+            }
+
             if (completedBoxObjects.Count == 0) return;
 
             Vector3 camRight = mainCamera.transform.right;
@@ -2423,6 +2459,57 @@ namespace MechaFind3D.PhysicsInteraction
             float extent = GetObjectStaticUnscaledMaxExtent(box);
             if (extent <= 1e-4f) return miniObjectDockScale;
             return GetShippedBoxWorldSize() / extent;
+        }
+
+        /// <summary>
+        /// Places the strip curtain across the far end of the belt, spawning it the first time it is needed.
+        ///
+        /// Positioned from the belt like everything else that rides it, so moving or resizing the belt
+        /// carries the curtain with it rather than leaving it stranded mid-run.
+        /// </summary>
+        private CurtainPortal EnsureCurtainPortal()
+        {
+            if (curtainPortal == null)
+            {
+                CurtainPortal inScene = Object.FindFirstObjectByType<CurtainPortal>(FindObjectsInactive.Include);
+                if (inScene != null)
+                {
+                    // Placed by hand in the Scene view. Its transform is left completely alone from here on -
+                    // the belt itself works the same way, and auto-placing over it threw away the positioning
+                    // that had just been dialled in by hand.
+                    curtainPortal = inScene;
+                    return curtainPortal;
+                }
+
+                GameObject prefab = Resources.Load<GameObject>(CurtainResourcePath);
+                if (prefab == null) return null;
+
+                // The model carries a baked Z-up -> Y-up rotation on its root. It is COMPOSED with below,
+                // never replaced: assigning an absolute rotation lays the portal on its side, the same trap
+                // the packaging box and the belt both hit.
+                curtainRestRotation = prefab.transform.rotation;
+
+                GameObject instance = Instantiate(prefab, transform);
+                instance.name = "Conveyor_Curtain_Portal";
+                curtainPortal = instance.GetComponent<CurtainPortal>();
+                if (curtainPortal == null) curtainPortal = instance.AddComponent<CurtainPortal>();
+                spawnedCurtainPortal = true;
+            }
+
+            // Only a curtain this component spawned is positioned automatically, and only while the belt can
+            // actually be measured.
+            if (!spawnedCurtainPortal || !TryGetBeltBounds(out Bounds belt)) return curtainPortal;
+
+            // The model stands on its own base, so it is seated on the belt's underside and left to reach up
+            // over it; sizing it to the belt's width keeps the opening wider than whatever rides through.
+            Transform t = curtainPortal.transform;
+            t.rotation = Quaternion.Euler(curtainPortalRotationEuler) * curtainRestRotation;
+            t.localScale = Vector3.one * curtainPortalScale;
+            t.position = new Vector3(belt.max.x + curtainPortalOffset.x,
+                                     belt.min.y + curtainPortalOffset.y,
+                                     belt.center.z + curtainPortalOffset.z);
+
+            return curtainPortal;
         }
 
         /// <summary>
@@ -2924,10 +3011,6 @@ namespace MechaFind3D.PhysicsInteraction
             float idealSpacing = GetIdealConveyorBoxSpacing();
             Vector3 camRight = mainCamera.transform.right;
 
-            float minX = mainCamera.ViewportToWorldPoint(new Vector3(-0.15f, 0.235f, depth)).x;
-            float maxX = mainCamera.ViewportToWorldPoint(new Vector3(1.15f, 0.235f, depth)).x;
-            float spanX = maxX - minX;
-
             GameObject lastBox = null;
             for (int i = completedBoxObjects.Count - 1; i >= 0; i--)
             {
@@ -2942,7 +3025,14 @@ namespace MechaFind3D.PhysicsInteraction
             if (lastBox != null)
             {
                 targetPos = lastBox.transform.position - camRight * idealSpacing;
-                if (targetPos.x < minX) targetPos.x += spanX;
+            }
+            else if (TryGetBeltBounds(out Bounds belt))
+            {
+                // First box of a run enters near the START of the belt, so it has the whole run to travel.
+                // This used to be a viewport reading at dock depth, which has no relation to where the belt
+                // is: it dropped the box most of the way along the run and the trip was over almost at once.
+                targetPos = new Vector3(Mathf.Lerp(belt.min.x, belt.max.x, conveyorBoxEntryFraction),
+                                        belt.max.y, belt.center.z);
             }
             else
             {
@@ -3028,7 +3118,12 @@ namespace MechaFind3D.PhysicsInteraction
                         if (box == null) return;
 
                         Vector3 target = GetRedMarkedCompletedBoxWorldPos(shipIndex);
-                        if (mainCamera != null)
+
+                        // The lead compensates for the run moving under the box during its flight - so it
+                        // only applies when the belt is ACTUALLY running. The belt now idles until a box is
+                        // on it, so for the first box of a run there is nothing to compensate for, and the
+                        // lead (which grew with the belt speed) simply threw it most of the way down the run.
+                        if (mainCamera != null && conveyorRunning)
                         {
                             target += mainCamera.transform.right * (conveyorBoxMoveSpeed * shipFlight);
                         }
