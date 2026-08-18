@@ -7492,19 +7492,19 @@ MonoBehaviour:
   dockItemFillRatio: 0.62
   dockCameraDepth: 2
   uiPlaneDistance: 3.2
-  headerSize: {x: 1000, y: 110}
+  headerSize: {x: 1000, y: 170}
   headerAnchoredPosition: {x: 0, y: -100}
   titleFontSize: 28
   goalContainerSpacing: 5
-  goalCardSize: {x: 250, y: 80}
+  goalCardSize: {x: 330, y: 100}
   goalCardDividerX: 0.6
-  goalCardDividerWidth: 3
+  goalCardDividerWidth: 4
   goalCardDividerColor: {r: 1, g: 1, b: 1, a: 0.65}
   customerPortraitSprite: {fileID: 0}
-  goalCardIconSize: 65
-  goalCardFontSize: 28
+  goalCardIconSize: 78
+  goalCardFontSize: 34
   goalCard3DModelScale: 450
-  goalCard3DModelTargetSize: 85
+  goalCard3DModelTargetSize: 95
   goalCard3DModelLocalPosition: {x: 32.5, y: 0, z: -25}
   goalCard3DModelTiltX: 15
   goalSpawnStaggerDelay: 0.07

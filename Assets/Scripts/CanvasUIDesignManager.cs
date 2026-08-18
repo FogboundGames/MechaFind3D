@@ -34,26 +34,26 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("Header Goal Panel")]
         [Tooltip("Two rows tall now: the customer order cards on top, the timer centred underneath.")]
-        [SerializeField] private Vector2 headerSize = new Vector2(1000f, 220f);
+        [SerializeField] private Vector2 headerSize = new Vector2(1000f, 170f);
         [SerializeField] private Vector2 headerAnchoredPosition = new Vector2(0f, -100f);
         [SerializeField] private int titleFontSize = 28;
         [SerializeField] private int goalContainerSpacing = 5;
 
         [Header("Goal Cards")]
-        [SerializeField] private Vector2 goalCardSize = new Vector2(250f, 80f);
+        [SerializeField] private Vector2 goalCardSize = new Vector2(330f, 100f);
         [Tooltip("Where the rule down an order card sits, as a fraction of its width. Left of it: the item and how many are still wanted. Right of it: the customer the order belongs to.")]
         [Range(0.3f, 0.9f)]
         [SerializeField] private float goalCardDividerX = 0.60f;
         [Tooltip("Thickness of that rule, in pixels.")]
-        [SerializeField] private float goalCardDividerWidth = 3f;
+        [SerializeField] private float goalCardDividerWidth = 4f;
         [Tooltip("Colour of that rule. Faint values wash out against the card at game resolution.")]
         [SerializeField] private Color goalCardDividerColor = new Color(1f, 1f, 1f, 0.65f);
         [Tooltip("Portrait for the customer half of an order card. Left empty, a plain placeholder panel is drawn so the zone is still visible.")]
         [SerializeField] private Sprite customerPortraitSprite;
-        [SerializeField] private float goalCardIconSize = 65f;
-        [SerializeField] private int goalCardFontSize = 28;
+        [SerializeField] private float goalCardIconSize = 78f;
+        [SerializeField] private int goalCardFontSize = 34;
         [SerializeField] private float goalCard3DModelScale = 450f;
-        [SerializeField] private float goalCard3DModelTargetSize = 85f;
+        [SerializeField] private float goalCard3DModelTargetSize = 95f;
         [SerializeField] private Vector3 goalCard3DModelLocalPosition = new Vector3(32.5f, 0f, -25f);
         [SerializeField] private float goalCard3DModelTiltX = 15f;
 
@@ -599,7 +599,7 @@ namespace MechaFind3D.PhysicsInteraction
             GameObject timerBadgeObj = GetOrCreateChild(headerObj.transform, "timer_badge");
             RectTransform timerBadgeRect = timerBadgeObj.GetComponent<RectTransform>() ?? timerBadgeObj.AddComponent<RectTransform>();
             timerBadgeRect.anchorMin = new Vector2(0.30f, 0.02f);
-            timerBadgeRect.anchorMax = new Vector2(0.70f, 0.46f);
+            timerBadgeRect.anchorMax = new Vector2(0.70f, 0.34f);
             timerBadgeRect.anchoredPosition = Vector2.zero;
             timerBadgeRect.sizeDelta = Vector2.zero;
             if (timerBadgeObj.GetComponent<Image>() == null)
@@ -612,7 +612,7 @@ namespace MechaFind3D.PhysicsInteraction
             GameObject timerTextObj = GetOrCreateChild(headerObj.transform, "timer_text");
             RectTransform timerTextRect = timerTextObj.GetComponent<RectTransform>() ?? timerTextObj.AddComponent<RectTransform>();
             timerTextRect.anchorMin = new Vector2(0.30f, 0.02f);
-            timerTextRect.anchorMax = new Vector2(0.70f, 0.46f);
+            timerTextRect.anchorMax = new Vector2(0.70f, 0.34f);
             timerTextRect.anchoredPosition = Vector2.zero;
             timerTextRect.sizeDelta = Vector2.zero;
             if (timerTextObj.GetComponent<Text>() == null)
@@ -634,7 +634,7 @@ namespace MechaFind3D.PhysicsInteraction
             // Order cards row: full width, centred, top half of the header.
             GameObject goalsContainer = GetOrCreateChild(headerObj.transform, "Goals_Container");
             topGoalContainer = goalsContainer.GetComponent<RectTransform>() ?? goalsContainer.AddComponent<RectTransform>();
-            topGoalContainer.anchorMin = new Vector2(0.02f, 0.50f);
+            topGoalContainer.anchorMin = new Vector2(0.02f, 0.44f);
             topGoalContainer.anchorMax = new Vector2(0.98f, 1f);
             topGoalContainer.sizeDelta = Vector2.zero;
 
