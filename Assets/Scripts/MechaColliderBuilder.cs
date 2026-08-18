@@ -67,10 +67,39 @@ namespace MechaFind3D.PhysicsInteraction
             if (smr == null || smr.sharedMesh == null) return false;
 
             Mesh mesh = smr.sharedMesh;
+
+            // Non-readable mesh fallback: cannot access CPU vertex or skin data without Read/Write enabled,
+            // so assign a direct convex MeshCollider to the renderer object instead.
+            if (!mesh.isReadable)
+            {
+                MeshCollider mc = smr.GetComponent<MeshCollider>();
+                if (mc == null) mc = smr.gameObject.AddComponent<MeshCollider>();
+                mc.sharedMesh = mesh;
+                mc.convex = true;
+                mc.isTrigger = isTrigger;
+                return true;
+            }
+
             Transform[] bones = smr.bones;
-            Matrix4x4[] bindposes = mesh.bindposes;
-            BoneWeight[] weights = mesh.boneWeights;
-            Vector3[] verts = mesh.vertices;
+            Matrix4x4[] bindposes;
+            BoneWeight[] weights;
+            Vector3[] verts;
+
+            try
+            {
+                bindposes = mesh.bindposes;
+                weights = mesh.boneWeights;
+                verts = mesh.vertices;
+            }
+            catch
+            {
+                MeshCollider mc = smr.GetComponent<MeshCollider>();
+                if (mc == null) mc = smr.gameObject.AddComponent<MeshCollider>();
+                mc.sharedMesh = mesh;
+                mc.convex = true;
+                mc.isTrigger = isTrigger;
+                return true;
+            }
 
             // Remove any old whole-mesh collider sitting directly on the renderer so it can't stack
             // with the new per-bone colliders.

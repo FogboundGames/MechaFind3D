@@ -179,11 +179,19 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // If neither box explicitly asks for it, assign to first available box
-            if (box0Order != null && !box0Order.IsFullyFulfilled) return 0;
-            if (box1Order != null && !box1Order.IsFullyFulfilled) return 1;
+            // Neither active order wants this item - the caller treats this as a wrong pick rather than
+            // stuffing it into whichever box happens to be free.
+            return -1;
+        }
 
-            return 0;
+        /// <summary>
+        /// Whether some currently active box order still wants this item, independent of whether that box
+        /// has room for it right now (e.g. mid-shipping). Lets the caller tell a genuinely wrong item apart
+        /// from a right item that simply has nowhere to land this frame.
+        /// </summary>
+        public bool ItemMatchesAnyActiveOrder(string itemId)
+        {
+            return GetTargetBoxForCollectedItem(itemId) != -1;
         }
 
         public void RegisterItemPackedIntoBox(int boxIndex, string itemId)

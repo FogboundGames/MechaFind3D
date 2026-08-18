@@ -177,9 +177,12 @@ private void CheckLevelCompletion()
             }
         }
 
-        private void TriggerLose()
+        public void TriggerLose()
         {
+            if (isLevelComplete) return;
+
             isLevelComplete = true;
+            isTimerRunning = false;
             if (WinLosePanelController.Instance != null)
             {
                 WinLosePanelController.Instance.ShowLose();
