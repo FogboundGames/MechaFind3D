@@ -3,48 +3,63 @@ using UnityEngine;
 
 namespace MechaFind3D.PhysicsInteraction
 {
+    /// <summary>
+    /// One customer's request: a single item type and how many of it they want. The dock delivers a whole
+    /// group at once, so an order never mixes types.
+    /// </summary>
     [System.Serializable]
-    public class CustomerOrderItem
+    public class CustomerOrder
     {
+        public int orderId;
+        public string customerName;
         public string itemId;
         public Color itemColor;
         public Sprite itemIcon;
         public int requiredCount;
-        public int packedCount;
-
-        public bool IsFulfilled => packedCount >= requiredCount;
+        public bool isCompleted;
     }
 
-    [System.Serializable]
-    public class CustomerOrder
+    /// <summary>
+    /// Keeps a small row of active orders on screen and refills it from a queue as each one is delivered.
+    ///
+    /// [ExecuteAlways] to match <see cref="CanvasUIDesignManager"/>, which builds the whole HUD in edit mode.
+    /// Without it this component's Awake never runs outside Play, <c>Instance</c> stays null, and the order
+    /// card row is silently empty in the Editor - so card layout could never be seen or tuned there.
+    /// </summary>
+    [ExecuteAlways]
+    public class CustomerOrderManager : MonoBehaviour
     {
-        public string customerName;
-        public int assignedBoxIndex = -1; // 0 for Box 1, 1 for Box 2
-        public List<CustomerOrderItem> items = new List<CustomerOrderItem>();
-        public bool isCompleted = false;
+        private static CustomerOrderManager instance;
 
-        public bool IsFullyFulfilled
+        /// <summary>
+        /// Falls back to a scene lookup instead of relying purely on Awake. In edit mode Awake does not run
+        /// when this component is added via AddComponent, so the HUD - which [ExecuteAlways] builds in the
+        /// Editor - found a null manager and drew an empty order row.
+        /// </summary>
+        public static CustomerOrderManager Instance
         {
             get
             {
-                if (items == null || items.Count == 0) return false;
-                foreach (var item in items)
-                {
-                    if (!item.IsFulfilled) return false;
-                }
-                return true;
+                if (instance == null) instance = FindFirstObjectByType<CustomerOrderManager>(FindObjectsInactive.Include);
+                return instance;
             }
+            private set => instance = value;
         }
-    }
 
-    public class CustomerOrderManager : MonoBehaviour
-    {
-        public static CustomerOrderManager Instance { get; private set; }
+        [Tooltip("Kaç sipariş kartı aynı anda üstte dursun.")]
+        [Min(1)]
+        [SerializeField] private int activeOrderCount = 3;
 
-        [Header("Active Customer Orders Queue")]
-        public List<CustomerOrder> levelOrders = new List<CustomerOrder>();
-        public CustomerOrder box0Order;
-        public CustomerOrder box1Order;
+        [Tooltip("Bir siparişin isteyebileceği en az / en çok adet. Seviye hedefi bu aralıkta parçalara bölünür.")]
+        [SerializeField] private Vector2Int orderSizeRange = new Vector2Int(2, 3);
+
+        // Fixed length == activeOrderCount. A null entry means the queue ran dry and that card slot stays
+        // empty rather than collapsing the row, so the remaining cards don't jump sideways mid-level.
+        private readonly List<CustomerOrder> activeOrders = new List<CustomerOrder>();
+        private readonly Queue<CustomerOrder> pendingOrders = new Queue<CustomerOrder>();
+        private int nextOrderId;
+
+        public IReadOnlyList<CustomerOrder> ActiveOrders => activeOrders;
 
         private void Awake()
         {
@@ -53,218 +68,116 @@ namespace MechaFind3D.PhysicsInteraction
 
         public void SetupCustomerOrders()
         {
-            levelOrders.Clear();
-            box0Order = null;
-            box1Order = null;
+            activeOrders.Clear();
+            pendingOrders.Clear();
+            nextOrderId = 0;
 
-            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            BuildOrderQueue();
+
+            for (int i = 0; i < Mathf.Max(1, activeOrderCount); i++)
             {
-                LevelDataSO levelData = LevelManager.Instance.ActiveLevelData;
-                if (levelData.targetGoals != null && levelData.targetGoals.Count > 0)
+                activeOrders.Add(pendingOrders.Count > 0 ? pendingOrders.Dequeue() : null);
+            }
+        }
+
+        private void BuildOrderQueue()
+        {
+            var built = new List<CustomerOrder>();
+            LevelDataSO levelData = LevelManager.Instance != null ? LevelManager.Instance.ActiveLevelData : null;
+
+            if (levelData != null && levelData.targetGoals != null && levelData.targetGoals.Count > 0)
+            {
+                foreach (var goal in levelData.targetGoals)
                 {
-                    int customerCounter = 1;
-                    foreach (var goalReq in levelData.targetGoals)
-                    {
-                        if (goalReq == null || goalReq.itemData == null) continue;
-
-                        string itemId = goalReq.itemData.GetEffectiveItemId();
-                        int totalReq = goalReq.requiredCount;
-
-                        // Create orders of 2 or 3 items per customer
-                        int remaining = totalReq;
-                        while (remaining > 0)
-                        {
-                            int batchCount = Mathf.Min(remaining, Random.Range(2, 4));
-                            CustomerOrder order = new CustomerOrder
-                            {
-                                customerName = $"Müşteri #{customerCounter++}"
-                            };
-                            order.items.Add(new CustomerOrderItem
-                            {
-                                itemId = itemId,
-                                itemColor = goalReq.itemData.targetColor,
-                                itemIcon = (goalReq.itemData.icon != null) ? goalReq.itemData.icon : null,
-                                requiredCount = batchCount,
-                                packedCount = 0
-                            });
-
-                            levelOrders.Add(order);
-                            remaining -= batchCount;
-                        }
-                    }
+                    if (goal == null || goal.itemData == null) continue;
+                    SplitGoalIntoOrders(built, goal.itemData.GetEffectiveItemId(), goal.itemData.targetColor, goal.itemData.icon, goal.requiredCount);
                 }
             }
 
-            // Fallback orders if levelData has no targetGoals
-            if (levelOrders.Count == 0)
+            if (built.Count == 0)
             {
-                GenerateFallbackOrders();
+                string[] sampleItems = { "watermelon", "pear", "sausage", "fish" };
+                Color[] sampleColors = { Color.red, Color.green, new Color(0.8f, 0.4f, 0.2f), Color.cyan };
+                for (int i = 0; i < sampleItems.Length; i++)
+                {
+                    SplitGoalIntoOrders(built, sampleItems[i], sampleColors[i], null, 6);
+                }
             }
 
-            AssignOrdersToBoxes();
+            // Shuffled, because building goal by goal put every order for the first item type at the front -
+            // so all three cards on screen asked for the same thing and the tray never had to hold anything
+            // the player could not immediately deliver.
+            for (int i = built.Count - 1; i > 0; i--)
+            {
+                int j = Random.Range(0, i + 1);
+                (built[i], built[j]) = (built[j], built[i]);
+            }
+
+            // Numbered after the shuffle so the customers read 1, 2, 3... down the queue.
+            foreach (CustomerOrder order in built)
+            {
+                order.orderId = ++nextOrderId;
+                order.customerName = $"Müşteri #{order.orderId}";
+                pendingOrders.Enqueue(order);
+            }
         }
 
-        private void GenerateFallbackOrders()
+        private void SplitGoalIntoOrders(List<CustomerOrder> into, string itemId, Color color, Sprite icon, int totalRequired)
         {
-            string[] sampleItems = { "watermelon", "pear", "sausage", "fish" };
-            Color[] sampleColors = { Color.red, Color.green, new Color(0.8f, 0.4f, 0.2f), Color.cyan };
+            int minSize = Mathf.Max(1, orderSizeRange.x);
+            int maxSize = Mathf.Max(minSize, orderSizeRange.y);
 
-            for (int i = 0; i < 4; i++)
+            int remaining = Mathf.Max(1, totalRequired);
+            while (remaining > 0)
             {
-                CustomerOrder order = new CustomerOrder
+                int batch;
+                if (remaining <= maxSize)
                 {
-                    customerName = $"Müşteri #{i + 1}"
-                };
-                order.items.Add(new CustomerOrderItem
+                    batch = remaining;
+                }
+                else
                 {
-                    itemId = sampleItems[i % sampleItems.Length],
-                    itemColor = sampleColors[i % sampleColors.Length],
-                    requiredCount = Random.Range(2, 4),
-                    packedCount = 0
+                    // Never leave a tail smaller than minSize behind: splitting 4 into 3+1 produced a
+                    // one-item order, which completes the instant it is tapped and reads as a bug.
+                    batch = Random.Range(minSize, maxSize + 1);
+                    batch = Mathf.Max(minSize, Mathf.Min(batch, remaining - minSize));
+                }
+
+                into.Add(new CustomerOrder
+                {
+                    itemId = itemId,
+                    itemColor = color,
+                    itemIcon = icon,
+                    requiredCount = batch
                 });
-                levelOrders.Add(order);
+                remaining -= batch;
             }
         }
 
-        public void AssignOrdersToBoxes()
+        /// <summary>The active order that wants this item type, or null when nothing on screen asks for it.</summary>
+        public CustomerOrder FindOrderForItem(string itemId)
         {
-            if (box0Order == null)
-            {
-                box0Order = GetNextUnassignedOrder();
-                if (box0Order != null) box0Order.assignedBoxIndex = 0;
-            }
+            if (string.IsNullOrEmpty(itemId)) return null;
 
-            if (box1Order == null)
+            foreach (CustomerOrder order in activeOrders)
             {
-                box1Order = GetNextUnassignedOrder();
-                if (box1Order != null) box1Order.assignedBoxIndex = 1;
-            }
-        }
-
-        private CustomerOrder GetNextUnassignedOrder()
-        {
-            foreach (var order in levelOrders)
-            {
-                if (!order.isCompleted && order.assignedBoxIndex == -1)
-                {
-                    return order;
-                }
+                if (order == null || order.isCompleted) continue;
+                if (order.itemId.Equals(itemId, System.StringComparison.OrdinalIgnoreCase)) return order;
             }
             return null;
         }
 
-        public int GetTargetBoxForCollectedItem(string itemId)
+        /// <summary>Retires a delivered order and slides the next queued customer into the same card position.</summary>
+        public void CompleteOrder(CustomerOrder order)
         {
-            // First check Box 0
-            if (box0Order != null && !box0Order.isCompleted)
-            {
-                foreach (var item in box0Order.items)
-                {
-                    if (item.itemId == itemId && !item.IsFulfilled)
-                    {
-                        return 0;
-                    }
-                }
-            }
+            if (order == null) return;
 
-            // Next check Box 1
-            if (box1Order != null && !box1Order.isCompleted)
-            {
-                foreach (var item in box1Order.items)
-                {
-                    if (item.itemId == itemId && !item.IsFulfilled)
-                    {
-                        return 1;
-                    }
-                }
-            }
+            order.isCompleted = true;
 
-            // Neither active order wants this item - the caller treats this as a wrong pick rather than
-            // stuffing it into whichever box happens to be free.
-            return -1;
-        }
+            int index = activeOrders.IndexOf(order);
+            if (index < 0) return;
 
-        /// <summary>
-        /// Whether some currently active box order still wants this item, independent of whether that box
-        /// has room for it right now (e.g. mid-shipping). Lets the caller tell a genuinely wrong item apart
-        /// from a right item that simply has nowhere to land this frame.
-        /// </summary>
-        public bool ItemMatchesAnyActiveOrder(string itemId)
-        {
-            return GetTargetBoxForCollectedItem(itemId) != -1;
-        }
-
-        public void RegisterItemPackedIntoBox(int boxIndex, string itemId)
-        {
-            CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
-            if (targetOrder == null) return;
-
-            foreach (var item in targetOrder.items)
-            {
-                if (item.itemId == itemId && !item.IsFulfilled)
-                {
-                    item.packedCount++;
-                    break;
-                }
-            }
-
-            if (targetOrder.IsFullyFulfilled)
-            {
-                targetOrder.isCompleted = true;
-            }
-        }
-
-        public void UnregisterAllItemsFromBox(int boxIndex)
-        {
-            CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
-            if (targetOrder == null) return;
-
-            foreach (var item in targetOrder.items)
-            {
-                item.packedCount = 0;
-            }
-            targetOrder.isCompleted = false;
-        }
-
-        public bool IsOrderFulfilledForBox(int boxIndex)
-        {
-            CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
-            if (targetOrder == null) return false;
-            return targetOrder.IsFullyFulfilled;
-        }
-
-        public bool ItemMatchesBoxOrder(int boxIndex, string itemId)
-        {
-            CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
-            if (targetOrder == null || targetOrder.isCompleted) return false;
-            foreach (var item in targetOrder.items)
-            {
-                if (item.itemId == itemId && !item.IsFulfilled) return true;
-            }
-            return false;
-        }
-
-        public int GetRequiredCountForBox(int boxIndex)
-        {
-            CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
-            if (targetOrder == null || targetOrder.items == null || targetOrder.items.Count == 0) return 3;
-            return targetOrder.items[0].requiredCount;
-        }
-
-        public void OnBoxShipped(int boxIndex)
-        {
-            if (boxIndex == 0 && box0Order != null)
-            {
-                box0Order.isCompleted = true;
-                box0Order = null;
-            }
-            else if (boxIndex == 1 && box1Order != null)
-            {
-                box1Order.isCompleted = true;
-                box1Order = null;
-            }
-
-            AssignOrdersToBoxes();
+            activeOrders[index] = pendingOrders.Count > 0 ? pendingOrders.Dequeue() : null;
         }
     }
 }

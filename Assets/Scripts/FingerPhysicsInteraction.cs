@@ -475,22 +475,6 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 CanvasUIDesignManager.Instance.TryCollectItemToDock(targetItem, hitCollider);
             }
-            else if (targetItem == null && CanvasUIDesignManager.Instance != null && mainCamera != null)
-            {
-                Ray ray = mainCamera.ScreenPointToRay(screenPos);
-                if (Physics.Raycast(ray, out RaycastHit boxHit, 200f))
-                {
-                    if (boxHit.collider != null)
-                    {
-                        string n = boxHit.collider.name.ToLower();
-                        if (n.Contains("box") || n.Contains("cardboard") || n.Contains("slot"))
-                        {
-                            int clickedBox = (boxHit.point.x < 0) ? 0 : 1;
-                            CanvasUIDesignManager.Instance.SelectBox(clickedBox);
-                        }
-                    }
-                }
-            }
         }
 
         private bool TryHandleStandaloneMechaTap(Vector2 screenPos)

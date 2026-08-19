@@ -15,8 +15,12 @@ using UnityEditor;
 namespace MechaFind3D.PhysicsInteraction
 {
     /// <summary>
-    /// Professional 2-Box Cardboard Sorting & Packaging Manager.
-    /// Manages 2 open cardboard box slots, item filling, item icon badges, and slow DOTween box closing & shipping animations.
+    /// Match-N collection dock.
+    ///
+    /// Tapped items land in a five-slot tray at the bottom of the screen and group themselves next to their
+    /// own kind. The moment a group reaches the count an active customer order is asking for, the whole
+    /// group flies up and slams into that order's card, completing it. Anything nobody ordered just sits in
+    /// the tray - fill all five slots without completing an order and the level is lost.
     /// </summary>
     [ExecuteAlways]
     public class CanvasUIDesignManager : MonoBehaviour
@@ -25,28 +29,28 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("Canvas Configuration")]
         [SerializeField] private Vector2 referenceResolution = new Vector2(1080, 1920);
-
-        [Header("Mini 3D Object Slot Holder Alignment")]
-        [SerializeField] private float miniObjectDockScale = 0.08f;
-        [SerializeField] private float dockItemFillRatio = 0.45f;
-        [SerializeField] private float dockCameraDepth = 1.6f;
         [SerializeField] private float uiPlaneDistance = 3.2f;
 
-        [Header("Header Goal Panel")]
-        [Tooltip("Two rows tall now: the customer order cards on top, the timer centred underneath.")]
+        [Header("Dock 3D Item Placement")]
+        [Tooltip("How far in front of the camera the docked 3D items sit.")]
+        [SerializeField] private float dockCameraDepth = 1.6f;
+        [Tooltip("How much of a slot an item fills, 1 being edge to edge.")]
+        [Range(0.1f, 1f)]
+        [SerializeField] private float dockItemFillRatio = 0.62f;
+        [SerializeField] private float miniObjectDockScale = 0.08f;
+
+        [Header("Header Order Panel")]
         [SerializeField] private Vector2 headerSize = new Vector2(1000f, 170f);
         [SerializeField] private Vector2 headerAnchoredPosition = new Vector2(0f, -100f);
         [SerializeField] private int titleFontSize = 28;
         [SerializeField] private int goalContainerSpacing = 5;
 
-        [Header("Goal Cards")]
+        [Header("Order Cards")]
         [SerializeField] private Vector2 goalCardSize = new Vector2(330f, 100f);
         [Tooltip("Where the rule down an order card sits, as a fraction of its width. Left of it: the item and how many are still wanted. Right of it: the customer the order belongs to.")]
         [Range(0.3f, 0.9f)]
         [SerializeField] private float goalCardDividerX = 0.60f;
-        [Tooltip("Thickness of that rule, in pixels.")]
         [SerializeField] private float goalCardDividerWidth = 4f;
-        [Tooltip("Colour of that rule. Faint values wash out against the card at game resolution.")]
         [SerializeField] private Color goalCardDividerColor = new Color(1f, 1f, 1f, 0.65f);
         [Tooltip("Portrait for the customer half of an order card. Left empty, a plain placeholder panel is drawn so the zone is still visible.")]
         [SerializeField] private Sprite customerPortraitSprite;
@@ -57,7 +61,7 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private Vector3 goalCard3DModelLocalPosition = new Vector3(32.5f, 0f, -25f);
         [SerializeField] private float goalCard3DModelTiltX = 15f;
 
-        [Header("Goal Card Animations")]
+        [Header("Order Card Animations")]
         [SerializeField] private float goalSpawnStaggerDelay = 0.07f;
         [SerializeField] private float goalSpawnScaleDuration = 0.35f;
         [SerializeField] private float goalSpawnFadeDuration = 0.22f;
@@ -69,352 +73,101 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float goalRemoveBounceDuration = 0.14f;
         [SerializeField] private float goalRemoveShrinkDuration = 0.28f;
 
-        [Header("Bottom Dock Panel")]
-        [SerializeField] private Vector2 dockPanelSize = new Vector2(980f, 210f);
-        [SerializeField] private Vector2 dockPanelAnchoredPosition = new Vector2(0f, 65f);
-        [SerializeField] private float dockSlotSpacing = 35f;
-        [SerializeField] private int dockSlotLabelFontSize = 24;
+        [Header("Bottom Dock (square slots)")]
+        [Tooltip("Kaç kare slot olsun. Slotlar dolar ve hiçbir sipariş tamamlanmazsa oyun biter.")]
+        [Min(1)]
+        [SerializeField] private int dockCapacity = 7;
+        [SerializeField] private Vector2 dockPanelAnchoredPosition = new Vector2(0f, 90f);
+        [Tooltip("Edge length of one square slot, in reference-resolution pixels. Slots shrink below this when the row would otherwise be wider than Dock Panel Max Width.")]
+        [SerializeField] private float dockSlotSize = 165f;
+        [Tooltip("Widest the whole dock panel may get, in reference-resolution pixels. The slot size is capped so the row always fits inside it.")]
+        [SerializeField] private float dockPanelMaxWidth = 1020f;
+        [SerializeField] private float dockSlotSpacing = 18f;
+        [SerializeField] private float dockPanelPadding = 22f;
+        [SerializeField] private Color dockPanelColor = new Color(0.06f, 0.10f, 0.22f, 0.94f);
+        [SerializeField] private Color dockSlotEmptyColor = new Color(0.12f, 0.18f, 0.36f, 0.85f);
+        [SerializeField] private Color dockSlotFilledColor = new Color(0.20f, 0.34f, 0.62f, 0.95f);
+
+        [Header("Item Collection Flight")]
+        [SerializeField] private float collectFlightDuration = 0.38f;
+
+        [Header("Match Delivery Flight")]
+        [Tooltip("How far the matched group lifts out of the tray before it launches at the card.")]
+        [SerializeField] private float matchLiftDistance = 0.22f;
+        [SerializeField] private float matchLiftDuration = 0.16f;
+        [SerializeField] private float matchFlightDuration = 0.34f;
+        [Tooltip("Delay between consecutive items of the same group leaving the tray.")]
+        [SerializeField] private float matchStaggerDelay = 0.05f;
 
         [Header("Shuffle Button")]
         [SerializeField] private Vector2 shuffleButtonPosition = new Vector2(60f, 240f);
         [SerializeField] private Vector2 shuffleButtonSize = new Vector2(80f, 80f);
         [SerializeField] private float shuffleIconSize = 45f;
 
-        [Header("3D Cardboard Box Packaging (DOTween Animation)")]
-        [SerializeField] private GameObject cardboardBoxOpenedPrefab;
-        [Tooltip("Optional material for the packaging box. Overrides EVERY slot including the tape, so leave empty to keep the model's separate cardboard/tape materials.")]
-        [SerializeField] private Material boxMaterialOverride;
-        [Tooltip("Tape colours handed out to boxes in order, so consecutive boxes never share one. Only the BoxTape slot is tinted; the cardboard is untouched.")]
-        [SerializeField] private Color[] boxTapeColors =
-        {
-            new Color(0.87f, 0.35f, 0.41f), // kırmızı  (modelin kendi rengi)
-            new Color(0.95f, 0.76f, 0.30f), // hardal
-            new Color(0.36f, 0.70f, 0.55f), // yeşil
-            new Color(0.36f, 0.58f, 0.86f), // mavi
-            new Color(0.72f, 0.50f, 0.85f)  // mor
-        };
-
-        [Header("3D Conveyor Belt (replaces the flat UI conveyor)")]
-        [SerializeField] private GameObject conveyorPrefab;
-        [Tooltip("Belt height as a fraction of a dock box's height. Drives the tile scale, and with it how many tiles fit side by side.")]
-        [Range(0.15f, 1.5f)]
-        [SerializeField] private float conveyorHeightFraction = 0.6f;
-        [Tooltip("How far the boxes sink into the belt's top surface, in world units. Slightly positive hides any gap under them.")]
-        [SerializeField] private float conveyorSinkIntoBoxes = 0.01f;
-        [Tooltip("Stripe scroll speed in LOOPS per second. Negative runs the belt to the RIGHT, which is the direction the packed boxes travel.")]
-        [SerializeField] private float conveyorSpeed = -0.2f;
-        [Tooltip("Mirrors the stripe layout so the arrow heads point right, matching the belt's travel direction.")]
-        [SerializeField] private bool conveyorFlipStripes = true;
-        [Tooltip("How many belt pallets to lay across the shelf. 2 creates two side-by-side rectangular sections.")]
-        [Min(0)]
-        [SerializeField] private int conveyorTileCount = 2;
-        [Tooltip("Y-axis height multiplier for the conveyor belt.")]
-        [Range(0.1f, 4f)]
-        [SerializeField] private float conveyorYScaleMultiplier = 1.0f;
-        [Tooltip("Linear move speed of completed boxes along the conveyor belt (world units per second). The belt is about 6 units long, so 2 crosses it in roughly 3 seconds.")]
-        [SerializeField] private float conveyorBoxMoveSpeed = 2.0f;
-        [Tooltip("How quickly a shipped box eases into its place in the run. Higher is snappier; too low and the boxes visibly trail the belt.")]
-        [SerializeField] private float conveyorBoxSettleSpeed = 12f;
-
-        [Tooltip("Size of the open packing box sitting in a dock slot, as a multiplier on the size that exactly fits the slot. 1 fills the slot; above 1 lets the box overhang it.")]
-        [Min(0.1f)]
-        [SerializeField] private float boxSlotScaleMultiplier = 1.60f;
-        [Tooltip("Fallback size for a sealed box when no belt can be measured, on the slot-fit basis.")]
-        [Min(0.1f)]
-        [SerializeField] private float boxShelfScaleMultiplier = 1.65f;
-        [Tooltip("How much of the belt's width a sealed box takes up while riding it. 1 spans the belt exactly; lower leaves margin either side.")]
-        [Range(0.1f, 2f)]
-        [SerializeField] private float conveyorBoxFillRatio = 0.75f;
-        [Tooltip("Nudge for where a box sits on the belt, measured from the belt's own top centre. Y lifts it off the surface, Z moves it towards or away from the camera.")]
-        [SerializeField] private Vector3 conveyorBoxRideOffset = Vector3.zero;
-        [Tooltip("Where along the belt a box lands when the run is empty. 0 is the very start of the belt, 1 the far end - so lower values give it more belt to travel before it leaves.")]
-        [Range(0f, 1f)]
-        [SerializeField] private float conveyorBoxEntryFraction = 0.12f;
-
-        [Header("Conveyor Curtain Portal")]
-        [Tooltip("Size of the strip curtain standing at the end of the belt.")]
-        [Min(0.01f)]
-        [SerializeField] private float curtainPortalScale = 1f;
-        [Tooltip("Nudge for the curtain, measured from the end of the belt: X along the run, Y up from the belt's underside, Z towards or away from the camera.")]
-        [SerializeField] private Vector3 curtainPortalOffset = Vector3.zero;
-        [Tooltip("Extra rotation applied on top of the model's own imported orientation, so it can be squared up to the belt's tilt.")]
-        [SerializeField] private Vector3 curtainPortalRotationEuler = Vector3.zero;
-
-        [Header("3D Conveyor Belt Scene Placement")]
-        [Tooltip("If true, automatically spawns a new belt prefab if none exists in the scene. Turn OFF to strictly use your scene-placed belt.")]
-        [SerializeField] private bool autoSpawnConveyorBelt = false;
-        [Tooltip("If true, places the 3D conveyor belt directly in 3D world space (on the scene floor) instead of under UI canvas elements.")]
-        [SerializeField] private bool use3DScenePosition = true;
-        [Tooltip("3D World Position of the conveyor belt in the scene.")]
-        [SerializeField] private Vector3 conveyorWorldPosition = new Vector3(0f, 0.05f, -3.2f);
-        [Tooltip("Total width of the 3D conveyor belt run in 3D world units.")]
-        [SerializeField] private float conveyorWorldWidth = 6.0f;
-        [Tooltip("Height of the conveyor belt run in 3D world units.")]
-        [SerializeField] private float conveyorWorldHeight = 0.5f;
-        [Tooltip("Rotation of the conveyor belt in 3D scene space.")]
-        [SerializeField] private Vector3 conveyorWorldRotationEuler = new Vector3(15f, 0f, 0f);
-
-        [Header("Mecha On Sealed Lid")]
-        [Tooltip("How much of the lid seam the mecha stretches across, laid out full length. 1 spans the whole box.")]
-        [Range(0.4f, 1f)]
-        [SerializeField] private float mechaLidFillRatio = 0.9f;
-        [Tooltip("How far the mecha floats above the lid, as a fraction of the seam's length. Just enough to stop it z-fighting the cardboard.")]
-        [SerializeField] private float mechaLidClearance = 0.02f;
-#pragma warning disable CS0414
-        [Tooltip("If true, spawns initial completed boxes on the conveyor belt at start so it moves continuously right away.")]
-        [SerializeField] private bool spawnInitialConveyorBoxes = false;
-        [Tooltip("Colour of the UI badges, goal cards and the shuffle button - the elements that used to be the kit's violet. Set to the colour you actually want to see; the sprite tint is worked out from it.")]
+        [Header("Colours")]
+        [Tooltip("Solid fill colour behind the whole scene.")]
+        [SerializeField] private Color backgroundColor = new Color(0.06f, 0.09f, 0.24f);
+        [Tooltip("Colour of the UI badges, order cards and the shuffle button.")]
         [SerializeField] private Color uiAccentColor = new Color(0f, 26f / 255f, 112f / 255f, 1f); // #001A70
-
-        [Tooltip("Flash/text colour used everywhere something is marked complete - a fulfilled order card, the Mecha badge once found, a ticked-down goal count. Was seven separate inline literals; now one place to reskin.")]
+        [Tooltip("Flash/text colour used everywhere something is marked complete.")]
         [SerializeField] private Color successAccentColor = new Color(0.45f, 1f, 0.55f);
         [Tooltip("Text colour for the Mecha goal badge while it's still outstanding.")]
         [SerializeField] private Color mechaAccentColor = new Color(0.4f, 0.95f, 1f);
 
-        [Tooltip("Show only every Nth arrow on a pallet. 1 is the authored density of ConveyorTile.fbx (10 groups per tile); 4 was for the old, far denser Conveyor.fbx.")]
-        [Min(1)]
-        [SerializeField] private int conveyorArrowStride = 1;
-        [Tooltip("Size multiplier on the arrows. 1.0 keeps the arrow proportional.")]
-        [Min(0.1f)]
-        [SerializeField] private float conveyorArrowScale = 1.0f;
-        [Tooltip("Number of completed boxes to fit side-by-side in a single horizontal row before starting a new row.")]
-        [SerializeField] private int completedBoxesPerRow = 4;
-#pragma warning restore CS0414
-
-        // Two slots. The third was the mecha's dedicated box, but the mecha is no longer collected
-        // at all - it runs and vanishes (MechaRunnerBehavior), so that slot could never fill.
-        private const int MAX_SLOTS = 2;
-        private const int ITEMS_PER_BOX = 3;
-
-        // Box.fbx ships its own lid-folding animation, baked into a single four-flap clip by
-        // MechaFind3D → Kutu → Box.fbx Kapanma Klibini Üret and played by PackagingBoxFlaps. The
-        // hand-tuned per-bone quaternions the old "Cardboard Box (Rigged)" prefab needed are gone.
-        private const string PackagingBoxResourcePath = "CardboardBox/PackagingBox";
-
-        // Box.fbx was authored Z-up, so its imported prefab root carries a baked Euler(-90, 0, 0) that
-        // stands the box upright. Assigning an ABSOLUTE rotation (the old code's Quaternion.Euler(18,0,0))
-        // throws that away and lays the box on its side. Every display rotation is therefore composed on
-        // top of the prefab's own rest rotation, which is captured once when the prefab is loaded.
-        private static readonly Vector3 BoxSlotTiltEuler = new Vector3(18f, 0f, 0f);
-        private static readonly Vector3 BoxShelfTiltEuler = new Vector3(16f, 10f, 0f);
-
-        private Quaternion boxRestRotation = Quaternion.identity;
-
-        // Matches "BoxTape" and the "BoxTape_Variant" copies made from it.
-        private const string TapeMaterialPrefix = "BoxTape";
-        private int nextTapeVariant;
-
-        // The whole background now - no image, just this solid fill cleared by Background_Camera, since
-        // ClearFlags.Depth on the main camera means it never clears colour itself. Exposed to the Inspector
-        // so the background can be reskinned without touching code.
-        [Tooltip("Solid fill colour behind the whole scene.")]
-        [SerializeField] private Color backgroundColor = new Color(0.06f, 0.09f, 0.24f);
-
-        private const string ConveyorResourcePath = "Conveyor/ConveyorBelt";
-        private GameObject conveyorInstance;
-        private float conveyorTopOffsetY;
-
-        // Cached so the belt is not searched for every frame. Deliberately NOT readonly/serialized: it is
-        // rebuilt on demand, and conveyorRunning starts true so the first SetConveyorRunning(false) call
-        // actually reaches the tiles and parks the idle belt.
-        private ConveyorBelt[] conveyorTiles;
-        private bool conveyorRunning = true;
-
-        private const string CurtainResourcePath = "Curtain/CurtainPortal";
-        private CurtainPortal curtainPortal;
-        private bool spawnedCurtainPortal;
-        private Quaternion curtainRestRotation = Quaternion.identity;
-        private readonly HashSet<GameObject> boxesThroughCurtain = new HashSet<GameObject>();
-
-        // Boxes riding to the curtain and disappearing are driven directly by a DOTween move rather than
-        // by the per-frame Update() loop below - Update()-based movement was found to silently stop firing
-        // for a shipped box (root cause never pinned down), while the DOTween sequence that lands the box
-        // was always observed to complete reliably. Tracked here so UpdateConveyorBoxes' own per-frame
-        // loop skips any box already being carried by its own ride tween, avoiding the two fighting.
-        private readonly HashSet<GameObject> boxesRidingViaTween = new HashSet<GameObject>();
-
-        private Quaternion BoxDisplayRotation(Vector3 tiltEuler)
-        {
-            return Quaternion.Euler(tiltEuler) * boxRestRotation;
-        }
+        /// <summary>Tray capacity. Filling every slot without completing an order loses the level.</summary>
+        public int DockCapacity => Mathf.Max(1, dockCapacity);
 
         /// <summary>
-        /// DOJump arcs along world +Y, but the dock plane sits only <see cref="dockCameraDepth"/> units in
-        /// front of a camera that is pitched steeply down - so world +Y points largely back INTO the lens,
-        /// and every unit of jump power eats |dot(up, camForward)| units of view depth. The old fixed
-        /// powers (1.0 for items, 0.9 for the box) put the arc's apex ~0.75-0.85 units from the camera,
-        /// i.e. inside its face. This caps the apex at a fraction of the dock depth instead, so the arc
-        /// stays a readable hop no matter how the camera angle or dock depth is retuned.
+        /// Slot edge length after fitting the whole row inside <see cref="dockPanelMaxWidth"/>. Without this
+        /// cap, raising the slot count simply pushed the outer slots off both sides of the screen.
         /// </summary>
-        /// <summary>
-        /// DOPunchScale's punch is in ABSOLUTE local-scale units, not a multiplier. The old box prefab sat
-        /// near scale 1 so a 0.18 punch was a light squash; Box.fbx is ~24 units wide natively, so it fits
-        /// its slot at scale ~0.0066 and the same 0.18 punched it to 26x its size for a moment - the box
-        /// appearing to explode or leap at the camera whenever an item landed in it. Scaling the punch by
-        /// the box's current scale keeps the squash proportional whatever model is used.
-        ///
-        /// The box is also parked in <see cref="tweeningDockObjects"/> for the duration, because
-        /// AlignDocked3DObjectsWithSlots otherwise rewrites localScale every frame and fights the punch.
-        /// </summary>
-        private void PunchBox(GameObject box, Vector3 relativePunch, float duration, int vibrato, float elasticity)
+        private float EffectiveSlotSize()
         {
-            if (box == null) return;
-
-            // Read the scale AFTER the kill, not before. DOKill(true) COMPLETES whatever scale tween is
-            // still running - the ship flight's grow-to-shelf-size, typically - so reading first captured a
-            // half-finished, smaller value, and the punch's OnComplete then snapped the box down to it.
-            // That is the box visibly shrinking the instant it settles on the belt and starts moving: the
-            // punch ends, and with it the box leaves tweeningDockObjects and the belt takes over.
-            box.transform.DOKill(true);
-            float scale = box.transform.localScale.x;
-
-            tweeningDockObjects.Add(box);
-            box.transform.DOPunchScale(relativePunch * scale, duration, vibrato, elasticity)
-                .OnComplete(() =>
-                {
-                    tweeningDockObjects.Remove(box);
-                    if (box != null) box.transform.localScale = Vector3.one * scale;
-                });
+            int n = DockCapacity;
+            float available = dockPanelMaxWidth - dockPanelPadding * 2f - (n - 1) * dockSlotSpacing;
+            return Mathf.Max(20f, Mathf.Min(dockSlotSize, available / n));
         }
 
-        private float GetDockJumpPower(float maxPower)
-        {
-            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
-            if (mainCamera == null) return maxPower;
-
-            const float maxDepthFractionSpent = 0.25f;
-
-            float depthLostPerUnit = Mathf.Abs(Vector3.Dot(Vector3.up, mainCamera.transform.forward));
-            if (depthLostPerUnit < 0.05f) return maxPower;
-
-            float safePower = dockCameraDepth * maxDepthFractionSpent / depthLostPerUnit;
-            return Mathf.Min(maxPower, safePower);
-        }
-
-        private readonly GameObject[] slotBox = new GameObject[MAX_SLOTS];
-        private readonly string[] slotAssignedItemName = new string[MAX_SLOTS];
-        private readonly List<DockItemData>[] slotBoxContents = new List<DockItemData>[MAX_SLOTS];
-        private readonly int[] slotRequiredCount = new int[MAX_SLOTS];
-
-        private Canvas mainCanvas;
-        private RectTransform topGoalContainer;
-        private RectTransform bottomDockContainer;
-
-        private readonly List<RectTransform> slotRects = new List<RectTransform>();
-        private readonly List<Text> slotBadgeTexts = new List<Text>();
-        private readonly List<Outline> slotOutlines = new List<Outline>();
-        private readonly HashSet<GameObject> tweeningDockObjects = new HashSet<GameObject>();
-
-        public int selectedBoxIndex = 0;
-
-        public void SelectBox(int index)
-        {
-            if (index < 0 || index >= MAX_SLOTS) return;
-
-            bool changed = (selectedBoxIndex != index);
-            selectedBoxIndex = index;
-            UpdateBoxSelectionVisuals();
-
-            // 3D Box Selection Punch Pop Feedback
-            if (changed && selectedBoxIndex >= 0 && selectedBoxIndex < MAX_SLOTS && slotBox[selectedBoxIndex] != null)
-            {
-                GameObject boxObj = slotBox[selectedBoxIndex];
-                if (!tweeningDockObjects.Contains(boxObj))
-                {
-                    boxObj.transform.DOKill(true);
-                    boxObj.transform.DOPunchScale(Vector3.one * 0.10f, 0.25f, 6, 0.5f);
-                }
-            }
-        }
-
-        public void UpdateBoxSelectionVisuals()
-        {
-            for (int i = 0; i < slotRects.Count && i < MAX_SLOTS; i++)
-            {
-                bool isSelected = (i == selectedBoxIndex);
-
-                if (i < slotRects.Count && slotRects[i] != null)
-                {
-                    GameObject slotObj = slotRects[i].gameObject;
-
-                    Outline[] outlines = slotObj.GetComponents<Outline>();
-                    Shadow shadow = slotObj.GetComponent<Shadow>();
-                    Image img = slotObj.GetComponent<Image>();
-
-                    if (outlines != null && outlines.Length > 0)
-                    {
-                        if (isSelected)
-                        {
-                            outlines[0].effectColor = new Color(1.0f, 0.88f, 0.2f, 1.0f);
-                            outlines[0].effectDistance = new Vector2(3, -3);
-
-                            if (outlines.Length > 1)
-                            {
-                                outlines[1].effectColor = new Color(1.0f, 0.65f, 0.0f, 0.95f);
-                                outlines[1].effectDistance = new Vector2(-3, 3);
-                            }
-                        }
-                        else
-                        {
-                            outlines[0].effectColor = new Color(0.25f, 0.42f, 0.72f, 0.5f);
-                            outlines[0].effectDistance = new Vector2(1, -1);
-
-                            if (outlines.Length > 1)
-                            {
-                                outlines[1].effectColor = Color.clear;
-                            }
-                        }
-                    }
-
-                    if (shadow != null)
-                    {
-                        shadow.effectColor = isSelected ? new Color(1.0f, 0.82f, 0.15f, 0.65f) : Color.clear;
-                        shadow.effectDistance = isSelected ? new Vector2(2, -2) : Vector2.zero;
-                    }
-
-                    if (img != null)
-                    {
-                        img.color = isSelected 
-                            ? new Color(0.20f, 0.38f, 0.68f, 0.95f) 
-                            : new Color(0.12f, 0.18f, 0.36f, 0.75f);
-                    }
-                }
-            }
-        }
+        private const string RetiredCardPrefix = "Retiring_";
+        private const string OrderCardPrefix = "GoalCard_";
 
         private Camera mainCamera;
-        // Per-slot rather than one global flag: a single lock froze ALL collection for the ~2.5s a full box
-        // spent closing and shipping, so the player could not drop anything into the other, idle slots
-        // either. Not readonly - Unity drops readonly fields when it serializes state across a domain
-        // reload, which would leave this out of step with the rest of the slot arrays.
-        private bool[] slotProcessing = new bool[MAX_SLOTS];
+        private Canvas mainCanvas;
+        private RectTransform topGoalContainer;
+        private RectTransform dockPanelRect;
 
-        private bool IsSlotBusy(int slotIndex)
-        {
-            return slotIndex >= 0 && slotIndex < MAX_SLOTS && slotProcessing[slotIndex];
-        }
+        private readonly List<RectTransform> slotRects = new List<RectTransform>();
+        private readonly List<Image> slotImages = new List<Image>();
 
-        private List<DockItemData> GetSlotBoxContent(int slotIndex)
-        {
-            if (slotIndex < 0 || slotIndex >= MAX_SLOTS) return null;
-            if (slotBoxContents[slotIndex] == null)
-            {
-                slotBoxContents[slotIndex] = new List<DockItemData>();
-            }
-            return slotBoxContents[slotIndex];
-        }
+        // Left to right, one entry per occupied slot. Same-type entries are always contiguous because
+        // inserts land right after the last item of their own kind.
+        private readonly List<DockItemData> dockItems = new List<DockItemData>();
 
-        private static void SafeDestroy(UnityEngine.Object obj)
-        {
-            if (obj == null) return;
-            if (Application.isPlaying) UnityEngine.Object.Destroy(obj);
-            else UnityEngine.Object.DestroyImmediate(obj);
-        }
+        // Objects whose transform is owned by a tween right now, so the per-frame slot alignment leaves
+        // them alone instead of fighting the animation.
+        private readonly HashSet<GameObject> tweeningDockObjects = new HashSet<GameObject>();
 
-        private bool warnedAboutFlaps = false;
+        private bool gameOverTriggered;
 
         private static readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
-        private static readonly string[] GoalCardPalette = { "Pink", "Yellow", "Green", "Blue" };
+
+        private const string UIAccentButton = "Buttons/Button Blue";
+        // Note the Misc/ subfolder - the blue square button lives there, unlike the violet one it replaces,
+        // and loading it from "Buttons/" silently returns null and leaves the button spriteless.
+        private const string UIAccentSquareButton = "Buttons/Misc/Small Square Button Blue";
+
+        /// <summary>Measured mid-tone of both blue button sprites, which is what the tint multiplies.</summary>
+        private static readonly Color UIAccentSpriteMidtone = new Color(0.18f, 0.612f, 1f);
+
+        /// <summary>
+        /// Image tint MULTIPLIES the sprite, so asking for #001A70 and assigning it straight would land
+        /// somewhere much darker. The wanted colour is divided by the sprite's own mid-tone instead.
+        /// </summary>
+        private Color UIAccentTint => new Color(
+            Mathf.Clamp01(uiAccentColor.r / UIAccentSpriteMidtone.r),
+            Mathf.Clamp01(uiAccentColor.g / UIAccentSpriteMidtone.g),
+            Mathf.Clamp01(uiAccentColor.b / UIAccentSpriteMidtone.b),
+            uiAccentColor.a);
 
         private static Sprite LoadUISprite(string resourcesPath)
         {
@@ -426,28 +179,6 @@ namespace MechaFind3D.PhysicsInteraction
             return sprite;
         }
 
-        private static Sprite ButtonSprite(string colorName) => LoadUISprite($"Buttons/Button {colorName}");
-
-        // The badges, goal cards and the shuffle button used to be the kit's violet ones, which clashed
-        // with the navy conveyor frame. The kit ships no navy button, so the BLUE sprite is tinted instead.
-        private const string UIAccentButton = "Buttons/Button Blue";
-        // Note the Misc/ subfolder - the blue square button lives there, unlike the violet one it replaces,
-        // and loading it from "Buttons/" silently returns null and leaves the shuffle button spriteless.
-        private const string UIAccentSquareButton = "Buttons/Misc/Small Square Button Blue";
-
-        /// <summary>Measured mid-tone of both blue button sprites, which is what the tint multiplies.</summary>
-        private static readonly Color UIAccentSpriteMidtone = new Color(0.18f, 0.612f, 1f);
-
-        /// <summary>
-        /// Image tint MULTIPLIES the sprite, so asking for #001A70 and assigning it straight would land
-        /// somewhere much darker. The wanted colour is divided by the sprite's own mid-tone instead, which
-        /// makes the button read as exactly this colour while keeping the sprite's bevel and shading.
-        /// </summary>
-        private Color UIAccentTint => new Color(
-            Mathf.Clamp01(uiAccentColor.r / UIAccentSpriteMidtone.r),
-            Mathf.Clamp01(uiAccentColor.g / UIAccentSpriteMidtone.g),
-            Mathf.Clamp01(uiAccentColor.b / UIAccentSpriteMidtone.b),
-            uiAccentColor.a);
         private static Sprite IconSprite(string iconName) => LoadUISprite($"Icons/{iconName}");
 
         private static void ApplySlicedSprite(Image img, Sprite sprite)
@@ -458,16 +189,18 @@ namespace MechaFind3D.PhysicsInteraction
             img.color = Color.white;
         }
 
+        private static void SafeDestroy(Object obj)
+        {
+            if (obj == null) return;
+            if (Application.isPlaying) Destroy(obj);
+            else DestroyImmediate(obj);
+        }
+
         private void Awake()
         {
             Instance = this;
             mainCamera = Camera.main;
             if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
-
-            for (int i = 0; i < MAX_SLOTS; i++)
-            {
-                slotBoxContents[i] = new List<DockItemData>();
-            }
 
             EnsureCanvasStructure();
         }
@@ -475,45 +208,30 @@ namespace MechaFind3D.PhysicsInteraction
         private void OnEnable()
         {
             if (Instance == null) Instance = this;
-            if (!Application.isPlaying && use3DScenePosition)
-            {
-                EnsureConveyorBelt();
-            }
         }
-
-#if UNITY_EDITOR
-        private void OnValidate()
-        {
-            if (goalCard3DModelTargetSize > 100f || goalCard3DModelTargetSize <= 0f)
-            {
-                goalCard3DModelTargetSize = 85f;
-            }
-            if (!Application.isPlaying && use3DScenePosition)
-            {
-                EnsureConveyorBelt();
-            }
-        }
-#endif
 
         private void Start()
         {
-            Canvas.ForceUpdateCanvases();
-            Ensure3DCardboardBoxes();
+            StartConveyorDecor();
+            StartCoroutine(RefreshAfterLayout());
+        }
 
-            // Deferred by a frame on purpose. The belt's width and tile count are baked once from the
-            // shipped-box shelf, and that shelf is derived from the canvas layout - which has not settled
-            // during Start(). Building here left the belt sized from a stale layout while the per-frame
-            // follow moved it to the settled position, so it sat off-centre from the shelf.
-            StartCoroutine(BuildConveyorAfterLayout());
+        /// <summary>
+        /// Deferred a frame: the order cards size their 3D icons from the canvas layout, which has not
+        /// settled during Start().
+        /// </summary>
+        private System.Collections.IEnumerator RefreshAfterLayout()
+        {
+            yield return null;
+            Canvas.ForceUpdateCanvases();
 
             if (LevelManager.Instance == null)
             {
-                if (MatchGoalManager.Instance != null)
-                {
-                    MatchGoalManager.Instance.SetupLevelGoals();
-                }
-                RefreshTargetGoalsUI();
+                if (MatchGoalManager.Instance != null) MatchGoalManager.Instance.SetupLevelGoals();
+                if (CustomerOrderManager.Instance != null) CustomerOrderManager.Instance.SetupCustomerOrders();
             }
+
+            RefreshTargetGoalsUI();
         }
 
         private void Update()
@@ -525,8 +243,7 @@ namespace MechaFind3D.PhysicsInteraction
                 mainCanvas.worldCamera = mainCamera;
             }
 
-            AlignDocked3DObjectsWithSlots();
-            UpdateConveyorBoxes();
+            AlignDockItemsWithSlots();
         }
 
 #if UNITY_EDITOR
@@ -534,27 +251,25 @@ namespace MechaFind3D.PhysicsInteraction
         public static void BuildCanvasUIDesignTool()
         {
             GameObject sceneController = GameObject.Find("Physics_Scene_Controller");
-            if (sceneController == null)
-            {
-                sceneController = new GameObject("Physics_Scene_Controller");
-            }
+            if (sceneController == null) sceneController = new GameObject("Physics_Scene_Controller");
 
             CanvasUIDesignManager manager = sceneController.GetComponent<CanvasUIDesignManager>();
-            if (manager == null)
-            {
-                manager = sceneController.AddComponent<CanvasUIDesignManager>();
-            }
+            if (manager == null) manager = sceneController.AddComponent<CanvasUIDesignManager>();
 
             manager.EnsureCanvasStructure();
-            manager.EnsureConveyorBelt();
             Selection.activeGameObject = sceneController;
-            Debug.Log("🎨 Professional 2-Box Cardboard Packaging System Built Successfully!");
+            Debug.Log("🧺 Match-N biriktirme dock'u kuruldu.");
         }
 #endif
+
+        // ---------------------------------------------------------------------------------------------
+        // Canvas construction
+        // ---------------------------------------------------------------------------------------------
 
         public void EnsureCanvasStructure()
         {
             EnsureEventSystem();
+            CleanupLegacyPackagingObjects();
 
             Transform canvasTr = transform.Find("MatchFactory_Canvas");
             GameObject canvasObj;
@@ -579,34 +294,89 @@ namespace MechaFind3D.PhysicsInteraction
             scaler.referenceResolution = referenceResolution;
             scaler.matchWidthOrHeight = 0.5f;
 
-            if (canvasObj.GetComponent<GraphicRaycaster>() == null)
-            {
-                canvasObj.AddComponent<GraphicRaycaster>();
-            }
+            if (canvasObj.GetComponent<GraphicRaycaster>() == null) canvasObj.AddComponent<GraphicRaycaster>();
 
             EnsureBackgroundCanvas();
-            BuildHeaderGoalPanel(canvasObj.transform);
+            BuildHeaderOrderPanel(canvasObj.transform);
             BuildBottomDockPanel(canvasObj.transform);
             BuildShuffleButton(canvasObj.transform);
             BuildTrashButton(canvasObj.transform);
             Canvas.ForceUpdateCanvases();
-            Ensure3DCardboardBoxes();
 
-            if (CustomerOrderManager.Instance == null)
-            {
-                GameObject mgrObj = GameObject.Find("Customer_Order_Manager");
-                if (mgrObj == null) mgrObj = new GameObject("Customer_Order_Manager");
-                mgrObj.AddComponent<CustomerOrderManager>();
-            }
-            CustomerOrderManager.Instance.SetupCustomerOrders();
+            CustomerOrderManager orderManager = EnsureSingleOrderManager();
+
+            // Built here rather than left to the manager's own start-up: a component added by the line above
+            // has not had its Awake run at all in edit mode.
+            if (orderManager != null) orderManager.SetupCustomerOrders();
+            else Debug.LogWarning("🧾 CustomerOrderManager kurulamadı - sipariş kartları boş kalır.");
+
             RefreshTargetGoalsUI();
+        }
+
+        /// <summary>
+        /// Returns the one order manager in the scene, creating it if needed and stripping any duplicates.
+        ///
+        /// This used to guard an UNCONDITIONAL AddComponent with <c>CustomerOrderManager.Instance == null</c>.
+        /// That singleton is only assigned by an Awake which never runs in edit mode, so every
+        /// [ExecuteAlways] rebuild and every domain reload stacked another copy onto the same GameObject -
+        /// the scene had 67 of them piled up. Searching by TYPE is what actually finds an existing one.
+        ///
+        /// Duplicates are removed COMPONENT-wise, never by destroying their GameObject: they all sit on the
+        /// one holder, so deleting the object would take the surviving manager with it.
+        /// </summary>
+        private static CustomerOrderManager EnsureSingleOrderManager()
+        {
+            CustomerOrderManager[] found = Object.FindObjectsByType<CustomerOrderManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+            CustomerOrderManager kept = null;
+            foreach (CustomerOrderManager mgr in found)
+            {
+                if (mgr == null) continue;
+                if (kept == null) kept = mgr;
+                else SafeDestroy(mgr);
+            }
+
+            if (kept != null) return kept;
+
+            GameObject mgrObj = new GameObject("Customer_Order_Manager");
+            return mgrObj.AddComponent<CustomerOrderManager>();
+        }
+
+        /// <summary>
+        /// Removes what is left of the cardboard-box packaging flow that this dock replaces: the open slot
+        /// boxes and the sealed boxes that used to ride the belt. They are plain scene objects created by
+        /// the old code, so nothing else clears them.
+        ///
+        /// NOTE: Trash_Button is NOT in this list. It looks like the same kind of leftover - it was built by
+        /// the box system's BuildTrashButton - but the dock keeps its own trash button under that same name
+        /// (see BuildTrashButton below), so destroying it here would delete the dock's own button on every
+        /// rebuild.
+        /// </summary>
+        private void CleanupLegacyPackagingObjects()
+        {
+            foreach (GameObject go in Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (go == null) continue;
+                if (go.name.StartsWith("Slot3DBox") || go.name.StartsWith("Delivery_3DBox")
+                    || go.name.StartsWith("PackagingBox") || go.name.StartsWith("Cardboard Box")
+                    || go.name.StartsWith("ConveyorInitialBox"))
+                {
+                    SafeDestroy(go);
+                }
+            }
+        }
+
+        /// <summary>The belt is scene decor now that nothing rides it, but it should still be moving.</summary>
+        private void StartConveyorDecor()
+        {
+            foreach (ConveyorBelt tile in Object.FindObjectsByType<ConveyorBelt>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (tile != null) tile.AutoScroll = true;
+            }
         }
 
         public void EnsureBackgroundCanvas()
         {
-            // The image background is gone - a flat navy fill from Background_Camera IS the background
-            // now, so any full-screen image canvas left over from an older build is removed here rather
-            // than just skipped, or it would keep showing behind everything.
             Transform existingImageCanvas = transform.Find("MatchFactory_Background_Canvas");
             if (existingImageCanvas != null) SafeDestroy(existingImageCanvas.gameObject);
 
@@ -615,10 +385,7 @@ namespace MechaFind3D.PhysicsInteraction
             // camera clearing to a solid color first.
             Camera bgCam = null;
             Transform bgCamTransform = transform.Find("Background_Camera");
-            if (bgCamTransform != null)
-            {
-                bgCam = bgCamTransform.GetComponent<Camera>();
-            }
+            if (bgCamTransform != null) bgCam = bgCamTransform.GetComponent<Camera>();
             if (bgCam == null)
             {
                 GameObject bgCamObj = new GameObject("Background_Camera");
@@ -649,18 +416,54 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>
-        /// Header now reads top-to-bottom: customer order cards (full width), then the timer centred
-        /// underneath. The level title and Mecha badges that used to stack in a left column are gone from
-        /// this screen entirely - they never drove gameplay, only their own display, so removing them here
-        /// doesn't touch matching, packing or the Mecha run/collect mechanic.
+        /// A UI child, guaranteed to carry a RectTransform.
+        ///
+        /// THE TRAP THIS EXISTS FOR: `new GameObject(name)` gives the object a plain Transform, and
+        /// `AddComponent&lt;RectTransform&gt;()` does NOT convert one into the other - the add silently fails
+        /// and returns null, so the very next `rect.sizeDelta = ...` throws and takes the rest of the build
+        /// loop with it. That is exactly what left the dock with only the two slots an older build had
+        /// already saved into the scene: `DockSlot_2` was created bare, the loop threw, and slots 3+ were
+        /// never reached. Any such stray already sitting in the scene is replaced here rather than patched.
         /// </summary>
-        private void BuildHeaderGoalPanel(Transform parent)
+        private static GameObject GetOrCreateChild(Transform parent, string childName)
         {
-            Transform existingHeader = parent.Find("Header_Goal_Panel");
-            GameObject headerObj = existingHeader != null ? existingHeader.gameObject : new GameObject("Header_Goal_Panel");
-            if (existingHeader == null) headerObj.transform.SetParent(parent, false);
+            Transform existing = parent.Find(childName);
+            if (existing is RectTransform) return existing.gameObject;
 
-            RectTransform headerRect = headerObj.GetComponent<RectTransform>() ?? headerObj.AddComponent<RectTransform>();
+            if (existing != null)
+            {
+                // Renamed and detached first: in Play, Destroy only lands at the end of the frame, so the
+                // stray would otherwise still answer Find() and still be laid out by the layout group.
+                existing.name = childName + "_Stale";
+                existing.SetParent(null, false);
+                SafeDestroy(existing.gameObject);
+            }
+
+            return NewUIObject(childName, parent);
+        }
+
+        /// <summary>
+        /// Creates a UI object with its RectTransform in the constructor. Never `new GameObject(name)`
+        /// followed by `AddComponent&lt;RectTransform&gt;()` - see <see cref="GetOrCreateChild"/> for why that
+        /// pattern throws.
+        /// </summary>
+        private static GameObject NewUIObject(string name, Transform parent)
+        {
+            GameObject go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            return go;
+        }
+
+        private static void DestroyChildIfExists(Transform parent, string childName)
+        {
+            Transform child = parent.Find(childName);
+            if (child != null) SafeDestroy(child.gameObject);
+        }
+
+        private void BuildHeaderOrderPanel(Transform parent)
+        {
+            GameObject headerObj = GetOrCreateChild(parent, "Header_Goal_Panel");
+            RectTransform headerRect = headerObj.GetComponent<RectTransform>();
             headerRect.anchorMin = new Vector2(0.5f, 1f);
             headerRect.anchorMax = new Vector2(0.5f, 1f);
             headerRect.pivot = new Vector2(0.5f, 1f);
@@ -672,11 +475,8 @@ namespace MechaFind3D.PhysicsInteraction
             DestroyChildIfExists(headerObj.transform, "Mecha_Goal_Badge");
             DestroyChildIfExists(headerObj.transform, "Mecha_Goal_Text");
 
-            // NOTE: Custom user objects like kutu_badge are untouched!
-
-            // Timer: centred, directly under the order-cards row.
             GameObject timerBadgeObj = GetOrCreateChild(headerObj.transform, "timer_badge");
-            RectTransform timerBadgeRect = timerBadgeObj.GetComponent<RectTransform>() ?? timerBadgeObj.AddComponent<RectTransform>();
+            RectTransform timerBadgeRect = timerBadgeObj.GetComponent<RectTransform>();
             timerBadgeRect.anchorMin = new Vector2(0.30f, 0.02f);
             timerBadgeRect.anchorMax = new Vector2(0.70f, 0.34f);
             timerBadgeRect.anchoredPosition = Vector2.zero;
@@ -689,7 +489,7 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             GameObject timerTextObj = GetOrCreateChild(headerObj.transform, "timer_text");
-            RectTransform timerTextRect = timerTextObj.GetComponent<RectTransform>() ?? timerTextObj.AddComponent<RectTransform>();
+            RectTransform timerTextRect = timerTextObj.GetComponent<RectTransform>();
             timerTextRect.anchorMin = new Vector2(0.30f, 0.02f);
             timerTextRect.anchorMax = new Vector2(0.70f, 0.34f);
             timerTextRect.anchoredPosition = Vector2.zero;
@@ -701,18 +501,16 @@ namespace MechaFind3D.PhysicsInteraction
                 timerTxt.fontSize = titleFontSize;
                 timerTxt.fontStyle = FontStyle.Bold;
                 timerTxt.color = Color.white;
+                timerTxt.text = "00:00";
+                timerTxt.alignment = TextAnchor.MiddleCenter;
 
                 Shadow timerShadow = timerTextObj.AddComponent<Shadow>();
                 timerShadow.effectColor = new Color(0, 0, 0, 0.8f);
                 timerShadow.effectDistance = new Vector2(2, -2);
-
-                timerTxt.text = "00:00";
-                timerTxt.alignment = TextAnchor.MiddleCenter;
             }
 
-            // Order cards row: full width, centred, top half of the header.
             GameObject goalsContainer = GetOrCreateChild(headerObj.transform, "Goals_Container");
-            topGoalContainer = goalsContainer.GetComponent<RectTransform>() ?? goalsContainer.AddComponent<RectTransform>();
+            topGoalContainer = goalsContainer.GetComponent<RectTransform>();
             topGoalContainer.anchorMin = new Vector2(0.02f, 0.44f);
             topGoalContainer.anchorMax = new Vector2(0.98f, 1f);
             topGoalContainer.sizeDelta = Vector2.zero;
@@ -725,164 +523,102 @@ namespace MechaFind3D.PhysicsInteraction
             layout.childControlHeight = false;
         }
 
-        private static void DestroyChildIfExists(Transform parent, string childName)
-        {
-            Transform child = parent.Find(childName);
-            if (child != null) SafeDestroy(child.gameObject);
-        }
-
-        private static GameObject GetOrCreateChild(Transform parent, string childName)
-        {
-            Transform existing = parent.Find(childName);
-            if (existing != null) return existing.gameObject;
-
-            GameObject child = new GameObject(childName);
-            child.transform.SetParent(parent, false);
-            return child;
-        }
-
+        /// <summary>
+        /// Five square slots in a row. The panel is sized from the slots rather than the other way round,
+        /// so the slots stay square whatever the reference resolution is.
+        /// </summary>
         private void BuildBottomDockPanel(Transform parent)
         {
-            Transform existingDock = parent.Find("Bottom_Dock_Panel");
-            GameObject dockObj;
+            GameObject dockObj = GetOrCreateChild(parent, "Bottom_Dock_Panel");
 
-            if (existingDock != null)
-            {
-                dockObj = existingDock.gameObject;
-            }
-            else
-            {
-                dockObj = new GameObject("Bottom_Dock_Panel");
-                dockObj.transform.SetParent(parent, false);
-            }
+            int slotCount = DockCapacity;
+            float slotSize = EffectiveSlotSize();
+            float panelWidth = slotCount * slotSize + (slotCount - 1) * dockSlotSpacing + dockPanelPadding * 2f;
+            float panelHeight = slotSize + dockPanelPadding * 2f;
 
-            RectTransform dockRect = dockObj.GetComponent<RectTransform>() ?? dockObj.AddComponent<RectTransform>();
-            dockRect.anchorMin = new Vector2(0.5f, 0f);
-            dockRect.anchorMax = new Vector2(0.5f, 0f);
-            dockRect.pivot = new Vector2(0.5f, 0f);
-            dockRect.anchoredPosition = dockPanelAnchoredPosition;
-            dockRect.sizeDelta = dockPanelSize;
+            dockPanelRect = dockObj.GetComponent<RectTransform>();
+            dockPanelRect.anchorMin = new Vector2(0.5f, 0f);
+            dockPanelRect.anchorMax = new Vector2(0.5f, 0f);
+            dockPanelRect.pivot = new Vector2(0.5f, 0f);
+            dockPanelRect.anchoredPosition = dockPanelAnchoredPosition;
+            dockPanelRect.sizeDelta = new Vector2(panelWidth, panelHeight);
 
-            // Rich Dark Navy Badge Background
             Image bg = dockObj.GetComponent<Image>() ?? dockObj.AddComponent<Image>();
-            bg.color = new Color(0.06f, 0.10f, 0.22f, 0.94f);
+            bg.sprite = null;
+            bg.color = dockPanelColor;
 
             Outline dockOutline = dockObj.GetComponent<Outline>() ?? dockObj.AddComponent<Outline>();
             dockOutline.effectColor = new Color(0.18f, 0.32f, 0.58f, 0.75f);
             dockOutline.effectDistance = new Vector2(2, -2);
 
-            Transform existingSlots = dockObj.transform.Find("Slots_Container");
-            GameObject slotsContainerObj;
-            if (existingSlots != null)
-            {
-                slotsContainerObj = existingSlots.gameObject;
-            }
-            else
-            {
-                slotsContainerObj = new GameObject("Slots_Container");
-                slotsContainerObj.transform.SetParent(dockObj.transform, false);
-            }
-
-            bottomDockContainer = slotsContainerObj.GetComponent<RectTransform>() ?? slotsContainerObj.AddComponent<RectTransform>();
-            bottomDockContainer.anchorMin = Vector2.zero;
-            bottomDockContainer.anchorMax = Vector2.one;
-            bottomDockContainer.sizeDelta = new Vector2(-20, 0);
+            GameObject slotsContainerObj = GetOrCreateChild(dockObj.transform, "Slots_Container");
+            RectTransform slotsRect = slotsContainerObj.GetComponent<RectTransform>();
+            slotsRect.anchorMin = Vector2.zero;
+            slotsRect.anchorMax = Vector2.one;
+            slotsRect.offsetMin = Vector2.zero;
+            slotsRect.offsetMax = Vector2.zero;
 
             HorizontalLayoutGroup layout = slotsContainerObj.GetComponent<HorizontalLayoutGroup>() ?? slotsContainerObj.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(30, 30, 16, 16);
+            layout.padding = new RectOffset(Mathf.RoundToInt(dockPanelPadding), Mathf.RoundToInt(dockPanelPadding),
+                                            Mathf.RoundToInt(dockPanelPadding), Mathf.RoundToInt(dockPanelPadding));
             layout.spacing = dockSlotSpacing;
             layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = true;
-            layout.childControlHeight = true;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
 
-            slotRects.Clear();
-            slotBadgeTexts.Clear();
-            slotOutlines.Clear();
-
-            for (int i = 0; i < MAX_SLOTS; i++)
+            // Slot count is fixed, so any leftovers from an older layout are removed rather than reused.
+            foreach (Transform child in slotsContainerObj.GetComponentsInChildren<Transform>(true))
             {
-                Transform slotChild = slotsContainerObj.transform.Find($"DockSlot_{i}");
-                GameObject slotObj;
-                if (slotChild != null)
-                {
-                    slotObj = slotChild.gameObject;
-                }
-                else
-                {
-                    slotObj = new GameObject($"DockSlot_{i}");
-                    slotObj.transform.SetParent(slotsContainerObj.transform, false);
-                }
+                if (child == slotsContainerObj.transform) continue;
+                if (child.parent != slotsContainerObj.transform) continue;
+                if (!child.name.StartsWith("DockSlot_")) continue;
 
-                // Clean up any stray SelectionBadge if it exists
-                Transform oldBadge = slotObj.transform.Find("SelectionBadge");
-                if (oldBadge != null)
-                {
-                    SafeDestroy(oldBadge.gameObject);
-                }
-
-                RectTransform slotRect = slotObj.GetComponent<RectTransform>() ?? slotObj.AddComponent<RectTransform>();
-                Image slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
-                slotBg.color = new Color(0.12f, 0.18f, 0.36f, 0.75f);
-
-                Outline[] existingOutlines = slotObj.GetComponents<Outline>();
-                Outline slotOutline1 = (existingOutlines.Length > 0) ? existingOutlines[0] : slotObj.AddComponent<Outline>();
-                slotOutline1.effectColor = new Color(0.25f, 0.42f, 0.72f, 0.65f);
-                slotOutline1.effectDistance = new Vector2(1, -1);
-
-                Outline slotOutline2 = (existingOutlines.Length > 1) ? existingOutlines[1] : slotObj.AddComponent<Outline>();
-                slotOutline2.effectColor = Color.clear;
-
-                Shadow slotShadow = slotObj.GetComponent<Shadow>() ?? slotObj.AddComponent<Shadow>();
-                slotShadow.effectColor = Color.clear;
-
-                // Add Button listener for box selection
-                Button slotBtn = slotObj.GetComponent<Button>() ?? slotObj.AddComponent<Button>();
-                slotBtn.transition = Selectable.Transition.None;
-                int slotIdx = i;
-                slotBtn.onClick.RemoveAllListeners();
-                slotBtn.onClick.AddListener(() => SelectBox(slotIdx));
-
-                Transform labelChild = slotObj.transform.Find("LabelText");
-                GameObject labelObj;
-                if (labelChild != null)
-                {
-                    labelObj = labelChild.gameObject;
-                }
-                else
-                {
-                    labelObj = new GameObject("LabelText");
-                    labelObj.transform.SetParent(slotObj.transform, false);
-                }
-
-                RectTransform labelRect = labelObj.GetComponent<RectTransform>() ?? labelObj.AddComponent<RectTransform>();
-                labelRect.anchorMin = new Vector2(0f, 0f);
-                labelRect.anchorMax = new Vector2(1f, 0.22f);
-                labelRect.sizeDelta = Vector2.zero;
-                labelRect.anchoredPosition = new Vector2(0, -30);
-
-                Text labelTxt = labelObj.GetComponent<Text>() ?? labelObj.AddComponent<Text>();
-                labelTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                labelTxt.fontSize = dockSlotLabelFontSize;
-                labelTxt.fontStyle = FontStyle.Bold;
-                labelTxt.alignment = TextAnchor.MiddleCenter;
-                labelTxt.color = Color.white;
-
-                Shadow shadow = labelObj.GetComponent<Shadow>() ?? labelObj.AddComponent<Shadow>();
-                shadow.effectColor = new Color(0, 0, 0, 0.8f);
-                shadow.effectDistance = new Vector2(2, -2);
-
-                Outline outline = labelObj.GetComponent<Outline>() ?? labelObj.AddComponent<Outline>();
-                outline.effectColor = new Color(0, 0, 0, 0.8f);
-                outline.effectDistance = new Vector2(1, -1);
-
-                labelTxt.text = "";
-
-                slotRects.Add(slotRect);
-                slotBadgeTexts.Add(labelTxt);
-                slotOutlines.Add(slotOutline1);
+                bool parsed = int.TryParse(child.name.Substring("DockSlot_".Length), out int idx);
+                if (!parsed || idx < 0 || idx >= slotCount) SafeDestroy(child.gameObject);
             }
 
-            UpdateBoxSelectionVisuals();
+            slotRects.Clear();
+            slotImages.Clear();
+
+            for (int i = 0; i < slotCount; i++)
+            {
+                GameObject slotObj = GetOrCreateChild(slotsContainerObj.transform, $"DockSlot_{i}");
+                slotObj.transform.SetSiblingIndex(i);
+
+                DestroyChildIfExists(slotObj.transform, "SelectionBadge");
+                DestroyChildIfExists(slotObj.transform, "LabelText");
+
+                RectTransform slotRect = slotObj.GetComponent<RectTransform>();
+                slotRect.sizeDelta = new Vector2(slotSize, slotSize);
+
+                LayoutElement le = slotObj.GetComponent<LayoutElement>() ?? slotObj.AddComponent<LayoutElement>();
+                le.preferredWidth = slotSize;
+                le.preferredHeight = slotSize;
+                le.minWidth = slotSize;
+                le.minHeight = slotSize;
+
+                Image slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
+                ApplySlicedSprite(slotBg, LoadUISprite(UIAccentSquareButton));
+                slotBg.color = dockSlotEmptyColor;
+                slotBg.raycastTarget = false;
+
+                // An empty slot's fill sits very close to the panel behind it, so the outline is what
+                // actually draws the square. Kept bright enough to read at phone size.
+                Outline slotOutline = slotObj.GetComponent<Outline>() ?? slotObj.AddComponent<Outline>();
+                slotOutline.effectColor = new Color(0.38f, 0.58f, 0.92f, 0.85f);
+                slotOutline.effectDistance = new Vector2(2, -2);
+
+                // The slots used to be selectable boxes; nothing about the dock reacts to a click now.
+                Button staleBtn = slotObj.GetComponent<Button>();
+                if (staleBtn != null) SafeDestroy(staleBtn);
+
+                slotRects.Add(slotRect);
+                slotImages.Add(slotBg);
+            }
+
+            UpdateSlotVisuals();
         }
 
         private void BuildShuffleButton(Transform parent)
@@ -895,13 +631,12 @@ namespace MechaFind3D.PhysicsInteraction
             }
             else
             {
-                btnObj = new GameObject("Shuffle_Button");
-                btnObj.transform.SetParent(parent, false);
+                btnObj = NewUIObject("Shuffle_Button", parent);
 
-                RectTransform btnRect = btnObj.AddComponent<RectTransform>();
-                btnRect.anchorMin = new Vector2(0f, 0f);
-                btnRect.anchorMax = new Vector2(0f, 0f);
-                btnRect.pivot = new Vector2(0f, 0f);
+                RectTransform btnRect = btnObj.GetComponent<RectTransform>();
+                btnRect.anchorMin = Vector2.zero;
+                btnRect.anchorMax = Vector2.zero;
+                btnRect.pivot = Vector2.zero;
                 btnRect.anchoredPosition = shuffleButtonPosition;
                 btnRect.sizeDelta = shuffleButtonSize;
 
@@ -909,10 +644,9 @@ namespace MechaFind3D.PhysicsInteraction
                 ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
                 btnBg.color = UIAccentTint;
 
-                GameObject btnIconObj = new GameObject("Icon");
-                btnIconObj.transform.SetParent(btnObj.transform, false);
+                GameObject btnIconObj = NewUIObject("Icon", btnObj.transform);
 
-                RectTransform btnIconRect = btnIconObj.AddComponent<RectTransform>();
+                RectTransform btnIconRect = btnIconObj.GetComponent<RectTransform>();
                 btnIconRect.anchorMin = new Vector2(0.5f, 0.5f);
                 btnIconRect.anchorMax = new Vector2(0.5f, 0.5f);
                 btnIconRect.pivot = new Vector2(0.5f, 0.5f);
@@ -941,36 +675,34 @@ namespace MechaFind3D.PhysicsInteraction
             if (spawner != null)
             {
                 spawner.GatherAndReshuffleRemaining();
+                return;
             }
-            else
+
+            foreach (FindTargetObject item in Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None))
             {
-                FindTargetObject[] allItems = Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None);
-                foreach (FindTargetObject item in allItems)
+                if (item == null || item.isDocked) continue;
+                Rigidbody rb = item.GetComponent<Rigidbody>();
+                if (rb == null) continue;
+
+                Vector3 randPos = new Vector3(Random.Range(-1.8f, 1.8f), Random.Range(0.2f, 0.6f), Random.Range(-1.8f, 1.8f));
+                Quaternion randRot = Random.rotation;
+
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.isKinematic = true;
+
+                item.transform.DOKill();
+                Sequence seq = DOTween.Sequence();
+                seq.Join(item.transform.DOMove(randPos, 0.45f).SetEase(Ease.OutQuad));
+                seq.Join(item.transform.DORotateQuaternion(randRot, 0.45f).SetEase(Ease.OutQuad));
+                seq.OnComplete(() =>
                 {
-                    if (item == null || item.isDocked) continue;
-                    Rigidbody rb = item.GetComponent<Rigidbody>();
-                    if (rb == null) continue;
-
-                    Vector3 randPos = new Vector3(Random.Range(-1.8f, 1.8f), Random.Range(0.2f, 0.6f), Random.Range(-1.8f, 1.8f));
-                    Quaternion randRot = Random.rotation;
-
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
-                    rb.isKinematic = true;
-
-                    item.transform.DOKill();
-                    Sequence seq = DOTween.Sequence();
-                    seq.Join(item.transform.DOMove(randPos, 0.45f).SetEase(Ease.OutQuad));
-                    seq.Join(item.transform.DORotateQuaternion(randRot, 0.45f).SetEase(Ease.OutQuad));
-                    seq.OnComplete(() =>
+                    if (rb != null)
                     {
-                        if (rb != null)
-                        {
-                            rb.isKinematic = false;
-                            rb.WakeUp();
-                        }
-                    });
-                }
+                        rb.isKinematic = false;
+                        rb.WakeUp();
+                    }
+                });
             }
         }
 
@@ -984,24 +716,21 @@ namespace MechaFind3D.PhysicsInteraction
             }
             else
             {
-                btnObj = new GameObject("Trash_Button");
-                btnObj.transform.SetParent(parent, false);
+                btnObj = NewUIObject("Trash_Button", parent);
 
-                RectTransform btnRect = btnObj.AddComponent<RectTransform>();
-                btnRect.anchorMin = new Vector2(0f, 0f);
-                btnRect.anchorMax = new Vector2(0f, 0f);
-                btnRect.pivot = new Vector2(0f, 0f);
-                btnRect.anchoredPosition = shuffleButtonPosition + new Vector2(75f, 0f);
+                RectTransform btnRect = btnObj.GetComponent<RectTransform>();
+                btnRect.anchorMin = Vector2.zero;
+                btnRect.anchorMax = Vector2.zero;
+                btnRect.pivot = Vector2.zero;
+                btnRect.anchoredPosition = shuffleButtonPosition + new Vector2(shuffleButtonSize.x + 15f, 0f);
                 btnRect.sizeDelta = shuffleButtonSize;
 
                 Image btnBg = btnObj.AddComponent<Image>();
                 ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
                 btnBg.color = new Color(0.85f, 0.22f, 0.25f, 1.0f);
 
-                GameObject btnTextObj = new GameObject("LabelText");
-                btnTextObj.transform.SetParent(btnObj.transform, false);
-
-                RectTransform textRect = btnTextObj.AddComponent<RectTransform>();
+                GameObject btnTextObj = NewUIObject("LabelText", btnObj.transform);
+                RectTransform textRect = btnTextObj.GetComponent<RectTransform>();
                 textRect.anchorMin = Vector2.zero;
                 textRect.anchorMax = Vector2.one;
                 textRect.sizeDelta = Vector2.zero;
@@ -1029,13 +758,34 @@ namespace MechaFind3D.PhysicsInteraction
             btn.onClick.AddListener(OnTrashButtonClicked);
         }
 
+        /// <summary>
+        /// Sends the LEFTMOST group in the tray - the type sitting in slot 0 - back into the pile as loose
+        /// physics objects. Only that one group leaves; everything behind it slides left into the freed
+        /// slots the same way a delivered group's departure already slides the rest of the tray.
+        ///
+        /// The leftmost group is always a single contiguous run: <see cref="GetInsertIndexForType"/> only
+        /// ever inserts a new item right after the last item of its own kind, so one type can never end up
+        /// split around another.
+        /// </summary>
         public void OnTrashButtonClicked()
         {
-            if (selectedBoxIndex < 0 || selectedBoxIndex >= MAX_SLOTS) return;
-            if (IsSlotBusy(selectedBoxIndex)) return;
+            if (dockItems.Count == 0 || gameOverTriggered) return;
 
-            List<DockItemData> boxContents = GetSlotBoxContent(selectedBoxIndex);
-            if (boxContents == null || boxContents.Count == 0) return;
+            string leftoverType = dockItems[0]?.colorName;
+            if (string.IsNullOrEmpty(leftoverType)) return;
+
+            var group = new List<DockItemData>();
+            while (dockItems.Count > 0 && dockItems[0] != null &&
+                   leftoverType.Equals(dockItems[0].colorName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                group.Add(dockItems[0]);
+                dockItems.RemoveAt(0);
+            }
+
+            UpdateSlotVisuals();
+            // The group leaving means that order wants MORE again - RemainingForOrder reads straight off
+            // CountInDock, so this alone puts the card's count back up without any extra bookkeeping.
+            RefreshOrderCardCounts(leftoverType);
 
             GameObject trashBtn = mainCanvas != null ? mainCanvas.transform.Find("Trash_Button")?.gameObject : GameObject.Find("Trash_Button");
             if (trashBtn != null)
@@ -1044,23 +794,12 @@ namespace MechaFind3D.PhysicsInteraction
                 trashBtn.transform.DOPunchScale(Vector3.one * 0.15f, 0.25f, 5, 0.5f);
             }
 
-            List<DockItemData> itemsToReturn = new List<DockItemData>(boxContents);
-            boxContents.Clear();
-
-            if (CustomerOrderManager.Instance != null)
+            for (int i = 0; i < group.Count; i++)
             {
-                CustomerOrderManager.Instance.UnregisterAllItemsFromBox(selectedBoxIndex);
-            }
-
-            slotAssignedItemName[selectedBoxIndex] = null;
-
-            for (int i = 0; i < itemsToReturn.Count; i++)
-            {
-                DockItemData data = itemsToReturn[i];
-                if (data == null || data.targetObject == null) continue;
+                DockItemData data = group[i];
+                if (data?.targetObject == null) continue;
 
                 GameObject itemObj = data.targetObject.gameObject;
-
                 itemObj.transform.SetParent(null, true);
 
                 Rigidbody rb = itemObj.GetComponent<Rigidbody>();
@@ -1068,33 +807,24 @@ namespace MechaFind3D.PhysicsInteraction
                 rb.isKinematic = true;
                 rb.useGravity = true;
 
-                Collider col = itemObj.GetComponent<Collider>();
-                if (col != null)
+                foreach (Collider c in itemObj.GetComponentsInChildren<Collider>())
                 {
-                    col.enabled = true;
-                    col.isTrigger = false;
+                    if (c == null) continue;
+                    c.enabled = true;
+                    c.isTrigger = false;
                 }
 
                 Vector3 pileScale = Vector3.one;
-                FindTargetObject findTarget = itemObj.GetComponent<FindTargetObject>();
-                if (findTarget != null)
-                {
-                    findTarget.isDocked = false;
-                    if (findTarget.OriginalScale != Vector3.zero)
-                    {
-                        pileScale = findTarget.OriginalScale;
-                    }
-                }
+                if (data.targetObject.OriginalScale != Vector3.zero) pileScale = data.targetObject.OriginalScale;
+                data.targetObject.isDocked = false;
 
-                Vector3 returnPos = new Vector3(
-                    Random.Range(-1.3f, 1.3f),
-                    Random.Range(0.2f, 0.6f),
-                    Random.Range(-1.3f, 1.3f)
-                );
+                Vector3 returnPos = new Vector3(Random.Range(-1.3f, 1.3f), Random.Range(0.2f, 0.6f), Random.Range(-1.3f, 1.3f));
                 Quaternion returnRot = Random.rotation;
 
                 float delay = i * 0.06f;
                 itemObj.transform.DOKill();
+                tweeningDockObjects.Add(itemObj);
+
                 Sequence returnSeq = DOTween.Sequence();
                 returnSeq.AppendInterval(delay);
                 returnSeq.Append(itemObj.transform.DOJump(returnPos, 0.60f, 1, 0.40f).SetEase(Ease.OutQuad));
@@ -1102,6 +832,7 @@ namespace MechaFind3D.PhysicsInteraction
                 returnSeq.Join(itemObj.transform.DORotateQuaternion(returnRot, 0.40f).SetEase(Ease.OutQuad));
                 returnSeq.OnComplete(() =>
                 {
+                    tweeningDockObjects.Remove(itemObj);
                     if (rb != null)
                     {
                         rb.isKinematic = false;
@@ -1109,11 +840,13 @@ namespace MechaFind3D.PhysicsInteraction
                     }
                 });
             }
-
-            UpdateSlotBadgesUI();
-            BuildOrRefreshCustomerGoalCard(selectedBoxIndex, 0);
         }
 
+        // ---------------------------------------------------------------------------------------------
+        // Order cards
+        // ---------------------------------------------------------------------------------------------
+
+        /// <summary>Tears every order card down and rebuilds the row from scratch - used on level load.</summary>
         public void RefreshTargetGoalsUI()
         {
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
@@ -1122,282 +855,157 @@ namespace MechaFind3D.PhysicsInteraction
                 if (levelTextObj != null)
                 {
                     Text titleTxt = levelTextObj.GetComponent<Text>();
-                    if (titleTxt != null)
-                    {
-                        titleTxt.text = LevelManager.Instance.ActiveLevelData.levelTitle.ToUpperInvariant();
-                    }
+                    if (titleTxt != null) titleTxt.text = LevelManager.Instance.ActiveLevelData.levelTitle.ToUpperInvariant();
                 }
             }
 
             if (topGoalContainer == null) return;
 
-            // Detached from the container BEFORE being destroyed. In Play, SafeDestroy is Destroy(), which
-            // only takes effect at the end of the frame - so the cards rebuilt further down this same call
-            // still found these as an "existing" card and skipped themselves as already showing, and then
-            // the old card really did get destroyed, leaving that box with no card at all. That is the
-            // order card that went missing after a retry, whenever the re-rolled order kept the same item.
+            // Detached from the container BEFORE being destroyed. In Play, Destroy() only takes effect at
+            // the end of the frame, so a card rebuilt further down this same call would otherwise still
+            // find the old one as "existing" and skip itself.
             var staleCards = new List<Transform>();
-            foreach (Transform child in topGoalContainer)
-            {
-                staleCards.Add(child);
-            }
+            foreach (Transform child in topGoalContainer) staleCards.Add(child);
             foreach (Transform child in staleCards)
             {
+                KillCardTweens(child);
                 child.SetParent(null, false);
                 SafeDestroy(child.gameObject);
             }
 
-            List<MatchGoal> goals = MatchGoalManager.Instance != null ? MatchGoalManager.Instance.levelGoals : null;
+            SyncOrderCards();
+        }
 
-            // Separate Mecha goals from normal item goals
-            MatchGoal mechaGoal = null;
-            if (goals != null)
+        /// <summary>Adds cards for new customers and clears out cards whose order has already left.</summary>
+        private void SyncOrderCards()
+        {
+            if (topGoalContainer == null || CustomerOrderManager.Instance == null) return;
+
+            IReadOnlyList<CustomerOrder> orders = CustomerOrderManager.Instance.ActiveOrders;
+
+            var live = new HashSet<int>();
+            foreach (CustomerOrder order in orders)
             {
-                foreach (MatchGoal g in goals)
-                {
-                    if (g.colorName.Equals("Mecha", System.StringComparison.OrdinalIgnoreCase) ||
-                        g.colorName.Contains("Mecha") || g.colorName.Contains("meccha"))
-                    {
-                        mechaGoal = g;
-                        break;
-                    }
-                }
+                if (order != null && !order.isCompleted) live.Add(order.orderId);
             }
 
-            // Update dedicated Mecha Badge under the timer on the left UI panel
-            GameObject mBadgeObj = GameObject.Find("Mecha_Goal_Badge");
-            GameObject mTextObj = GameObject.Find("Mecha_Goal_Text");
-            if (mBadgeObj == null && topGoalContainer != null && topGoalContainer.parent != null)
+            var toRemove = new List<Transform>();
+            foreach (Transform child in topGoalContainer)
             {
-                Transform mb = topGoalContainer.parent.Find("Mecha_Goal_Badge");
-                if (mb != null) mBadgeObj = mb.gameObject;
-                Transform mt = topGoalContainer.parent.Find("Mecha_Goal_Text");
-                if (mt != null) mTextObj = mt.gameObject;
+                if (!child.name.StartsWith(OrderCardPrefix)) continue; // retiring cards own their own removal
+                if (!live.Contains(GetCardOrderId(child))) toRemove.Add(child);
+            }
+            foreach (Transform child in toRemove)
+            {
+                KillCardTweens(child);
+                child.SetParent(null, false);
+                SafeDestroy(child.gameObject);
             }
 
-            if (mechaGoal != null)
+            for (int i = 0; i < orders.Count; i++)
             {
-                if (mBadgeObj != null) mBadgeObj.SetActive(true);
-                if (mTextObj != null)
-                {
-                    mTextObj.SetActive(true);
-                    Text txt = mTextObj.GetComponent<Text>();
-                    if (txt != null)
-                    {
-                        if (mechaGoal.IsCompleted)
-                        {
-                            txt.text = "MECHA ✓";
-                            txt.color = successAccentColor;
-                        }
-                        else
-                        {
-                            txt.text = $"MECHA x{mechaGoal.Remaining}";
-                            txt.color = mechaAccentColor;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // In Editor Mode (Tool View / Scene Preview) keep visible so developer can see & inspect it!
-                bool isEditorPreview = !Application.isPlaying;
-                if (mBadgeObj != null) mBadgeObj.SetActive(isEditorPreview);
-                if (mTextObj != null) mTextObj.SetActive(isEditorPreview);
-            }
+                CustomerOrder order = orders[i];
+                if (order == null || order.isCompleted) continue;
+                if (FindOrderCard(order.orderId) != null) continue;
 
-            // The header row now shows what the two active customers actually want, in place of the
-            // level's aggregate remaining counts - one card per box order, real item icon + remaining.
-            for (int boxIndex = 0; boxIndex < MAX_SLOTS; boxIndex++)
-            {
-                BuildOrRefreshCustomerGoalCard(boxIndex, boxIndex);
+                GameObject card = BuildOrderCard(order, i);
+                card.transform.SetSiblingIndex(Mathf.Min(i, topGoalContainer.childCount - 1));
             }
         }
 
-        /// <summary>Finds the level-goal entry for an item id, purely to reuse its 3D display prefab for the customer-order card icon.</summary>
+        /// <summary>
+        /// Kills every tween a card owns before it is destroyed.
+        ///
+        /// `card.DOKill()` only kills tweens whose TARGET is the transform. The spawn fade targets the
+        /// CanvasGroup and the tick/hit flashes target the Image, so those survived the card and then
+        /// spammed "the object has been destroyed but you are still trying to access it".
+        /// </summary>
+        private static void KillCardTweens(Transform card)
+        {
+            if (card == null) return;
+
+            card.DOKill();
+            KillCardGraphicTweens(card);
+        }
+
+        /// <summary>
+        /// The graphic half of <see cref="KillCardTweens"/>, leaving transform-targeted tweens alone. Used
+        /// from inside a card's own removal sequence, which must not kill itself while it is completing.
+        /// </summary>
+        private static void KillCardGraphicTweens(Transform card)
+        {
+            if (card == null) return;
+
+            foreach (Component c in card.GetComponentsInChildren<Component>(true))
+            {
+                if (c is CanvasGroup || c is Graphic) DOTween.Kill(c);
+            }
+        }
+
+        private static int GetCardOrderId(Transform card)
+        {
+            // Card names are "GoalCard_{orderId}_{itemId}".
+            string[] parts = card.name.Split('_');
+            if (parts.Length < 2) return -1;
+            return int.TryParse(parts[1], out int id) ? id : -1;
+        }
+
+        private Transform FindOrderCard(int orderId)
+        {
+            if (topGoalContainer == null) return null;
+            foreach (Transform child in topGoalContainer)
+            {
+                if (!child.name.StartsWith(OrderCardPrefix)) continue;
+                if (GetCardOrderId(child) == orderId) return child;
+            }
+            return null;
+        }
+
+        /// <summary>Finds the level-goal entry for an item id, purely to reuse its 3D display prefab for the order-card icon.</summary>
         private GameObject FindDisplayPrefabForItem(string itemId)
         {
             if (MatchGoalManager.Instance == null || MatchGoalManager.Instance.levelGoals == null || string.IsNullOrEmpty(itemId)) return null;
 
             foreach (MatchGoal g in MatchGoalManager.Instance.levelGoals)
             {
-                if (g.colorName != null && g.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    return g.displayPrefab;
-                }
+                if (g.colorName != null && g.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase)) return g.displayPrefab;
             }
             return null;
         }
 
-        /// <summary>
-        /// Builds (or refreshes) box <paramref name="boxIndex"/>'s header card for the customer currently
-        /// assigned to it. If that customer/item is already showing, the count is just ticked in place via
-        /// <see cref="TickCustomerGoalCard"/> instead - this is only for "the box got a new customer".
-        /// </summary>
-        private void BuildOrRefreshCustomerGoalCard(int boxIndex, int spawnIndex)
+        private GameObject BuildOrderCard(CustomerOrder order, int spawnIndex)
         {
-            if (topGoalContainer == null) return;
+            GameObject cardObj = NewUIObject($"{OrderCardPrefix}{order.orderId}_{order.itemId}", topGoalContainer);
 
-            CustomerOrder order = (boxIndex == 0) ? CustomerOrderManager.Instance?.box0Order : CustomerOrderManager.Instance?.box1Order;
-
-            string prefix = $"GoalCard_box{boxIndex}_";
-            Transform existing = null;
-            foreach (Transform child in topGoalContainer)
-            {
-                if (child.name.StartsWith(prefix)) { existing = child; break; }
-            }
-
-            bool hasOrder = order != null && order.items != null && order.items.Count > 0;
-            if (!hasOrder)
-            {
-                if (existing != null) SafeDestroy(existing.gameObject);
-                return;
-            }
-
-            CustomerOrderItem item = order.items[0];
-            int remaining = Mathf.Max(0, item.requiredCount - item.packedCount);
-            string cardName = $"{prefix}{item.itemId}";
-
-            if (existing != null && existing.name == cardName)
-            {
-                return; // same customer/item already showing - packedCount changes go through TickCustomerGoalCard
-            }
-
-            if (existing != null) SafeDestroy(existing.gameObject);
-            BuildGoalCard(cardName, item.itemId, item.itemColor, remaining, spawnIndex);
-        }
-
-        private void BuildGoalCard(string cardName, string itemId, Color itemColor, int remaining, int spawnIndex)
-        {
-            GameObject cardObj = new GameObject(cardName);
-            cardObj.transform.SetParent(topGoalContainer, false);
-
-            RectTransform cardRect = cardObj.AddComponent<RectTransform>();
+            RectTransform cardRect = cardObj.GetComponent<RectTransform>();
             cardRect.sizeDelta = goalCardSize;
 
-            // Badge sized to the card — renders behind children.
             Image cardBg = cardObj.AddComponent<Image>();
             ApplySlicedSprite(cardBg, LoadUISprite(UIAccentButton));
             cardBg.color = UIAccentTint;
 
-            GameObject iconObj = new GameObject("Icon");
-            iconObj.transform.SetParent(cardObj.transform, false);
+            GameObject iconObj = NewUIObject("Icon", cardObj.transform);
 
             // ID-card layout: the item and its count share the left half, a rule divides the card, and the
             // customer this order belongs to sits on the right.
             //
             // The icon zone is sized from the 3D model's own target size rather than from goalCardIconSize.
-            // The model is not clipped by its RectTransform, so a zone narrower than the model simply let it
-            // hang off the card - which is what put the item half outside the left edge.
+            // The model is not clipped by its RectTransform, so a zone narrower than the model simply lets
+            // it hang off the card.
             float iconZone = Mathf.Max(goalCardIconSize, goalCard3DModelTargetSize) + 10f;
 
-            RectTransform iconRect = iconObj.AddComponent<RectTransform>();
+            RectTransform iconRect = iconObj.GetComponent<RectTransform>();
             iconRect.anchorMin = new Vector2(0f, 0.5f);
             iconRect.anchorMax = new Vector2(0f, 0.5f);
             iconRect.pivot = new Vector2(0.5f, 0.5f);
             iconRect.anchoredPosition = new Vector2(iconZone * 0.5f, 0f);
             iconRect.sizeDelta = new Vector2(goalCardIconSize, goalCardIconSize);
 
-            GameObject displayPrefab = FindDisplayPrefabForItem(itemId);
+            BuildOrderCardIcon(iconObj, order);
 
-            if (displayPrefab != null)
-            {
-                GameObject modelWrapper = new GameObject("3D_Icon_Wrapper");
-                modelWrapper.transform.SetParent(iconObj.transform, false);
-                // Centred in the icon zone; only the DEPTH is taken from the serialized offset. Its x/y were
-                // tuned for the old single-column card and pushed the model off the left edge of this one.
-                modelWrapper.transform.localPosition = new Vector3(0f, 0f, goalCard3DModelLocalPosition.z);
-                modelWrapper.transform.localRotation = Quaternion.Euler(goalCard3DModelTiltX, 0f, 0f);
-                modelWrapper.transform.localScale = Vector3.one;
+            GameObject textObj = NewUIObject("Text", cardObj.transform);
 
-                GameObject modelObj = Instantiate(displayPrefab, modelWrapper.transform);
-                modelObj.name = "3D_Icon_Model";
-                modelObj.transform.localPosition = Vector3.zero;
-                modelObj.transform.localRotation = Quaternion.identity;
-                modelObj.transform.localScale = Vector3.one;
-
-                // Strip physics components and scripts from model
-                foreach (var c in modelObj.GetComponentsInChildren<Collider>(true)) SafeDestroy(c);
-                foreach (var c in modelObj.GetComponentsInChildren<Rigidbody>(true)) SafeDestroy(c);
-                foreach (var c in modelObj.GetComponentsInChildren<MonoBehaviour>(true)) SafeDestroy(c);
-
-                // Fix layer for UI camera
-                int uiLayer = LayerMask.NameToLayer("UI");
-                Transform[] allChildren = modelWrapper.GetComponentsInChildren<Transform>(true);
-                foreach (Transform t in allChildren)
-                {
-                    t.gameObject.layer = uiLayer;
-                }
-
-                // Calculate combined bounding box in modelWrapper space to normalize scale & visual center
-                Renderer[] renderers = modelObj.GetComponentsInChildren<Renderer>(true);
-                if (renderers != null && renderers.Length > 0)
-                {
-                    Bounds combinedBounds = new Bounds();
-                    bool hasBounds = false;
-                    foreach (Renderer r in renderers)
-                    {
-                        if (r == null || !r.enabled) continue;
-                        if (!hasBounds)
-                        {
-                            combinedBounds = r.bounds;
-                            hasBounds = true;
-                        }
-                        else
-                        {
-                            combinedBounds.Encapsulate(r.bounds);
-                        }
-                    }
-
-                    if (hasBounds)
-                    {
-                        Vector3 localCenterOffset = modelWrapper.transform.InverseTransformPoint(combinedBounds.center);
-                        Vector3 worldSize = combinedBounds.size;
-                        float maxWorldDim = Mathf.Max(worldSize.x, worldSize.y, worldSize.z);
-
-                        float worldUnitInUIPixels = modelWrapper.transform.lossyScale.x;
-                        float rawMeshSizeInUIPixels = (worldUnitInUIPixels > 0.00001f) ? (maxWorldDim / worldUnitInUIPixels) : maxWorldDim;
-
-                        float effectiveTargetSize = (goalCard3DModelTargetSize > 100f || goalCard3DModelTargetSize <= 0f) ? 85f : goalCard3DModelTargetSize;
-                        float scaleFactor = (rawMeshSizeInUIPixels > 0.0001f) ? (effectiveTargetSize / rawMeshSizeInUIPixels) : 1f;
-
-                        modelObj.transform.localScale = Vector3.one * scaleFactor;
-                        modelObj.transform.localPosition = -localCenterOffset * scaleFactor;
-                    }
-                    else
-                    {
-                        modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
-                    }
-                }
-                else
-                {
-                    modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
-                }
-
-                // Add smooth rotator to wrapper
-                modelWrapper.AddComponent<MechaFind3D.UI.UIRotator>();
-            }
-            else
-            {
-                Image iconImg = iconObj.AddComponent<Image>();
-                Sprite foodIcon = string.IsNullOrEmpty(itemId) ? null : IconSprite(itemId);
-                if (foodIcon != null)
-                {
-                    iconImg.sprite = foodIcon;
-                    iconImg.type = Image.Type.Simple;
-                    iconImg.preserveAspect = true;
-                    iconImg.color = Color.white;
-                }
-                else
-                {
-                    iconImg.color = itemColor;
-                }
-            }
-
-            GameObject textObj = new GameObject("Text");
-            textObj.transform.SetParent(cardObj.transform, false);
-
-            // Count sits beside the item, filling what is left of the zone before the divider.
-            RectTransform textRect = textObj.AddComponent<RectTransform>();
+            RectTransform textRect = textObj.GetComponent<RectTransform>();
             textRect.anchorMin = new Vector2(0f, 0f);
             textRect.anchorMax = new Vector2(goalCardDividerX, 1f);
             textRect.offsetMin = new Vector2(iconZone, 0f);
@@ -1413,17 +1021,15 @@ namespace MechaFind3D.PhysicsInteraction
             // two lines rather than simply overflowing.
             txt.horizontalOverflow = HorizontalWrapMode.Overflow;
             txt.verticalOverflow = VerticalWrapMode.Overflow;
+            txt.text = $"x{RemainingForOrder(order)}";
 
             Shadow shadow = textObj.AddComponent<Shadow>();
             shadow.effectColor = new Color(0, 0, 0, 0.8f);
             shadow.effectDistance = new Vector2(2, -2);
 
-            txt.text = $"x{remaining}";
+            GameObject dividerObj = NewUIObject("Divider", cardObj.transform);
 
-            GameObject dividerObj = new GameObject("Divider");
-            dividerObj.transform.SetParent(cardObj.transform, false);
-
-            RectTransform dividerRect = dividerObj.AddComponent<RectTransform>();
+            RectTransform dividerRect = dividerObj.GetComponent<RectTransform>();
             dividerRect.anchorMin = new Vector2(goalCardDividerX, 0.16f);
             dividerRect.anchorMax = new Vector2(goalCardDividerX, 0.84f);
             dividerRect.pivot = new Vector2(0.5f, 0.5f);
@@ -1432,10 +1038,9 @@ namespace MechaFind3D.PhysicsInteraction
             Image dividerImg = dividerObj.AddComponent<Image>();
             dividerImg.color = goalCardDividerColor;
 
-            GameObject portraitObj = new GameObject("CustomerPortrait");
-            portraitObj.transform.SetParent(cardObj.transform, false);
+            GameObject portraitObj = NewUIObject("CustomerPortrait", cardObj.transform);
 
-            RectTransform portraitRect = portraitObj.AddComponent<RectTransform>();
+            RectTransform portraitRect = portraitObj.GetComponent<RectTransform>();
             portraitRect.anchorMin = new Vector2(goalCardDividerX, 0f);
             portraitRect.anchorMax = new Vector2(1f, 1f);
             portraitRect.offsetMin = new Vector2(8f, 8f);
@@ -1450,89 +1055,196 @@ namespace MechaFind3D.PhysicsInteraction
             }
             else
             {
-                // Placeholder until the customer artwork exists - a plain panel, so the zone is visible
-                // and sized correctly while it is being designed.
                 portraitImg.color = new Color(1f, 1f, 1f, 0.20f);
             }
 
-            // Staggered pop-in: scale from 0 with OutBack, then fade in
-            int capturedIndex = spawnIndex;
             cardObj.transform.localScale = Vector3.zero;
             CanvasGroup cg = cardObj.AddComponent<CanvasGroup>();
             cg.alpha = 0f;
+
             Sequence spawnSeq = DOTween.Sequence();
-            spawnSeq.AppendInterval(capturedIndex * goalSpawnStaggerDelay);
+            spawnSeq.AppendInterval(spawnIndex * goalSpawnStaggerDelay);
             spawnSeq.Append(cardObj.transform.DOScale(Vector3.one, goalSpawnScaleDuration).SetEase(Ease.OutBack, 1.6f));
             spawnSeq.Join(cg.DOFade(1f, goalSpawnFadeDuration));
             spawnSeq.Play();
+
+            return cardObj;
         }
 
-        /// <summary>Ticks box <paramref name="boxIndex"/>'s header card down after an item is packed - punch, flash, update the count, and play the completion animation once its order is fully packed.</summary>
-        private void TickCustomerGoalCard(int boxIndex)
+        private void BuildOrderCardIcon(GameObject iconObj, CustomerOrder order)
         {
-            if (topGoalContainer == null) return;
+            GameObject displayPrefab = FindDisplayPrefabForItem(order.itemId);
 
-            CustomerOrder order = (boxIndex == 0) ? CustomerOrderManager.Instance?.box0Order : CustomerOrderManager.Instance?.box1Order;
-            if (order == null || order.items == null || order.items.Count == 0) return;
-
-            CustomerOrderItem item = order.items[0];
-            int remaining = Mathf.Max(0, item.requiredCount - item.packedCount);
-
-            string prefix = $"GoalCard_box{boxIndex}_";
-            Transform card = null;
-            foreach (Transform child in topGoalContainer)
+            if (displayPrefab == null)
             {
-                if (child.name.StartsWith(prefix)) { card = child; break; }
+                Image iconImg = iconObj.AddComponent<Image>();
+                Sprite foodIcon = order.itemIcon != null ? order.itemIcon
+                                : (string.IsNullOrEmpty(order.itemId) ? null : IconSprite(order.itemId));
+                if (foodIcon != null)
+                {
+                    iconImg.sprite = foodIcon;
+                    iconImg.type = Image.Type.Simple;
+                    iconImg.preserveAspect = true;
+                    iconImg.color = Color.white;
+                }
+                else
+                {
+                    iconImg.color = order.itemColor;
+                }
+                return;
             }
+
+            GameObject modelWrapper = new GameObject("3D_Icon_Wrapper");
+            modelWrapper.transform.SetParent(iconObj.transform, false);
+            // Centred in the icon zone; only the DEPTH is taken from the serialized offset. Its x/y were
+            // tuned for an older single-column card and push the model off the left edge of this one.
+            modelWrapper.transform.localPosition = new Vector3(0f, 0f, goalCard3DModelLocalPosition.z);
+            modelWrapper.transform.localRotation = Quaternion.Euler(goalCard3DModelTiltX, 0f, 0f);
+            modelWrapper.transform.localScale = Vector3.one;
+
+            GameObject modelObj = Instantiate(displayPrefab, modelWrapper.transform);
+            modelObj.name = "3D_Icon_Model";
+            modelObj.transform.localPosition = Vector3.zero;
+            modelObj.transform.localRotation = Quaternion.identity;
+            modelObj.transform.localScale = Vector3.one;
+
+            foreach (var c in modelObj.GetComponentsInChildren<Collider>(true)) SafeDestroy(c);
+            foreach (var c in modelObj.GetComponentsInChildren<Rigidbody>(true)) SafeDestroy(c);
+            foreach (var c in modelObj.GetComponentsInChildren<MonoBehaviour>(true)) SafeDestroy(c);
+
+            int uiLayer = LayerMask.NameToLayer("UI");
+            foreach (Transform t in modelWrapper.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = uiLayer;
+
+            Renderer[] renderers = modelObj.GetComponentsInChildren<Renderer>(true);
+            Bounds combinedBounds = new Bounds();
+            bool hasBounds = false;
+            foreach (Renderer r in renderers)
+            {
+                if (r == null || !r.enabled) continue;
+                if (!hasBounds) { combinedBounds = r.bounds; hasBounds = true; }
+                else combinedBounds.Encapsulate(r.bounds);
+            }
+
+            if (hasBounds)
+            {
+                Vector3 localCenterOffset = modelWrapper.transform.InverseTransformPoint(combinedBounds.center);
+                Vector3 worldSize = combinedBounds.size;
+                float maxWorldDim = Mathf.Max(worldSize.x, worldSize.y, worldSize.z);
+
+                float worldUnitInUIPixels = modelWrapper.transform.lossyScale.x;
+                float rawMeshSizeInUIPixels = (worldUnitInUIPixels > 0.00001f) ? (maxWorldDim / worldUnitInUIPixels) : maxWorldDim;
+
+                float effectiveTargetSize = (goalCard3DModelTargetSize > 100f || goalCard3DModelTargetSize <= 0f) ? 85f : goalCard3DModelTargetSize;
+                float scaleFactor = (rawMeshSizeInUIPixels > 0.0001f) ? (effectiveTargetSize / rawMeshSizeInUIPixels) : 1f;
+
+                modelObj.transform.localScale = Vector3.one * scaleFactor;
+                modelObj.transform.localPosition = -localCenterOffset * scaleFactor;
+            }
+            else
+            {
+                modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
+            }
+
+            modelWrapper.AddComponent<MechaFind3D.UI.UIRotator>();
+        }
+
+        /// <summary>
+        /// True for the one order that actually claims items sitting in the tray right now: whichever
+        /// not-yet-completed order for this item type is FIRST in the active row. That is exactly
+        /// <see cref="CustomerOrderManager.FindOrderForItem"/>'s own pick, so it stays in lockstep with which
+        /// order <see cref="TryDeliverGroup"/> will actually deliver to.
+        /// </summary>
+        private bool IsActiveOrderForItem(CustomerOrder order)
+        {
+            if (order == null || CustomerOrderManager.Instance == null) return false;
+            CustomerOrder active = CustomerOrderManager.Instance.FindOrderForItem(order.itemId);
+            return active != null && active.orderId == order.orderId;
+        }
+
+        /// <summary>
+        /// Two customers can both be asking for "cookie" at once, but only ONE of them is being fed by the
+        /// tray at a time - the other's count must not move until its turn comes.
+        ///
+        /// This used to subtract `CountInDock(order.itemId)` for every order sharing that item id, so two
+        /// cookie orders both ticked down together the moment cookies landed in the tray, even though only
+        /// the older order would ever actually receive them. Only the ACTIVE order for the type now reserves
+        /// against the tray; everything behind it in the queue shows its full, untouched count until it
+        /// becomes the active one.
+        /// </summary>
+        private int RemainingForOrder(CustomerOrder order)
+        {
+            if (order == null) return 0;
+            int reserved = IsActiveOrderForItem(order) ? CountInDock(order.itemId) : 0;
+            return Mathf.Max(0, order.requiredCount - reserved);
+        }
+
+        /// <summary>Updates every card's "still wanted" count, punching the ones that actually changed.</summary>
+        private void RefreshOrderCardCounts(string changedItemId)
+        {
+            if (topGoalContainer == null || CustomerOrderManager.Instance == null) return;
+
+            foreach (CustomerOrder order in CustomerOrderManager.Instance.ActiveOrders)
+            {
+                if (order == null || order.isCompleted) continue;
+
+                Transform card = FindOrderCard(order.orderId);
+                if (card == null) continue;
+
+                Transform textObj = card.Find("Text");
+                Text txt = textObj != null ? textObj.GetComponent<Text>() : null;
+                if (txt == null) continue;
+
+                string next = $"x{RemainingForOrder(order)}";
+                bool changed = txt.text != next;
+                txt.text = next;
+
+                if (!changed) continue;
+                if (!order.itemId.Equals(changedItemId, System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                txt.DOKill();
+                txt.DOColor(new Color(1f, 0.92f, 0.25f), 0.12f).OnComplete(() => txt.DOColor(Color.white, 0.3f));
+                textObj.DOKill();
+                textObj.DOPunchScale(Vector3.one * goalTickTextPunchStrength, goalTickTextPunchDuration, 7, 0.9f);
+
+                card.DOKill();
+                card.DOPunchScale(Vector3.one * goalTickCardPunchStrength, goalTickCardPunchDuration, 8, 0.8f);
+            }
+        }
+
+        /// <summary>The hit an order card takes when a matched group slams into it.</summary>
+        private void PunchOrderCard(Transform card)
+        {
             if (card == null) return;
 
-            Transform textObj = card.Find("Text");
-            if (textObj != null)
-            {
-                Text txt = textObj.GetComponent<Text>();
-                if (txt != null)
-                {
-                    txt.text = $"x{remaining}";
-                    txt.DOColor(new Color(1f, 0.92f, 0.25f), 0.12f)
-                        .OnComplete(() => txt.DOColor(Color.white, 0.3f));
-                    textObj.DOKill();
-                    textObj.DOPunchScale(Vector3.one * goalTickTextPunchStrength, goalTickTextPunchDuration, 7, 0.9f);
-                }
-            }
+            card.DOKill();
+            card.DOPunchScale(Vector3.one * (goalTickCardPunchStrength * 1.6f), goalTickCardPunchDuration, 10, 0.9f);
 
             Image cardBg = card.GetComponent<Image>();
-            if (cardBg != null)
-            {
-                Color orig = cardBg.color;
-                cardBg.DOColor(new Color(successAccentColor.r, successAccentColor.g, successAccentColor.b, orig.a), 0.12f)
-                    .SetEase(Ease.OutQuad)
-                    .OnComplete(() => cardBg.DOColor(orig, 0.25f).SetEase(Ease.InQuad));
-            }
+            if (cardBg == null) return;
 
-            card.DOKill();
-            card.DOPunchScale(Vector3.one * goalTickCardPunchStrength, goalTickCardPunchDuration, 8, 0.8f);
-
-            if (item.IsFulfilled)
-            {
-                PlayGoalCardRemoveAnimation(card);
-            }
+            Color orig = cardBg.color;
+            cardBg.DOKill();
+            cardBg.DOColor(new Color(successAccentColor.r, successAccentColor.g, successAccentColor.b, orig.a), 0.10f)
+                  .SetEase(Ease.OutQuad)
+                  .OnComplete(() => cardBg.DOColor(orig, 0.25f).SetEase(Ease.InQuad));
         }
 
-        /// <summary>Pops a checkmark, hides the count, then bounces/shrinks the card away and destroys it - used once a box's order is fully packed.</summary>
-        private void PlayGoalCardRemoveAnimation(Transform card)
+        /// <summary>Pops a checkmark, then bounces and shrinks the card away and destroys it.</summary>
+        private void RetireOrderCard(Transform card)
         {
             if (card == null) return;
 
-            card.DOKill();
-            CanvasGroup cg = card.GetComponent<CanvasGroup>();
-            if (cg == null) cg = card.gameObject.AddComponent<CanvasGroup>();
+            // Renamed so SyncOrderCards ignores it while it plays out - it no longer belongs to any live
+            // order, and the replacement customer's card is being built alongside it.
+            card.name = RetiredCardPrefix + card.name;
 
-            Transform existingCheck = card.Find("CheckIcon");
-            if (existingCheck == null)
+            KillCardTweens(card);
+            CanvasGroup cg = card.GetComponent<CanvasGroup>() ?? card.gameObject.AddComponent<CanvasGroup>();
+
+            if (card.Find("CheckIcon") == null)
             {
-                GameObject checkObj = new GameObject("CheckIcon");
-                checkObj.transform.SetParent(card, false);
-                RectTransform cr = checkObj.AddComponent<RectTransform>();
+                GameObject checkObj = NewUIObject("CheckIcon", card);
+                RectTransform cr = checkObj.GetComponent<RectTransform>();
                 cr.anchorMin = Vector2.zero;
                 cr.anchorMax = Vector2.one;
                 cr.sizeDelta = Vector2.zero;
@@ -1555,30 +1267,22 @@ namespace MechaFind3D.PhysicsInteraction
             removeSeq.Append(card.DOScale(Vector3.one * goalRemoveBounceScale, goalRemoveBounceDuration).SetEase(Ease.OutQuad));
             removeSeq.Append(card.DOScale(Vector3.zero, goalRemoveShrinkDuration).SetEase(Ease.InBack, 1.8f));
             removeSeq.Join(cg.DOFade(0f, goalRemoveShrinkDuration * 0.8f).SetEase(Ease.InQuad));
-            removeSeq.OnComplete(() => { if (card != null) Destroy(card.gameObject); });
+            removeSeq.OnComplete(() => { if (card != null) { KillCardGraphicTweens(card); SafeDestroy(card.gameObject); } });
             removeSeq.Play();
         }
-        
-        /// <summary>Ticks the dedicated Mecha badge under the timer. The header row's item cards are ticked separately by <see cref="TickCustomerGoalCard"/>.</summary>
-        private void SetGoalUIVisualTick(string colorName)
+
+        /// <summary>Ticks the dedicated Mecha badge under the timer, when the scene still has one.</summary>
+        private void SetMechaBadgeTick()
         {
             GameObject mBadgeObj = GameObject.Find("Mecha_Goal_Badge");
             GameObject mTextObj = GameObject.Find("Mecha_Goal_Text");
-            if (mBadgeObj == null && topGoalContainer != null && topGoalContainer.parent != null)
-            {
-                Transform mb = topGoalContainer.parent.Find("Mecha_Goal_Badge");
-                if (mb != null) mBadgeObj = mb.gameObject;
-                Transform mt = topGoalContainer.parent.Find("Mecha_Goal_Text");
-                if (mt != null) mTextObj = mt.gameObject;
-            }
 
             MatchGoal mechaGoal = null;
             if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null)
             {
                 foreach (var g in MatchGoalManager.Instance.levelGoals)
                 {
-                    if (g.colorName.Equals("Mecha", System.StringComparison.OrdinalIgnoreCase) ||
-                        g.colorName.Contains("Mecha") || g.colorName.Contains("meccha"))
+                    if (g.colorName != null && g.colorName.IndexOf("mecha", System.StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         mechaGoal = g;
                         break;
@@ -1589,22 +1293,10 @@ namespace MechaFind3D.PhysicsInteraction
             if (mTextObj != null)
             {
                 Text txt = mTextObj.GetComponent<Text>();
-                if (txt != null)
+                if (txt != null && mechaGoal != null)
                 {
-                    if (mechaGoal != null)
-                    {
-                        if (mechaGoal.IsCompleted)
-                        {
-                            txt.text = "MECHA ✓";
-                            txt.color = successAccentColor;
-                        }
-                        else
-                        {
-                            txt.text = $"MECHA x{mechaGoal.Remaining}";
-                        }
-                    }
-                    txt.DOColor(new Color(1f, 0.92f, 0.25f), 0.12f)
-                        .OnComplete(() => txt.DOColor(mechaGoal != null && mechaGoal.IsCompleted ? successAccentColor : mechaAccentColor, 0.3f));
+                    txt.text = mechaGoal.IsCompleted ? "MECHA ✓" : $"MECHA x{mechaGoal.Remaining}";
+                    txt.color = mechaGoal.IsCompleted ? successAccentColor : mechaAccentColor;
                     mTextObj.transform.DOKill();
                     mTextObj.transform.DOPunchScale(Vector3.one * goalTickTextPunchStrength, goalTickTextPunchDuration, 7, 0.9f);
                 }
@@ -1612,18 +1304,14 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (mBadgeObj != null)
             {
-                Image cardBg = mBadgeObj.GetComponent<Image>();
-                if (cardBg != null)
-                {
-                    Color orig = cardBg.color;
-                    cardBg.DOColor(new Color(successAccentColor.r, successAccentColor.g, successAccentColor.b, orig.a), 0.12f)
-                        .SetEase(Ease.OutQuad)
-                        .OnComplete(() => cardBg.DOColor(orig, 0.25f).SetEase(Ease.InQuad));
-                }
                 mBadgeObj.transform.DOKill();
                 mBadgeObj.transform.DOPunchScale(Vector3.one * goalTickCardPunchStrength, goalTickCardPunchDuration, 8, 0.8f);
             }
         }
+
+        // ---------------------------------------------------------------------------------------------
+        // Mecha identification (unchanged gameplay: tap to reveal, tap again to vanish)
+        // ---------------------------------------------------------------------------------------------
 
         public static bool IsMechaItem(FindTargetObject item)
         {
@@ -1638,34 +1326,6 @@ namespace MechaFind3D.PhysicsInteraction
                 if (t.name.Contains("Mecha") || t.name.Contains("meccha")) return true;
             }
             return false;
-        }
-
-        private int CountTotalMatchingObjectsInLevel(FindTargetObject targetItem)
-        {
-            if (targetItem == null) return 1;
-            bool isMecha = IsMechaItem(targetItem);
-
-            int count = 0;
-            FindTargetObject[] allItems = Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None);
-            foreach (var item in allItems)
-            {
-                if (item == null) continue;
-                if (isMecha)
-                {
-                    if (IsMechaItem(item)) count++;
-                }
-                else
-                {
-                    // The slice carrying the mecha counts as its own food type as well. It used to be
-                    // excluded, because IsMechaItem is true for the HOST while the mecha is still riding
-                    // it - so with three watermelons, one of them hosting, the box only ever asked for two
-                    // and sealed itself early while a perfectly ordinary third slice was still in the pile.
-                    // Tapping the mecha lifts it off and leaves the host behind as a plain slice, so it
-                    // belongs in the food count from the start.
-                    if (item.colorName == targetItem.colorName) count++;
-                }
-            }
-            return Mathf.Max(1, count);
         }
 
         public static bool HasChildMecha(FindTargetObject item)
@@ -1689,36 +1349,31 @@ namespace MechaFind3D.PhysicsInteraction
             while (t != null && (item == null || t != item.transform))
             {
                 string name = t.name.ToLowerInvariant();
-                if (name.Contains("mecha") || name.Contains("meccha") || name.Contains("ragdoll") || 
-                    name.Contains("bodycollider") || name.Contains("mixamorig") || name.Contains("hullmesh") || name.Contains("bone") || name.Contains("arm") || name.Contains("leg") || name.Contains("head"))
+                if (name.Contains("mecha") || name.Contains("meccha") || name.Contains("ragdoll") ||
+                    name.Contains("bodycollider") || name.Contains("mixamorig") || name.Contains("hullmesh") ||
+                    name.Contains("bone") || name.Contains("arm") || name.Contains("leg") || name.Contains("head"))
                 {
                     return true;
                 }
-                if (t.GetComponent<MechaRagdollSpawner>() != null || t.GetComponent<SkinnedMeshRenderer>() != null)
-                {
-                    return true;
-                }
+                if (t.GetComponent<MechaRagdollSpawner>() != null || t.GetComponent<SkinnedMeshRenderer>() != null) return true;
                 t = t.parent;
             }
             return false;
         }
 
-        /// <summary>
-        /// Called when the mecha is found or vanishes. Registers Mecha goal completion and updates the Mecha badge checkmark (tik).
-        /// </summary>
+        /// <summary>Called when the mecha is found or vanishes - credits its goal and ticks the badge.</summary>
         public void OnMechaVanished()
-        {
-            OnMechaFoundOrVanished();
-        }
-
-        public void OnMechaFoundOrVanished()
         {
             if (MatchGoalManager.Instance != null)
             {
                 MatchGoalManager.Instance.RegisterMatchedItem(ObjectShapeType.Cube, "Mecha", 1);
             }
-            SetGoalUIVisualTick("Mecha");
+            SetMechaBadgeTick();
         }
+
+        // ---------------------------------------------------------------------------------------------
+        // Collecting into the dock
+        // ---------------------------------------------------------------------------------------------
 
         public bool TryCollectItemToDock(FindTargetObject item)
         {
@@ -1727,392 +1382,316 @@ namespace MechaFind3D.PhysicsInteraction
 
         public bool TryCollectItemToDock(FindTargetObject item, Collider hitCollider)
         {
-            if (item == null) return false;
+            if (item == null || gameOverTriggered) return false;
 
-            // Strict Hit Sensitivity: Collect Mecha ONLY if the player clicked directly on the mecha character figure's collider!
-            bool isMecha = false;
-            if (hitCollider != null)
-            {
-                isMecha = IsHitOnMechaCollider(item, hitCollider);
-            }
-            else
-            {
-                // Standalone mecha object (not embedded in a host item)
-                isMecha = item.name.Contains("Mecha") || item.name.Contains("meccha") ||
-                         (item.colorName != null && item.colorName.Equals("mecha", System.StringComparison.OrdinalIgnoreCase));
-            }
-
-            // GAMEPLAY RULE: A host object carrying a hidden mecha CANNOT be collected/boxed until the player clicks directly on the mecha first to pluck it off!
-            if (!isMecha && HasChildMecha(item))
-            {
-                return false;
-            }
-
-            string itemType = isMecha ? "Mecha" : item.colorName;
-
-            int targetSlot = -1;
+            bool isMecha = hitCollider != null
+                ? IsHitOnMechaCollider(item, hitCollider)
+                : item.name.Contains("Mecha") || item.name.Contains("meccha")
+                  || (item.colorName != null && item.colorName.Equals("mecha", System.StringComparison.OrdinalIgnoreCase));
 
             if (isMecha)
             {
-                // Find or attach MechaRunnerBehavior component on the hit mecha transform
-                MechaRunnerBehavior runner = item.GetComponentInChildren<MechaRunnerBehavior>();
-                if (runner == null && hitCollider != null)
-                {
-                    runner = hitCollider.GetComponentInParent<MechaRunnerBehavior>();
-                }
-                if (runner == null)
-                {
-                    Transform mechaRoot = item.transform;
-                    if (hitCollider != null)
-                    {
-                        Transform t = hitCollider.transform;
-                        while (t != null && t != item.transform)
-                        {
-                            string n = t.name.ToLowerInvariant();
-                            if (n.Contains("mecha") || n.Contains("meccha") || n.Contains("ragdoll"))
-                            {
-                                mechaRoot = t;
-                                break;
-                            }
-                            t = t.parent;
-                        }
-                    }
-                    runner = mechaRoot.gameObject.AddComponent<MechaRunnerBehavior>();
-                }
-
-                if (runner.currentState == MechaRunnerBehavior.MechaState.CamouflagedOnHost)
-                {
-                    // 1st Tap: Start Running animation and wander around the tray area (No boxing!)
-                    runner.StartRunningMode(item.gameObject);
-                    return false;
-                }
-                else if (runner.currentState == MechaRunnerBehavior.MechaState.RunningInArea)
-                {
-                    // 2nd Tap: Play DOTween spin-shrink vanish exit animation (No boxing!)
-                    runner.VanishAndDisappear();
-                    return false;
-                }
-
-                return false;
-            }
-            else
-            {
-                // Slots 0 & 1 are for general items, and now ONLY for the item(s) a currently active
-                // customer order is actually asking for. Collecting anything else used to fall back to
-                // "any free slot, any item" - every color matched something - so there was no way to ever
-                // pack the wrong thing. Checked independently of slot-busy state, so a genuinely correct
-                // item that just has nowhere to land THIS frame (both boxes mid-shipping) is never confused
-                // with a wrong item - only the latter fails the level.
-                if (CustomerOrderManager.Instance != null)
-                {
-                    int reqSel = slotRequiredCount[selectedBoxIndex] > 0 ? slotRequiredCount[selectedBoxIndex] : CustomerOrderManager.Instance.GetRequiredCountForBox(selectedBoxIndex);
-                    if (!IsSlotBusy(selectedBoxIndex) && GetSlotBoxContent(selectedBoxIndex).Count < reqSel)
-                    {
-                        targetSlot = selectedBoxIndex;
-                    }
-                    else
-                    {
-                        int otherSlot = (selectedBoxIndex == 0) ? 1 : 0;
-                        int reqOther = slotRequiredCount[otherSlot] > 0 ? slotRequiredCount[otherSlot] : CustomerOrderManager.Instance.GetRequiredCountForBox(otherSlot);
-                        if (!IsSlotBusy(otherSlot) && GetSlotBoxContent(otherSlot).Count < reqOther)
-                        {
-                            SelectBox(otherSlot);
-                            targetSlot = otherSlot;
-                        }
-                        else
-                        {
-                            targetSlot = -1;
-                        }
-                    }
-
-                    if (targetSlot != -1)
-                    {
-                        slotAssignedItemName[targetSlot] = itemType;
-                        slotRequiredCount[targetSlot] = CustomerOrderManager.Instance.GetRequiredCountForBox(targetSlot);
-                    }
-                }
-                else
-                {
-                    // No order system active at all (e.g. testing without CustomerOrderManager in scene) -
-                    // fall back to the old permissive matching so the dock still works.
-                    for (int i = 0; i < 2; i++)
-                    {
-                        if (IsSlotBusy(i)) continue;
-
-                        int req = slotRequiredCount[i] > 0 ? slotRequiredCount[i] : 3;
-                        if (slotAssignedItemName[i] == itemType && GetSlotBoxContent(i).Count < req)
-                        {
-                            targetSlot = i;
-                            break;
-                        }
-                    }
-
-                    if (targetSlot == -1)
-                    {
-                        for (int i = 0; i < 2; i++)
-                        {
-                            if (IsSlotBusy(i)) continue;
-
-                            if (string.IsNullOrEmpty(slotAssignedItemName[i]))
-                            {
-                                slotAssignedItemName[i] = itemType;
-                                slotRequiredCount[i] = CountTotalMatchingObjectsInLevel(item);
-                                targetSlot = i;
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (targetSlot == -1)
-            {
+                HandleMechaTap(item, hitCollider);
                 return false;
             }
 
-            if (targetSlot >= 0 && targetSlot < MAX_SLOTS && slotBox[targetSlot] == null)
+            // A host object carrying a hidden mecha cannot be collected until the mecha is tapped off it.
+            if (HasChildMecha(item)) return false;
+
+            if (dockItems.Count >= DockCapacity || dockItems.Count >= slotRects.Count) return false;
+
+            item.isDocked = true;
+
+            Rigidbody rb = item.GetComponent<Rigidbody>();
+            if (rb != null)
             {
-                Ensure3DCardboardBoxes();
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.isKinematic = true;
             }
 
-            if (isMecha)
+            foreach (Renderer r in item.GetComponentsInChildren<Renderer>())
             {
-                Transform mechaTransform = item.transform;
-                Transform hostTransform = null;
-
-                if (!item.name.Contains("Mecha") && !item.name.Contains("meccha"))
-                {
-                    foreach (Transform child in item.GetComponentsInChildren<Transform>(true))
-                    {
-                        if (child != item.transform && (child.name.Contains("Mecha") || child.name.Contains("meccha") || child.name.Contains("Ragdoll")))
-                        {
-                            mechaTransform = child;
-                            hostTransform = item.transform;
-                            break;
-                        }
-                    }
-                }
-
-                GameObject mechaObjToCollect;
-
-                if (hostTransform != null)
-                {
-                    // UNPARENT MECHA SO HOST OBJECT STAYS IN THE PILE INTACT!
-                    mechaTransform.SetParent(null, true);
-                    mechaObjToCollect = mechaTransform.gameObject;
-
-                    // Ensure mechaObjToCollect has a FindTargetObject component for dock tracking
-                    FindTargetObject mechaTargetComp = mechaObjToCollect.GetComponent<FindTargetObject>();
-                    if (mechaTargetComp == null)
-                    {
-                        mechaTargetComp = mechaObjToCollect.AddComponent<FindTargetObject>();
-                        mechaTargetComp.Initialize(ObjectShapeType.Cube, Color.cyan, "Mecha");
-                    }
-                    mechaTargetComp.isDocked = true;
-
-                    // Re-enable host object physics & colliders so it stays naturally in the pile
-                    item.isDocked = false;
-                    foreach (Collider c in item.GetComponentsInChildren<Collider>(true))
-                    {
-                        if (c != null) c.enabled = true;
-                    }
-                    Rigidbody hostRb = item.GetComponent<Rigidbody>();
-                    if (hostRb != null)
-                    {
-                        hostRb.isKinematic = false;
-                        hostRb.WakeUp();
-                    }
-                }
-                else
-                {
-                    item.isDocked = true;
-                    mechaObjToCollect = item.gameObject;
-                }
-
-                // Camouflage comes off the moment it is torn away from its host: the glass look only exists
-                // to hide it in the pile, so from here on - the flight, the box, the sealed lid - it shows
-                // as solid white.
-                ChameleonCamouflage.ApplyRevealedMaterial(mechaObjToCollect);
-
-                Rigidbody rb = mechaObjToCollect.GetComponent<Rigidbody>();
-                if (rb != null)
-                {
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
-                    rb.isKinematic = true;
-                }
-
-                foreach (Renderer r in mechaObjToCollect.GetComponentsInChildren<Renderer>())
-                {
-                    if (r != null)
-                    {
-                        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                        r.receiveShadows = false;
-                    }
-                }
-
-                Collider col = mechaObjToCollect.GetComponent<Collider>();
-                if (col != null) col.enabled = false;
-
-                FindTargetObject mechaTarget = mechaObjToCollect.GetComponent<FindTargetObject>() ?? item;
-                DockItemData data = new DockItemData
-                {
-                    targetObject = mechaTarget,
-                    shapeType = mechaTarget.shapeType,
-                    colorName = "Mecha",
-                    objectColor = mechaTarget.objectColor
-                };
-
-                GetSlotBoxContent(targetSlot).Add(data);
-
-                if (MatchGoalManager.Instance != null)
-                {
-                    MatchGoalManager.Instance.RegisterMatchedItem(mechaTarget.shapeType, "Mecha", 1);
-                    SetGoalUIVisualTick("Mecha");
-                }
-
-                int reqCount = slotRequiredCount[targetSlot] > 0 ? slotRequiredCount[targetSlot] : 1;
-                bool willShip = GetSlotBoxContent(targetSlot).Count >= reqCount;
-                if (willShip)
-                {
-                    slotProcessing[targetSlot] = true;
-                    if (selectedBoxIndex == targetSlot)
-                    {
-                        int otherSlot = (targetSlot == 0) ? 1 : 0;
-                        SelectBox(otherSlot);
-                    }
-                }
-
-                // Unscrew spin animation (720 deg Y rotation + hop up)
-                Sequence unscrewSeq = DOTween.Sequence();
-                tweeningDockObjects.Add(mechaObjToCollect);
-                unscrewSeq.Append(mechaObjToCollect.transform.DORotate(new Vector3(0, 720, 0), 0.35f, RotateMode.FastBeyond360).SetEase(Ease.OutQuad));
-                unscrewSeq.Join(mechaObjToCollect.transform.DOJump(mechaObjToCollect.transform.position, 0.40f, 1, 0.35f));
-                unscrewSeq.OnComplete(() =>
-                {
-                    tweeningDockObjects.Remove(mechaObjToCollect);
-                    AnimateItemIntoBox(mechaObjToCollect, targetSlot, () =>
-                    {
-                        if (willShip)
-                        {
-                            AnimateSlowBoxClosingAndShipping(targetSlot);
-                        }
-                    });
-                });
-            }
-            else
-            {
-                // Unparent any child mecha riding on this host item before collecting the host item so the mecha drops into the pile
-                foreach (Transform child in item.GetComponentsInChildren<Transform>(true))
-                {
-                    if (child != item.transform && (child.name.Contains("Mecha") || child.name.Contains("meccha") || child.name.Contains("Ragdoll")))
-                    {
-                        child.SetParent(null, true);
-                        Rigidbody mechaRb = child.GetComponent<Rigidbody>();
-                        if (mechaRb != null)
-                        {
-                            mechaRb.isKinematic = false;
-                            mechaRb.WakeUp();
-                        }
-                        foreach (Collider c in child.GetComponentsInChildren<Collider>(true))
-                        {
-                            if (c != null) c.enabled = true;
-                        }
-                        break;
-                    }
-                }
-
-                item.isDocked = true;
-
-                Rigidbody rb = item.GetComponent<Rigidbody>();
-                if (rb != null)
-                {
-                    rb.linearVelocity = Vector3.zero;
-                    rb.angularVelocity = Vector3.zero;
-                    rb.isKinematic = true;
-                }
-
-                foreach (Renderer r in item.GetComponentsInChildren<Renderer>())
-                {
-                    if (r != null)
-                    {
-                        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                        r.receiveShadows = false;
-                    }
-                }
-
-                Collider col = item.GetComponent<Collider>();
-                if (col != null) col.enabled = false;
-
-                DockItemData data = new DockItemData
-                {
-                    targetObject = item,
-                    shapeType = item.shapeType,
-                    colorName = item.colorName,
-                    objectColor = item.objectColor
-                };
-
-                GetSlotBoxContent(targetSlot).Add(data);
-
-                if (MatchGoalManager.Instance != null)
-                {
-                    MatchGoalManager.Instance.RegisterMatchedItem(item.shapeType, item.colorName, 1);
-                }
-
-                if (CustomerOrderManager.Instance != null)
-                {
-                    if (CustomerOrderManager.Instance.ItemMatchesBoxOrder(targetSlot, item.colorName))
-                    {
-                        CustomerOrderManager.Instance.RegisterItemPackedIntoBox(targetSlot, item.colorName);
-                        TickCustomerGoalCard(targetSlot);
-                    }
-                }
-
-                bool orderDone = (CustomerOrderManager.Instance != null && CustomerOrderManager.Instance.IsOrderFulfilledForBox(targetSlot));
-                int reqCount = slotRequiredCount[targetSlot] > 0 ? slotRequiredCount[targetSlot] : 3;
-                bool willShip = (CustomerOrderManager.Instance != null) ? (orderDone && GetSlotBoxContent(targetSlot).Count >= reqCount) : (GetSlotBoxContent(targetSlot).Count >= reqCount);
-                if (willShip)
-                {
-                    slotProcessing[targetSlot] = true;
-                    if (selectedBoxIndex == targetSlot)
-                    {
-                        int otherSlot = (targetSlot == 0) ? 1 : 0;
-                        SelectBox(otherSlot);
-                    }
-                }
-
-                AnimateItemIntoBox(item.gameObject, targetSlot, () =>
-                {
-                    if (willShip)
-                    {
-                        if (CustomerOrderManager.Instance != null)
-                        {
-                            CustomerOrderManager.Instance.OnBoxShipped(targetSlot);
-                        }
-                        BuildOrRefreshCustomerGoalCard(targetSlot, 0);
-                        AnimateSlowBoxClosingAndShipping(targetSlot);
-                    }
-                });
+                if (r == null) continue;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
             }
 
-            UpdateSlotBadgesUI();
+            foreach (Collider c in item.GetComponentsInChildren<Collider>())
+            {
+                if (c != null) c.enabled = false;
+            }
+
+            DockItemData data = new DockItemData
+            {
+                targetObject = item,
+                shapeType = item.shapeType,
+                colorName = item.colorName,
+                objectColor = item.objectColor
+            };
+
+            int insertIndex = GetInsertIndexForType(item.colorName);
+            dockItems.Insert(insertIndex, data);
+
+            UpdateSlotVisuals();
+            RefreshOrderCardCounts(item.colorName);
+
+            string collectedType = item.colorName;
+            AnimateItemIntoSlot(item.gameObject, insertIndex, () => EvaluateDockAfterLanding(collectedType));
             return true;
+        }
+
+        private void HandleMechaTap(FindTargetObject item, Collider hitCollider)
+        {
+            MechaRunnerBehavior runner = item.GetComponentInChildren<MechaRunnerBehavior>();
+            if (runner == null && hitCollider != null) runner = hitCollider.GetComponentInParent<MechaRunnerBehavior>();
+
+            if (runner == null)
+            {
+                Transform mechaRoot = item.transform;
+                if (hitCollider != null)
+                {
+                    Transform t = hitCollider.transform;
+                    while (t != null && t != item.transform)
+                    {
+                        string n = t.name.ToLowerInvariant();
+                        if (n.Contains("mecha") || n.Contains("meccha") || n.Contains("ragdoll"))
+                        {
+                            mechaRoot = t;
+                            break;
+                        }
+                        t = t.parent;
+                    }
+                }
+                runner = mechaRoot.gameObject.AddComponent<MechaRunnerBehavior>();
+            }
+
+            if (runner.currentState == MechaRunnerBehavior.MechaState.CamouflagedOnHost)
+            {
+                runner.StartRunningMode(item.gameObject);
+            }
+            else if (runner.currentState == MechaRunnerBehavior.MechaState.RunningInArea)
+            {
+                runner.VanishAndDisappear();
+            }
+        }
+
+        /// <summary>
+        /// Where a freshly tapped item slots in: immediately after the last item of its own kind, so a type
+        /// always reads as one unbroken group in the tray. Anything new goes on the end.
+        /// </summary>
+        private int GetInsertIndexForType(string itemId)
+        {
+            for (int i = dockItems.Count - 1; i >= 0; i--)
+            {
+                if (dockItems[i] != null && dockItems[i].colorName != null &&
+                    dockItems[i].colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return i + 1;
+                }
+            }
+            return dockItems.Count;
+        }
+
+        private int CountInDock(string itemId)
+        {
+            if (string.IsNullOrEmpty(itemId)) return 0;
+
+            int count = 0;
+            foreach (DockItemData data in dockItems)
+            {
+                if (data != null && data.colorName != null &&
+                    data.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private void EvaluateDockAfterLanding(string itemId)
+        {
+            if (TryDeliverGroup(itemId)) return;
+
+            // Only the LAST item to land decides the level is lost. Tapping fast puts several items in the
+            // air at once, and the tray is already full while they fly - one of them may still be the piece
+            // that completes an order, so judging on the first landing would lose a level that was won.
+            if (dockItems.Count >= DockCapacity && !AnyDockItemInFlight()) TriggerGameOver();
+        }
+
+        private bool AnyDockItemInFlight()
+        {
+            foreach (DockItemData data in dockItems)
+            {
+                if (data?.targetObject == null) continue;
+                if (tweeningDockObjects.Contains(data.targetObject.gameObject)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Re-checks every type in the tray - used after a new customer arrives who may already be satisfied.</summary>
+        private void CheckDockForCompletions()
+        {
+            var seen = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            var types = new List<string>();
+            foreach (DockItemData data in dockItems)
+            {
+                if (data?.colorName == null) continue;
+                if (seen.Add(data.colorName)) types.Add(data.colorName);
+            }
+
+            foreach (string type in types)
+            {
+                if (TryDeliverGroup(type)) return;
+            }
+        }
+
+        /// <summary>
+        /// Launches the tray's group of <paramref name="itemId"/> at the order that wants it, once the group
+        /// is as large as that order asks for.
+        /// </summary>
+        private bool TryDeliverGroup(string itemId)
+        {
+            if (CustomerOrderManager.Instance == null) return false;
+
+            CustomerOrder order = CustomerOrderManager.Instance.FindOrderForItem(itemId);
+            if (order == null) return false;
+
+            var group = new List<DockItemData>();
+            foreach (DockItemData data in dockItems)
+            {
+                if (data?.colorName == null) continue;
+                if (!data.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                group.Add(data);
+                if (group.Count >= order.requiredCount) break;
+            }
+
+            if (group.Count < order.requiredCount) return false;
+
+            foreach (DockItemData data in group) dockItems.Remove(data);
+            UpdateSlotVisuals();
+
+            LaunchGroupAtOrderCard(group, order);
+            return true;
+        }
+
+        private void LaunchGroupAtOrderCard(List<DockItemData> group, CustomerOrder order)
+        {
+            Transform card = FindOrderCard(order.orderId);
+            Vector3 target = card is RectTransform cardRect
+                ? GetUIWorldPosition(cardRect)
+                : GetUIWorldPosition(topGoalContainer);
+
+            // The dock plane sits a fixed depth in front of a steeply pitched camera, so "up" for this
+            // flight is the camera's own up - world +Y would drive the items into the lens.
+            Vector3 lift = mainCamera != null ? mainCamera.transform.up * matchLiftDistance : Vector3.up * matchLiftDistance;
+
+            int landed = 0;
+            int total = group.Count;
+
+            for (int i = 0; i < group.Count; i++)
+            {
+                DockItemData data = group[i];
+                if (data?.targetObject == null)
+                {
+                    landed++;
+                    continue;
+                }
+
+                GameObject obj = data.targetObject.gameObject;
+                obj.transform.DOKill();
+                tweeningDockObjects.Add(obj);
+
+                float startScale = obj.transform.localScale.x;
+
+                Sequence seq = DOTween.Sequence();
+                seq.AppendInterval(i * matchStaggerDelay);
+                seq.Append(obj.transform.DOMove(obj.transform.position + lift, matchLiftDuration).SetEase(Ease.OutQuad));
+                seq.Join(obj.transform.DOScale(startScale * 1.25f, matchLiftDuration).SetEase(Ease.OutQuad));
+                seq.Append(obj.transform.DOMove(target, matchFlightDuration).SetEase(Ease.InBack, 1.15f));
+                seq.Join(obj.transform.DORotate(new Vector3(0f, 720f, 0f), matchFlightDuration, RotateMode.FastBeyond360));
+                seq.Join(obj.transform.DOScale(startScale * 0.15f, matchFlightDuration).SetEase(Ease.InQuad));
+                seq.OnComplete(() =>
+                {
+                    tweeningDockObjects.Remove(obj);
+                    PunchOrderCard(card);
+                    SafeDestroy(obj);
+
+                    if (++landed >= total) CompleteDeliveredOrder(order, total);
+                });
+                seq.Play();
+            }
+
+            if (total == 0) CompleteDeliveredOrder(order, 0);
+        }
+
+        private void CompleteDeliveredOrder(CustomerOrder order, int deliveredCount)
+        {
+            if (MatchGoalManager.Instance != null && deliveredCount > 0)
+            {
+                MatchGoalManager.Instance.RegisterMatchedItem(ObjectShapeType.Cube, order.itemId, deliveredCount);
+            }
+
+            RetireOrderCard(FindOrderCard(order.orderId));
+
+            if (CustomerOrderManager.Instance != null) CustomerOrderManager.Instance.CompleteOrder(order);
+
+            SyncOrderCards();
+            RefreshOrderCardCounts(order.itemId);
+
+            // The customer who just slid in may already be satisfied by items sitting in the tray.
+            CheckDockForCompletions();
+        }
+
+        private void TriggerGameOver()
+        {
+            if (gameOverTriggered) return;
+            gameOverTriggered = true;
+
+            if (dockPanelRect != null)
+            {
+                dockPanelRect.DOKill(true);
+                dockPanelRect.DOShakeAnchorPos(0.5f, new Vector2(18f, 8f), 14, 90f);
+            }
+
+            foreach (Image slot in slotImages)
+            {
+                if (slot == null) continue;
+                slot.DOKill();
+                slot.DOColor(new Color(0.75f, 0.18f, 0.22f, 0.95f), 0.25f);
+            }
+
+            if (MatchGoalManager.Instance != null) MatchGoalManager.Instance.TriggerLose();
+        }
+
+        // ---------------------------------------------------------------------------------------------
+        // Dock placement
+        // ---------------------------------------------------------------------------------------------
+
+        private Camera CanvasEventCamera()
+        {
+            return (mainCanvas != null && mainCanvas.renderMode != RenderMode.ScreenSpaceOverlay) ? mainCanvas.worldCamera : null;
+        }
+
+        /// <summary>The point in front of the camera that lines up with a UI rect, at the dock's depth.</summary>
+        private Vector3 GetUIWorldPosition(RectTransform rect)
+        {
+            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
+            if (rect == null || mainCamera == null) return Vector3.zero;
+
+            Vector3 rectWorldCenter = rect.TransformPoint(rect.rect.center);
+            Vector2 screenPos2D = RectTransformUtility.WorldToScreenPoint(CanvasEventCamera(), rectWorldCenter);
+            return mainCamera.ScreenToWorldPoint(new Vector3(screenPos2D.x, screenPos2D.y, dockCameraDepth));
         }
 
         public Vector3 GetSlotWorldPosition(int slotIndex)
         {
-            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
-            if (slotIndex < 0 || slotIndex >= slotRects.Count || mainCamera == null) return Vector3.zero;
-
-            RectTransform rect = slotRects[slotIndex];
-            Vector3 slotWorldCenter = rect.TransformPoint(rect.rect.center);
-
-            Vector2 screenPos2D = RectTransformUtility.WorldToScreenPoint(CanvasEventCamera(), slotWorldCenter);
-            Vector3 screenPoint = new Vector3(screenPos2D.x, screenPos2D.y, dockCameraDepth);
-            return mainCamera.ScreenToWorldPoint(screenPoint);
+            if (slotIndex < 0 || slotIndex >= slotRects.Count) return Vector3.zero;
+            return GetUIWorldPosition(slotRects[slotIndex]);
         }
 
-        private float ComputeFitScaleForSlot(int slotIndex, GameObject obj3D = null)
+        private float ComputeFitScaleForSlot(int slotIndex, GameObject obj3D)
         {
             if (slotIndex < 0 || slotIndex >= slotRects.Count || mainCamera == null) return miniObjectDockScale;
 
@@ -2132,19 +1711,10 @@ namespace MechaFind3D.PhysicsInteraction
             Vector3 worldEdgeA = mainCamera.ScreenToWorldPoint(new Vector3(screenCenter.x - slotScreenSize * 0.5f, screenCenter.y, dockCameraDepth));
             Vector3 worldEdgeB = mainCamera.ScreenToWorldPoint(new Vector3(screenCenter.x + slotScreenSize * 0.5f, screenCenter.y, dockCameraDepth));
 
-            float slotWorldSize = Vector3.Distance(worldEdgeA, worldEdgeB);
-            float targetWorldSize = slotWorldSize * dockItemFillRatio;
+            float targetWorldSize = Vector3.Distance(worldEdgeA, worldEdgeB) * dockItemFillRatio;
 
-            if (obj3D != null)
-            {
-                float localMax = GetObjectStaticUnscaledMaxExtent(obj3D);
-                if (localMax > 1e-4f)
-                {
-                    return targetWorldSize / localMax;
-                }
-            }
-
-            return targetWorldSize;
+            float localMax = GetObjectStaticUnscaledMaxExtent(obj3D);
+            return localMax > 1e-4f ? targetWorldSize / localMax : targetWorldSize;
         }
 
         private static readonly Dictionary<int, float> unscaledExtentCache = new Dictionary<int, float>();
@@ -2154,10 +1724,7 @@ namespace MechaFind3D.PhysicsInteraction
             if (obj == null) return 1f;
 
             int instanceId = obj.GetInstanceID();
-            if (unscaledExtentCache.TryGetValue(instanceId, out float cachedExtent) && cachedExtent > 1e-4f)
-            {
-                return cachedExtent;
-            }
+            if (unscaledExtentCache.TryGetValue(instanceId, out float cachedExtent) && cachedExtent > 1e-4f) return cachedExtent;
 
             Renderer[] rends = obj.GetComponentsInChildren<Renderer>();
             if (rends == null || rends.Length == 0) return 1f;
@@ -2171,812 +1738,47 @@ namespace MechaFind3D.PhysicsInteraction
             Bounds combined = rends[0].bounds;
             for (int i = 1; i < rends.Length; i++)
             {
-                if (rends[i] != null && rends[i].enabled)
-                {
-                    combined.Encapsulate(rends[i].bounds);
-                }
+                if (rends[i] != null && rends[i].enabled) combined.Encapsulate(rends[i].bounds);
             }
 
             obj.transform.localScale = origScale;
             obj.transform.rotation = origRot;
 
             float maxExtent = Mathf.Max(combined.size.x, combined.size.y, combined.size.z);
-            
-            // Unity Bug Fix: SkinnedMeshRenderers can return 1000+ bounds before the Animator updates on frame 1.
-            // If it's absurdly large, don't cache it, and return a safe fallback so the box doesn't become microscopic.
+
+            // SkinnedMeshRenderers can report 1000+ bounds before the Animator updates on frame 1. An
+            // absurd value is not cached, and a safe fallback is returned so the item isn't microscopic.
             if (maxExtent > 500f) return 48f;
 
             float finalExtent = maxExtent > 1e-4f ? maxExtent : 1f;
-
             unscaledExtentCache[instanceId] = finalExtent;
             return finalExtent;
         }
 
-        private Camera CanvasEventCamera()
-        {
-            return (mainCanvas != null && mainCanvas.renderMode != RenderMode.ScreenSpaceOverlay) ? mainCanvas.worldCamera : null;
-        }
-
-        private void LoadCardboardBoxPrefabsIfNull()
-        {
-            // The scene still has the old "Cardboard Box (Rigged)" prefab serialized into this field. That
-            // box has an Armature/*.Top bone layout, which the Box.fbx clip's BoxFlap_* paths do not match,
-            // so it would silently never fold. Anything without PackagingBoxFlaps is therefore treated as a
-            // stale reference and replaced; assigning a prepared box that HAS the component still overrides.
-            if (cardboardBoxOpenedPrefab != null && cardboardBoxOpenedPrefab.GetComponent<PackagingBoxFlaps>() == null)
-            {
-                cardboardBoxOpenedPrefab = null;
-            }
-
-            if (cardboardBoxOpenedPrefab == null)
-            {
-                cardboardBoxOpenedPrefab = Resources.Load<GameObject>(PackagingBoxResourcePath);
-            }
-
-            boxRestRotation = cardboardBoxOpenedPrefab != null
-                ? cardboardBoxOpenedPrefab.transform.rotation
-                : Quaternion.identity;
-
-            if (cardboardBoxOpenedPrefab == null)
-            {
-                Debug.LogError(
-                    $"📦 Paketleme kutusu prefab'ı yok (Resources/{PackagingBoxResourcePath}). " +
-                    "Unity menüsünden 'MechaFind3D → Kutu → Box.fbx Kapanma Klibini Üret' komutunu bir kez çalıştır.");
-            }
-        }
-
-        /// <summary>Instantiates a packaging box, strips its physics and leaves it in the open pose.</summary>
-        private GameObject CreatePackagingBox(int slotIndex)
-        {
-            if (cardboardBoxOpenedPrefab == null) return null;
-
-            GameObject box = Instantiate(cardboardBoxOpenedPrefab, transform);
-            box.name = $"Slot3DBox_{slotIndex}";
-            StripPhysicsFromVisual(box);
-
-            if (box.GetComponent<PackagingBoxFlaps>() == null) box.AddComponent<PackagingBoxFlaps>();
-
-            if (!warnedAboutFlaps && !HasFlapParts(box))
-            {
-                warnedAboutFlaps = true;
-                Debug.LogError($"📦 '{cardboardBoxOpenedPrefab.name}' kapanma klibinden hiç etkilenmiyor; " +
-                               "klibin yolları bu modelin hiyerarşisiyle tutmuyor, kutu hiç kapanmaz. " +
-                               "Menüden kutunun kendi 'Üret' komutunu çalıştır.");
-            }
-
-            SetBoxFlapsInstant(box, false);
-
-            if (boxMaterialOverride != null)
-            {
-                foreach (Renderer r in box.GetComponentsInChildren<Renderer>(true))
-                {
-                    r.sharedMaterial = boxMaterialOverride;
-                }
-            }
-
-            ApplyTapeVariant(box);
-
-            return box;
-        }
-
-        /// <summary>
-        /// Gives this box its own tape colour so a row of shipped boxes never reads as identical copies.
-        ///
-        /// Only the BoxTape material slot is touched - Box.fbx keeps tape on its own faces (the two
-        /// last-closing flaps and the body), separate from the Cardboard slot, so the cardboard is left
-        /// exactly as authored. Colours are cycled rather than picked at random, which is what guarantees
-        /// consecutive boxes actually differ instead of occasionally repeating.
-        /// </summary>
-        private void ApplyTapeVariant(GameObject box)
-        {
-            if (box == null || boxTapeColors == null || boxTapeColors.Length == 0) return;
-
-            Color tint = boxTapeColors[nextTapeVariant % boxTapeColors.Length];
-            nextTapeVariant++;
-
-            // One instance shared by every renderer on THIS box. Copying per renderer would multiply
-            // materials for no visual gain, and tinting the slot in place would recolour the shared
-            // BoxTape.mat asset - repainting every box in the game, including ones already shipped.
-            Material variant = null;
-
-            foreach (Renderer r in box.GetComponentsInChildren<Renderer>(true))
-            {
-                Material[] mats = r.sharedMaterials;
-                bool touched = false;
-
-                for (int i = 0; i < mats.Length; i++)
-                {
-                    if (mats[i] == null || !mats[i].name.StartsWith(TapeMaterialPrefix)) continue;
-
-                    if (variant == null)
-                    {
-                        variant = new Material(mats[i]) { name = mats[i].name + "_Variant" };
-                        if (variant.HasProperty("_BaseColor")) variant.SetColor("_BaseColor", tint);
-                        if (variant.HasProperty("_Color")) variant.SetColor("_Color", tint);
-                    }
-
-                    mats[i] = variant;
-                    touched = true;
-                }
-
-                if (touched) r.sharedMaterials = mats;
-            }
-        }
-
-        private static void StripPhysicsFromVisual(GameObject go)
-        {
-            if (go == null) return;
-            foreach (var pusher in go.GetComponentsInChildren<MechaFind3D.PhysicsInteraction.ColliderContactPusher>(true)) Destroy(pusher);
-            foreach (var col in go.GetComponentsInChildren<Collider>(true)) Destroy(col);
-            foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true)) Destroy(rb);
-        }
-
-        /// <summary>
-        /// True when the baked closing clip actually drives some part of this box.
-        ///
-        /// This used to test for "BoxFlap_*" children, which only ever described the old cardboard carton.
-        /// The bakery box animates BoxLid and Ribbon_* instead, so the check fired a false alarm on every
-        /// box it created. Sampling the clip at both ends and looking for anything that moved is what the
-        /// check was really after, and it survives the next box swap too.
-        /// </summary>
-        private static bool HasFlapParts(GameObject box)
-        {
-            PackagingBoxFlaps flaps = box.GetComponent<PackagingBoxFlaps>();
-            AnimationClip clip = flaps != null ? flaps.Clip : null;
-
-            // No clip is a separate failure with its own error; don't report it twice.
-            if (clip == null) return true;
-
-            Transform[] parts = box.GetComponentsInChildren<Transform>(true);
-            var openPose = new Matrix4x4[parts.Length];
-
-            clip.SampleAnimation(box, 0f);
-            for (int i = 0; i < parts.Length; i++)
-            {
-                openPose[i] = Matrix4x4.TRS(parts[i].localPosition, parts[i].localRotation, parts[i].localScale);
-            }
-
-            clip.SampleAnimation(box, clip.length);
-            for (int i = 0; i < parts.Length; i++)
-            {
-                Matrix4x4 sealedPose = Matrix4x4.TRS(parts[i].localPosition, parts[i].localRotation, parts[i].localScale);
-                if (sealedPose != openPose[i]) return true;
-            }
-
-            return false;
-        }
-
-        private static void SetBoxFlapsInstant(GameObject box, bool closed)
-        {
-            if (box == null) return;
-            if (box.TryGetComponent(out PackagingBoxFlaps flaps)) flaps.SetClosedInstant(closed);
-        }
-
-        /// <summary>Joins the box's own baked lid-folding animation into an existing sequence so all four flaps fold together, in place (no position/scale change on the box itself).</summary>
-        private static void AnimateBoxFlaps(Sequence seq, GameObject box, bool closing, float duration)
-        {
-            if (box == null) return;
-            if (!box.TryGetComponent(out PackagingBoxFlaps flaps)) return;
-
-            Tween fold = flaps.Fold(closing, duration);
-            if (fold != null) seq.Join(fold);
-        }
-
-        private Vector3 GetHeaderGoalWorldPosition()
-        {
-            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
-            if (topGoalContainer == null || mainCamera == null) return new Vector3(0f, 4f, dockCameraDepth);
-
-            Vector3 goalCenter = topGoalContainer.TransformPoint(topGoalContainer.rect.center);
-            Vector2 screenPos2D = RectTransformUtility.WorldToScreenPoint(CanvasEventCamera(), goalCenter);
-            Vector3 screenPoint = new Vector3(screenPos2D.x, screenPos2D.y, dockCameraDepth);
-            return mainCamera.ScreenToWorldPoint(screenPoint);
-        }
-
-        /// <summary>
-        /// Clears the packed boxes riding the conveyor, leaving the dock's own slot boxes alone.
-        ///
-        /// A shipped box belongs to the level that packed it, but they were surviving into the next one:
-        /// the only thing that ever cleared them was CleanupAllOldCardboardBoxes, and a level load does not
-        /// go through it - so the belt still carried the previous level's boxes.
-        /// </summary>
-        private void ClearShippedBoxes()
-        {
-            for (int i = completedBoxObjects.Count - 1; i >= 0; i--)
-            {
-                GameObject box = completedBoxObjects[i];
-                if (box == null) continue;
-
-                // A box can still be mid-flight when the level ends; killing its tweens first stops them
-                // writing to a transform that is about to be destroyed.
-                tweeningDockObjects.Remove(box);
-                box.transform.DOKill();
-                SafeDestroy(box);
-            }
-
-            completedBoxObjects.Clear();
-            completedBoxesCount = 0;
-        }
-
-        private void CleanupAllOldCardboardBoxes()
-        {
-            for (int i = 0; i < MAX_SLOTS; i++)
-            {
-                if (slotBox[i] != null) SafeDestroy(slotBox[i]);
-                slotBox[i] = null;
-            }
-
-            ClearShippedBoxes();
-
-            GameObject[] allObjects = Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None);
-            foreach (GameObject go in allObjects)
-            {
-                if (go != null && (go.name.Contains("Slot3DBox") || go.name.Contains("Delivery_3DBox")
-                                   || go.name.StartsWith("Cardboard Box") || go.name.StartsWith("PackagingBox")
-                                   || go.name.StartsWith("ConveyorInitialBox")))
-                {
-                    if (Application.isPlaying) Destroy(go);
-                    else DestroyImmediate(go);
-                }
-            }
-        }
-
-        private void Ensure3DCardboardBoxes()
-        {
-            LoadCardboardBoxPrefabsIfNull();
-
-            if (cardboardBoxOpenedPrefab != null)
-            {
-                for (int i = 0; i < MAX_SLOTS; i++)
-                {
-                    if (slotBox[i] == null)
-                    {
-                        slotBox[i] = FindOrCreateSlotBox(i);
-                    }
-
-                    if (slotBox[i] != null)
-                    {
-                        SetBoxFlapsInstant(slotBox[i], false);
-                        slotBox[i].SetActive(true);
-                        float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * boxSlotScaleMultiplier;
-                        slotBox[i].transform.localScale = Vector3.one * fitScale;
-                        slotBox[i].transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
-                        Vector3 slotPos = GetSlotWorldPosition(i);
-                        if (slotPos != Vector3.zero)
-                        {
-                            slotBox[i].transform.position = slotPos;
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Finds this slot's existing box by name, or creates one.
-        ///
-        /// slotBox[] is not serialized, so it comes back null after every domain reload - which
-        /// [ExecuteAlways] triggers on every script recompile in the Editor. This used to look up
-        /// "Slot3DBox_Closed_{i}", a name CreatePackagingBox never actually assigns (it names boxes
-        /// "Slot3DBox_{i}"), so the lookup always missed and a fresh box was created on every recompile,
-        /// leaving the previous one orphaned in the scene - the pile-up of extra boxes on the dock. Any
-        /// stray duplicates already left behind by that bug are cleaned up here too.
-        /// </summary>
-        private GameObject FindOrCreateSlotBox(int slotIndex)
-        {
-            string boxName = $"Slot3DBox_{slotIndex}";
-            GameObject kept = null;
-
-            foreach (GameObject go in Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                if (go == null || go.name != boxName) continue;
-
-                if (kept == null) kept = go;
-                else SafeDestroy(go);
-            }
-
-            return kept != null ? kept : CreatePackagingBox(slotIndex);
-        }
-
-        /// <summary>
-        /// Swaps the hand-built flat UI conveyor for the 3D Conveyor.fbx belt.
-        ///
-        /// The old conveyor exists ONLY in the scene (a Conveyor_Belt_Panel Image plus a Chevron_Arrows
-        /// Text faking the arrows with characters) - no code creates it - so it is found by name and
-        /// switched off rather than deleted, leaving the scene authoring intact and reversible.
-        /// The 3D belt is then fitted to exactly the screen footprint the panel used to occupy, so the
-        /// dock boxes keep sitting on it without any of their own layout maths changing.
-        /// </summary>
-        private System.Collections.IEnumerator BuildConveyorAfterLayout()
-        {
-            yield return null;
-            Canvas.ForceUpdateCanvases();
-            Ensure3DCardboardBoxes();
-            EnsureConveyorBelt();
-            SetConveyorRunning(true);
-        }
-
-        private void CleanupDuplicateConveyorBelts()
-        {
-            List<GameObject> sceneBelts = new List<GameObject>();
-            GameObject[] allObjs = Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-
-            foreach (GameObject go in allObjs)
-            {
-                if (go == null) continue;
-                if (go.name == "Conveyor_Belt_3D" || go.name.StartsWith("Conveyor_Belt_3D"))
-                {
-                    sceneBelts.Add(go);
-                }
-            }
-
-            if (sceneBelts.Count == 0)
-            {
-                conveyorInstance = null;
-                return;
-            }
-
-            // Keep the belt closest to the camera (lowest Z coordinate = user's bottom belt)
-            sceneBelts.Sort((a, b) => a.transform.position.z.CompareTo(b.transform.position.z));
-            conveyorInstance = sceneBelts[0];
-
-            // Immediately destroy all extra top duplicate belts
-            for (int i = 1; i < sceneBelts.Count; i++)
-            {
-                GameObject extra = sceneBelts[i];
-                if (extra != null)
-                {
-#if UNITY_EDITOR
-                    if (!Application.isPlaying) DestroyImmediate(extra);
-                    else Destroy(extra);
-#else
-                    Destroy(extra);
-#endif
-                }
-            }
-        }
-
-        private void EnsureConveyorBelt()
-        {
-            // Sweep and remove any extra top duplicate belts from the scene
-            CleanupDuplicateConveyorBelts();
-
-            // If a conveyor belt already exists in the scene (user's bottom belt), NEVER build another!
-            if (conveyorInstance != null)
-            {
-                return;
-            }
-
-            if (!autoSpawnConveyorBelt) return;
-
-            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
-            if (mainCamera == null) return;
-
-            if (conveyorPrefab == null) conveyorPrefab = Resources.Load<GameObject>(ConveyorResourcePath);
-            if (conveyorPrefab == null) return;
-
-            Quaternion sceneBeltRotation = Quaternion.Euler(conveyorWorldRotationEuler)
-                                          * conveyorPrefab.transform.rotation;
-            int sceneTilesToBuild = conveyorTileCount <= 0 ? 2 : conveyorTileCount;
-
-            conveyorInstance = ConveyorBelt.BuildRow(conveyorPrefab, transform, mainCamera,
-                                                     conveyorWorldPosition, sceneBeltRotation,
-                                                     conveyorWorldWidth, conveyorWorldHeight,
-                                                     conveyorSpeed, conveyorFlipStripes,
-                                                     sceneTilesToBuild, conveyorArrowStride, conveyorArrowScale,
-                                                     conveyorYScaleMultiplier);
-        }
-
-        private float GetIdealConveyorBoxSpacing()
-        {
-            float footprint = EstimateShippedBoxFootprint();
-            return footprint * 1.35f;
-        }
-
-        /// <summary>
-        /// Moves completed boxes continuously along the belt towards the right, maintaining perfect, uniform spacing
-        /// between consecutive boxes and wrapping off-screen right back to off-screen left.
-        /// </summary>
-        /// <summary>
-        /// Carries shipped boxes off to the right and runs the belt only while there is something on it.
-        ///
-        /// Boxes used to loop forever: one reaching the right edge was wrapped back to the left, and the
-        /// belt scrolled the whole time. Now a box is a one-way delivery - it rides off the right edge and
-        /// is destroyed - and the belt idles whenever the run is empty, so it only comes to life when a
-        /// packed box actually lands on it.
-        /// </summary>
-        private void UpdateConveyorBoxes()
-        {
-            if (mainCamera == null || completedBoxObjects == null) return;
-
-            // The run's ends come from the BELT, not from a viewport reading at dock depth. The frustum
-            // widens with distance, so a "screen edge" measured 2.4 units from the camera lands well inside
-            // a belt sitting 11 units away - the box was being deleted halfway along the belt.
-            CurtainPortal portal = EnsureCurtainPortal();
-
-            float maxX;
-            if (portal != null)
-            {
-                maxX = portal.transform.position.x - GetShippedBoxWorldSize() * 0.15f;
-            }
-            else if (TryGetBeltBounds(out Bounds beltBounds))
-            {
-                maxX = beltBounds.max.x - GetShippedBoxWorldSize() * 0.2f;
-            }
-            else
-            {
-                float shelfDepth = dockCameraDepth + 0.40f;
-                maxX = mainCamera.ViewportToWorldPoint(new Vector3(0.90f, 0.235f, shelfDepth)).x;
-            }
-
-            // Drop anything that reaches the curtain portal gate before deciding whether the belt runs,
-            // so the last box leaving stops the belt on the very same frame. Boxes already being carried
-            // by their own ride tween (see boxesRidingViaTween) own their position and destruction, so
-            // they are skipped here entirely rather than fought over by two movers.
-            for (int i = completedBoxObjects.Count - 1; i >= 0; i--)
-            {
-                GameObject shipped = completedBoxObjects[i];
-                if (shipped == null)
-                {
-                    completedBoxObjects.RemoveAt(i);
-                    continue;
-                }
-
-                if (boxesRidingViaTween.Contains(shipped)) continue;
-
-                if (shipped.transform.position.x >= maxX)
-                {
-                    if (portal != null && !boxesThroughCurtain.Contains(shipped))
-                    {
-                        boxesThroughCurtain.Add(shipped);
-                        portal.Push();
-                    }
-
-                    completedBoxObjects.RemoveAt(i);
-                    shipped.transform.DOKill();
-                    SafeDestroy(shipped);
-                }
-            }
-
-            SetConveyorRunning(completedBoxObjects.Count > 0 || boxesRidingViaTween.Count > 0);
-
-            if (portal != null)
-            {
-                float thresholdX = portal.transform.position.x - GetShippedBoxWorldSize() * 0.45f;
-                boxesThroughCurtain.RemoveWhere(b => b == null || !completedBoxObjects.Contains(b));
-
-                foreach (GameObject shipped in completedBoxObjects)
-                {
-                    if (shipped == null || boxesRidingViaTween.Contains(shipped)) continue;
-                    if (shipped.transform.position.x < thresholdX) continue;
-                    if (!boxesThroughCurtain.Add(shipped)) continue;
-
-                    portal.Push();
-                }
-            }
-
-            if (completedBoxObjects.Count == 0) return;
-
-            Vector3 camRight = mainCamera.transform.right;
-            float step = conveyorBoxMoveSpeed * Time.deltaTime;
-            bool onBelt = TryGetBeltRideCentre(out Vector3 rideCentre);
-
-            for (int i = 0; i < completedBoxObjects.Count; i++)
-            {
-                GameObject box = completedBoxObjects[i];
-                if (box == null || boxesRidingViaTween.Contains(box)) continue;
-
-                Vector3 pos = box.transform.position + camRight * step;
-                if (onBelt)
-                {
-                    pos.y = rideCentre.y;
-                    pos.z = rideCentre.z;
-                }
-                box.transform.position = pos;
-                box.transform.rotation = BoxDisplayRotation(BoxShelfTiltEuler);
-            }
-        }
-
-        /// <summary>
-        /// Carries a freshly-landed box from wherever the ship-flight jump left it, all the way to the
-        /// curtain, and destroys it there - driven start-to-finish by one DOTween move rather than the
-        /// per-frame Update() loop above.
-        ///
-        /// The Update()-driven loop above was found, while debugging a box that froze in place right after
-        /// landing, to sometimes stop being called for a given box without ever throwing - no exception, no
-        /// warning, just silence. The ship sequence's own DOTween Sequence, by contrast, was always observed
-        /// to run to completion reliably (its OnComplete callback that adds the box to completedBoxObjects
-        /// never failed to fire). Driving the ride with a DOTween tween of its own, started from that same
-        /// reliable OnComplete, sidesteps whatever was silencing Update() rather than chasing it further.
-        /// </summary>
-        private void StartBoxRideAndDisappear(GameObject box)
-        {
-            if (box == null || mainCamera == null) return;
-
-            boxesRidingViaTween.Add(box);
-            SetConveyorRunning(true);
-
-            Vector3 camRight = mainCamera.transform.right;
-            CurtainPortal portal = EnsureCurtainPortal();
-
-            float targetX = portal != null
-                ? portal.transform.position.x - GetShippedBoxWorldSize() * 0.15f
-                : box.transform.position.x + 6f;
-
-            float distance = targetX - box.transform.position.x;
-            if (distance <= 0.01f) distance = 3f;
-
-            Vector3 target = box.transform.position + camRight * distance;
-            if (TryGetBeltRideCentre(out Vector3 rideCentre))
-            {
-                target.y = rideCentre.y;
-                target.z = rideCentre.z;
-            }
-
-            float duration = distance / Mathf.Max(0.05f, conveyorBoxMoveSpeed);
-
-            box.transform.DOKill();
-            box.transform.DOMove(target, duration).SetEase(Ease.Linear).OnComplete(() =>
-            {
-                boxesRidingViaTween.Remove(box);
-                completedBoxObjects.Remove(box);
-                boxesThroughCurtain.Remove(box);
-
-                if (portal != null) portal.Push();
-
-                SafeDestroy(box);
-
-                SetConveyorRunning(completedBoxObjects.Count > 0 || boxesRidingViaTween.Count > 0);
-            });
-        }
-
-        /// <summary>
-        /// Where a box should sit to ride the belt: the top of the belt's own geometry, centred across it.
-        ///
-        /// The height and depth used to come from a viewport guess (y = 0.235 of the screen), which had no
-        /// relation to where the belt actually is - so the box rode along its edge rather than down the
-        /// middle. Measuring the belt itself keeps the two together however the belt is moved or resized.
-        /// </summary>
-        private bool TryGetBeltRideCentre(out Vector3 centre)
-        {
-            centre = Vector3.zero;
-            if (!TryGetBeltBounds(out Bounds belt)) return false;
-
-            centre = new Vector3(belt.center.x, belt.max.y, belt.center.z) + conveyorBoxRideOffset;
-            return true;
-        }
-
-        /// <summary>Combined world bounds of every belt tile.</summary>
-        private bool TryGetBeltBounds(out Bounds belt)
-        {
-            belt = default;
-
-            if (conveyorTiles == null || conveyorTiles.Length == 0)
-            {
-                conveyorTiles = Object.FindObjectsByType<ConveyorBelt>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            }
-
-            bool has = false;
-            foreach (ConveyorBelt tile in conveyorTiles)
-            {
-                if (tile == null) continue;
-                foreach (Renderer r in tile.GetComponentsInChildren<Renderer>(true))
-                {
-                    if (!r.enabled) continue;
-                    if (!has) { belt = r.bounds; has = true; }
-                    else belt.Encapsulate(r.bounds);
-                }
-            }
-
-            return has;
-        }
-
-        /// <summary>
-        /// World size a sealed box should be while riding the belt: a fraction of how wide the belt is
-        /// ACROSS its run.
-        ///
-        /// Sizing it off the dock slot instead is what made it come out minuscule. The slot sits ~2.2 units
-        /// from the camera and the belt ~11.3, so the same world size reads five times smaller up there -
-        /// and the boxes only ever looked right before because they were parked at dock depth, overlapping
-        /// the belt on screen rather than actually resting on it.
-        /// </summary>
-        private float GetShippedBoxWorldSize()
-        {
-            if (!TryGetBeltBounds(out Bounds belt))
-            {
-                return ComputeFitScaleForSlot(0) * boxShelfScaleMultiplier;
-            }
-
-            // The belt is a long strip: its longest world axis is the run itself, and the larger of the
-            // other two is its width across, whatever tilt it is sitting at.
-            float across = Mathf.Max(Mathf.Min(belt.size.x, belt.size.y),
-                                     Mathf.Min(Mathf.Max(belt.size.x, belt.size.y), belt.size.z));
-            return across * conveyorBoxFillRatio;
-        }
-
-        /// <summary>Scale that gives <paramref name="box"/> the on-belt size from <see cref="GetShippedBoxWorldSize"/>.</summary>
-        private float ComputeShippedBoxScale(GameObject box)
-        {
-            float extent = GetObjectStaticUnscaledMaxExtent(box);
-            if (extent <= 1e-4f) return miniObjectDockScale;
-            return GetShippedBoxWorldSize() / extent;
-        }
-
-        /// <summary>
-        /// Places the strip curtain across the far end of the belt, spawning it the first time it is needed.
-        ///
-        /// Positioned from the belt like everything else that rides it, so moving or resizing the belt
-        /// carries the curtain with it rather than leaving it stranded mid-run.
-        /// </summary>
-        private CurtainPortal EnsureCurtainPortal()
-        {
-            if (curtainPortal == null)
-            {
-                CurtainPortal inScene = Object.FindFirstObjectByType<CurtainPortal>(FindObjectsInactive.Include);
-                if (inScene != null)
-                {
-                    // Placed by hand in the Scene view. Its transform is left completely alone from here on -
-                    // the belt itself works the same way, and auto-placing over it threw away the positioning
-                    // that had just been dialled in by hand.
-                    curtainPortal = inScene;
-                    return curtainPortal;
-                }
-
-                GameObject prefab = Resources.Load<GameObject>(CurtainResourcePath);
-                if (prefab == null) return null;
-
-                // The model carries a baked Z-up -> Y-up rotation on its root. It is COMPOSED with below,
-                // never replaced: assigning an absolute rotation lays the portal on its side, the same trap
-                // the packaging box and the belt both hit.
-                curtainRestRotation = prefab.transform.rotation;
-
-                GameObject instance = Instantiate(prefab, transform);
-                instance.name = "Conveyor_Curtain_Portal";
-                curtainPortal = instance.GetComponent<CurtainPortal>();
-                if (curtainPortal == null) curtainPortal = instance.AddComponent<CurtainPortal>();
-                spawnedCurtainPortal = true;
-            }
-
-            // Only a curtain this component spawned is positioned automatically, and only while the belt can
-            // actually be measured.
-            if (!spawnedCurtainPortal || !TryGetBeltBounds(out Bounds belt)) return curtainPortal;
-
-            // The model stands on its own base, so it is seated on the belt's underside and left to reach up
-            // over it; sizing it to the belt's width keeps the opening wider than whatever rides through.
-            Transform t = curtainPortal.transform;
-            t.rotation = Quaternion.Euler(curtainPortalRotationEuler) * curtainRestRotation;
-            t.localScale = Vector3.one * curtainPortalScale;
-            t.position = new Vector3(belt.max.x + curtainPortalOffset.x,
-                                     belt.min.y + curtainPortalOffset.y,
-                                     belt.center.z + curtainPortalOffset.z);
-
-            return curtainPortal;
-        }
-
-        /// <summary>
-        /// Starts or stops every belt tile's scroll.
-        ///
-        /// The tiles are looked up in the scene rather than through <c>conveyorInstance</c>: the belt in
-        /// SampleScene is hand-placed with autoSpawnConveyorBelt off, so that field is never assigned and
-        /// driving the belt through it would silently do nothing.
-        /// </summary>
-        private void SetConveyorRunning(bool running)
-        {
-            conveyorTiles = Object.FindObjectsByType<ConveyorBelt>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            if (conveyorTiles != null)
-            {
-                foreach (ConveyorBelt tile in conveyorTiles)
-                {
-                    if (tile != null) tile.AutoScroll = true;
-                }
-            }
-
-            conveyorRunning = true;
-        }
-
-        private static RectTransform FindConveyorPanel()
-        {
-            GameObject panelObj = GameObject.Find("Conveyor_Belt_Panel");
-            return panelObj != null ? panelObj.GetComponent<RectTransform>() : null;
-        }
-
-        private void FollowDockBoxesWithConveyor()
-        {
-            if (conveyorInstance == null) return;
-            if (use3DScenePosition)
-            {
-                // Preserve the exact transform user set in Scene View - do not overwrite!
-                return;
-            }
-
-            if (!TryGetShippedBoxRow(out Vector3 centre, out _, out float bottomY, out _)) return;
-
-            conveyorInstance.transform.position = new Vector3(
-                centre.x,
-                bottomY + conveyorSinkIntoBoxes - conveyorTopOffsetY,
-                centre.z);
-        }
-
-        private bool TryGetShippedBoxRow(out Vector3 centre, out float width, out float bottomY, out float boxHeight)
-        {
-            centre = Vector3.zero;
-            width = 0f;
-            bottomY = 0f;
-            boxHeight = 0f;
-
-            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
-            if (mainCamera == null || slotRects.Count == 0) return false;
-
-            float footprint = EstimateShippedBoxFootprint();
-            float shelfDepth = dockCameraDepth + 0.40f;
-
-            Vector3 leftEdge = mainCamera.ViewportToWorldPoint(new Vector3(-0.25f, 0.235f, shelfDepth));
-            Vector3 rightEdge = mainCamera.ViewportToWorldPoint(new Vector3(1.25f, 0.235f, shelfDepth));
-
-            centre = (leftEdge + rightEdge) * 0.5f;
-            width = Vector3.Distance(leftEdge, rightEdge);
-            bottomY = leftEdge.y;
-            boxHeight = footprint;
-
-            Bounds shipped = default;
-            bool has = false;
-            foreach (GameObject box in completedBoxObjects)
-            {
-                if (box == null) continue;
-                foreach (Renderer r in box.GetComponentsInChildren<Renderer>())
-                {
-                    if (!r.enabled) continue;
-                    if (!has) { shipped = r.bounds; has = true; }
-                    else shipped.Encapsulate(r.bounds);
-                }
-            }
-
-            if (has)
-            {
-                bottomY = shipped.min.y;
-                boxHeight = shipped.size.y;
-            }
-
-            return true;
-        }
-
-        private Quaternion GetDockItemSidewaysRotation()
+        private static Quaternion GetDockItemRotation()
         {
             return Quaternion.Euler(22f, 35f, 0f);
         }
 
-        private Vector3 GetItemPositionInsideBox(int itemIndex, int totalRequired, Vector3 slotWorldPos)
+        /// <summary>
+        /// The arc into the tray is capped so it never overshoots into the camera: the dock plane sits only
+        /// <see cref="dockCameraDepth"/> units in front of a steeply pitched camera, so world +Y points
+        /// largely back INTO the lens and every unit of jump power eats view depth.
+        /// </summary>
+        private float GetDockJumpPower(float maxPower)
         {
-            int req = Mathf.Max(1, totalRequired);
-            if (req <= 3)
-            {
-                // Single row layout for 1-3 items
-                float spacing = req > 1 ? 0.08f / (req - 1) : 0f;
-                float xOffset = (itemIndex - (req - 1) * 0.5f) * spacing;
-                return slotWorldPos + new Vector3(xOffset, 0.01f, 0.02f);
-            }
-            else
-            {
-                // 2-Row Grid layout for 4+ items so items NEVER stick out of the box walls!
-                int itemsPerRow = Mathf.CeilToInt(req / 2.0f);
-                int row = itemIndex / itemsPerRow;
-                int col = itemIndex % itemsPerRow;
+            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
+            if (mainCamera == null) return maxPower;
 
-                float colSpacing = itemsPerRow > 1 ? 0.07f / (itemsPerRow - 1) : 0f;
-                float xOffset = (col - (itemsPerRow - 1) * 0.5f) * colSpacing;
-                float zOffset = (row == 0) ? 0.035f : -0.025f;
+            const float maxDepthFractionSpent = 0.25f;
 
-                return slotWorldPos + new Vector3(xOffset, 0.01f, zOffset);
-            }
+            float depthLostPerUnit = Mathf.Abs(Vector3.Dot(Vector3.up, mainCamera.transform.forward));
+            if (depthLostPerUnit < 0.05f) return maxPower;
+
+            return Mathf.Min(maxPower, dockCameraDepth * maxDepthFractionSpent / depthLostPerUnit);
         }
 
-        private float GetItemFitScaleRatioInsideBox(int totalRequired)
-        {
-            if (totalRequired <= 3) return 0.50f;
-            if (totalRequired <= 6) return 0.35f;
-            return 0.28f;
-        }
-
-        private void AnimateItemIntoBox(GameObject obj3D, int slotIndex, System.Action onComplete)
+        private void AnimateItemIntoSlot(GameObject obj3D, int slotIndex, System.Action onComplete)
         {
             if (obj3D == null)
             {
@@ -2984,657 +1786,90 @@ namespace MechaFind3D.PhysicsInteraction
                 return;
             }
 
+            // A slot that could not be measured returns Vector3.zero, and jumping there flings the item to
+            // the world origin - the middle of the tray. That is what a missing slot looked like on screen,
+            // so it is treated as "stay put" instead.
             Vector3 slotWorldPos = GetSlotWorldPosition(slotIndex);
-            int reqCount = (slotIndex >= 0 && slotIndex < MAX_SLOTS) ? slotRequiredCount[slotIndex] : 3;
-            if (reqCount <= 0) reqCount = 3;
+            if (slotWorldPos == Vector3.zero) slotWorldPos = obj3D.transform.position;
 
-            int currentItemIndex = (slotIndex >= 0 && slotIndex < MAX_SLOTS && slotBoxContents[slotIndex] != null) ? slotBoxContents[slotIndex].Count - 1 : 0;
-            if (currentItemIndex < 0) currentItemIndex = 0;
-
-            Vector3 boxItemPos = GetItemPositionInsideBox(currentItemIndex, reqCount, slotWorldPos);
-            float scaleRatio = GetItemFitScaleRatioInsideBox(reqCount);
-
-            float targetScaleVal = ComputeFitScaleForSlot(slotIndex, obj3D) * scaleRatio;
-            Vector3 targetScale = Vector3.one * targetScaleVal;
-            Quaternion targetRot = GetDockItemSidewaysRotation();
+            Vector3 targetScale = Vector3.one * ComputeFitScaleForSlot(slotIndex, obj3D);
 
             tweeningDockObjects.Add(obj3D);
             obj3D.transform.DOKill();
 
             Sequence seq = DOTween.Sequence();
-
-            // Parabolic Arc Flight into box
-            seq.Append(obj3D.transform.DOJump(boxItemPos, GetDockJumpPower(1.15f), 1, 0.38f).SetEase(Ease.OutCubic));
-            seq.Join(obj3D.transform.DOScale(targetScale, 0.38f).SetEase(Ease.OutQuad));
-            seq.Join(obj3D.transform.DORotateQuaternion(targetRot, 0.38f).SetEase(Ease.OutQuad));
-
+            seq.Append(obj3D.transform.DOJump(slotWorldPos, GetDockJumpPower(1.15f), 1, collectFlightDuration).SetEase(Ease.OutCubic));
+            seq.Join(obj3D.transform.DOScale(targetScale, collectFlightDuration).SetEase(Ease.OutQuad));
+            seq.Join(obj3D.transform.DORotateQuaternion(GetDockItemRotation(), collectFlightDuration).SetEase(Ease.OutQuad));
             seq.OnComplete(() =>
             {
                 tweeningDockObjects.Remove(obj3D);
-
-                if (obj3D != null)
-                {
-                    obj3D.transform.DOPunchScale(Vector3.one * 0.15f, 0.20f, 5, 0.5f);
-                }
-
-                if (slotIndex >= 0 && slotIndex < MAX_SLOTS && slotBox[slotIndex] != null)
-                {
-                    PunchBox(slotBox[slotIndex], new Vector3(0.20f, -0.12f, 0.20f), 0.30f, 6, 0.7f);
-                }
-
-                if (slotIndex >= 0 && slotIndex < slotBadgeTexts.Count && slotBadgeTexts[slotIndex] != null)
-                {
-                    slotBadgeTexts[slotIndex].transform.DOKill();
-                    slotBadgeTexts[slotIndex].transform.localScale = Vector3.one;
-                    slotBadgeTexts[slotIndex].transform.DOPunchScale(Vector3.one * 0.30f, 0.25f, 6, 1f);
-                }
-
+                if (obj3D != null) obj3D.transform.DOPunchScale(targetScale * 0.18f, 0.20f, 5, 0.5f);
                 onComplete?.Invoke();
             });
+            seq.Play();
         }
 
-        private void AlignDocked3DObjectsWithSlots()
+        /// <summary>
+        /// Slides docked items to whichever slot they currently occupy. Items shift along whenever a group
+        /// forms ahead of them or a delivered group leaves, so their slot is not fixed at collection time.
+        /// </summary>
+        private void AlignDockItemsWithSlots()
         {
-            FollowDockBoxesWithConveyor();
-
-            for (int i = 0; i < MAX_SLOTS; i++)
+            for (int i = 0; i < dockItems.Count && i < slotRects.Count; i++)
             {
-                if (slotBox[i] == null)
-                {
-                    Ensure3DCardboardBoxes();
-                }
+                DockItemData data = dockItems[i];
+                if (data?.targetObject == null) continue;
+
+                GameObject obj = data.targetObject.gameObject;
+                if (tweeningDockObjects.Contains(obj)) continue;
 
                 Vector3 slotWorldPos = GetSlotWorldPosition(i);
-
-                if (slotBox[i] != null && !tweeningDockObjects.Contains(slotBox[i]))
+                if (slotWorldPos != Vector3.zero &&
+                    (obj.transform.position - slotWorldPos).sqrMagnitude > 0.0000001f)
                 {
-                    if (slotWorldPos != Vector3.zero)
-                    {
-                        slotBox[i].transform.position = slotWorldPos;
-                    }
-                    float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * boxSlotScaleMultiplier;
-                    slotBox[i].transform.localScale = Vector3.one * fitScale;
-                    Quaternion targetRot = BoxDisplayRotation(BoxSlotTiltEuler);
-                    if (Quaternion.Angle(slotBox[i].transform.rotation, targetRot) > 0.05f)
-                    {
-                        slotBox[i].transform.rotation = Quaternion.Slerp(slotBox[i].transform.rotation, targetRot, Time.deltaTime * 15f);
-                    }
+                    obj.transform.position = Vector3.Lerp(obj.transform.position, slotWorldPos, Time.deltaTime * 18f);
                 }
 
-                List<DockItemData> itemsInBox = slotBoxContents[i];
-                if (itemsInBox != null)
-                {
-                    int reqCount = slotRequiredCount[i] > 0 ? slotRequiredCount[i] : 3;
-                    float scaleRatio = GetItemFitScaleRatioInsideBox(reqCount);
-                    Quaternion itemTargetRot = GetDockItemSidewaysRotation();
+                obj.transform.localScale = Vector3.one * ComputeFitScaleForSlot(i, obj);
 
-                    for (int k = 0; k < itemsInBox.Count; k++)
-                    {
-                        DockItemData data = itemsInBox[k];
-                        if (data != null && data.targetObject != null && !tweeningDockObjects.Contains(data.targetObject.gameObject))
-                        {
-                            Vector3 boxItemPos = GetItemPositionInsideBox(k, reqCount, slotWorldPos);
-                            if ((data.targetObject.transform.position - boxItemPos).sqrMagnitude > 0.00001f)
-                            {
-                                data.targetObject.transform.position = Vector3.Lerp(data.targetObject.transform.position, boxItemPos, Time.deltaTime * 22f);
-                            }
-                            float fitScale = ComputeFitScaleForSlot(i, data.targetObject.gameObject) * scaleRatio;
-                            data.targetObject.transform.localScale = Vector3.one * fitScale;
-                            if (Quaternion.Angle(data.targetObject.transform.rotation, itemTargetRot) > 0.05f)
-                            {
-                                data.targetObject.transform.rotation = Quaternion.Slerp(data.targetObject.transform.rotation, itemTargetRot, Time.deltaTime * 15f);
-                            }
-                        }
-                    }
+                Quaternion targetRot = GetDockItemRotation();
+                if (Quaternion.Angle(obj.transform.rotation, targetRot) > 0.05f)
+                {
+                    obj.transform.rotation = Quaternion.Slerp(obj.transform.rotation, targetRot, Time.deltaTime * 15f);
                 }
             }
         }
 
-
-        /// <summary>
-        /// Places an actual clone of the packed item (its real mesh/model, not a generic shape) on a
-        /// small rounded card backdrop fixed to the top of the sealed box - like a label - so the box
-        /// visibly and clearly shows exactly what was packed. Both pieces are parented under one group so
-        /// they move together with the box and never end up floating loose next to it.
-        /// </summary>
-        private void AttachItemVisualToBox(GameObject box, DockItemData itemData)
+        private void UpdateSlotVisuals()
         {
-            if (box == null || itemData == null || itemData.targetObject == null) return;
-
-            Transform existingGroup = box.transform.Find("Box_Item_Display");
-            if (existingGroup != null) Destroy(existingGroup.gameObject);
-
-            // Create display group parented to box lid
-            GameObject group = new GameObject("Box_Item_Display");
-            group.transform.SetParent(box.transform, false);
-
-            // Calculate top of box lid
-            Bounds boxBounds = default;
-            bool hasBoxBounds = false;
-            foreach (Renderer r in box.GetComponentsInChildren<Renderer>())
+            for (int i = 0; i < slotImages.Count; i++)
             {
-                if (r == null) continue;
-                Bounds b = r.bounds;
-                if (!hasBoxBounds) { boxBounds = b; hasBoxBounds = true; }
-                else boxBounds.Encapsulate(b);
-            }
-
-            Vector3 topWorldPos = hasBoxBounds
-                ? new Vector3(boxBounds.center.x, boxBounds.max.y + 0.04f, boxBounds.center.z)
-                : box.transform.position + Vector3.up * 0.25f;
-
-            group.transform.position = topWorldPos;
-
-            // Instantiate clone of packed item model
-            GameObject display = Instantiate(itemData.targetObject.gameObject);
-            display.name = "ItemModel";
-            display.transform.SetParent(group.transform, false);
-
-            display.SetActive(true);
-            display.transform.localPosition = Vector3.zero;
-            display.transform.localRotation = Quaternion.Euler(20f, 45f, 0f);
-
-            bool layFlatOnSeam = itemData.colorName == "Mecha" || IsMechaItem(itemData.targetObject);
-
-            // Restore scales and active state on all children
-            display.transform.localScale = Vector3.one;
-            foreach (Transform childTrans in display.GetComponentsInChildren<Transform>(true))
-            {
-                if (childTrans != null)
-                {
-                    childTrans.gameObject.SetActive(true);
-                    childTrans.localScale = Vector3.one;
-                }
-            }
-
-            // Remove colliders, rigidbodies, and scripts
-            foreach (Component comp in display.GetComponentsInChildren<Component>(true))
-            {
-                if (comp is Transform || comp is Renderer || comp is MeshFilter || comp is SkinnedMeshRenderer) continue;
-                Destroy(comp);
-            }
-
-            // Enable renderers
-            foreach (Renderer r in display.GetComponentsInChildren<Renderer>())
-            {
-                if (r != null)
-                {
-                    r.enabled = true;
-                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                    r.receiveShadows = false;
-                }
-            }
-
-            if (!(layFlatOnSeam && TryLayAlongLidSeam(box, group.transform, display)))
-            {
-                float boxLidSize = hasBoxBounds ? Mathf.Min(boxBounds.size.x, boxBounds.size.z) : 0.35f;
-                float itemSize = GetObjectStaticUnscaledMaxExtent(display);
-                float desiredWorldSize = boxLidSize * 0.45f;
-                float scaleFactor = itemSize > 1e-4f ? desiredWorldSize / itemSize : 0.12f;
-                display.transform.localScale = Vector3.one * scaleFactor;
-            }
-
-            group.transform.DOKill();
-            group.transform.localScale = Vector3.zero;
-            group.transform.DOScale(Vector3.one, 0.35f).SetEase(Ease.OutBack);
-        }
-
-        /// <summary>
-        /// Lays a humanoid display model flat along the lid seam instead of standing it up.
-        ///
-        /// The generic Euler(20, 45, 0) showcase tilt suits a compact food item, but leaves the mecha
-        /// standing bolt upright off the lid. Instead it is laid full length along the join between the two
-        /// flaps that shut LAST - measured from Box.fbx's own animation, that is BoxFlap_Yn and BoxFlap_Yp
-        /// (they reach closed at frames 58/61, while Xn/Xp are already down by 26/30), and they meet along
-        /// the box's long axis.
-        ///
-        /// Everything is derived from the flap transforms at runtime rather than from hard-coded axes, so
-        /// it survives the box being tilted for the slot, the shelf, or anything else.
-        /// </summary>
-        private bool TryLayAlongLidSeam(GameObject box, Transform group, GameObject display)
-        {
-            Transform xn = FindDeepChild(box.transform, "BoxFlap_Xn");
-            Transform xp = FindDeepChild(box.transform, "BoxFlap_Xp");
-            Transform yn = FindDeepChild(box.transform, "BoxFlap_Yn");
-            Transform yp = FindDeepChild(box.transform, "BoxFlap_Yp");
-            if (xn == null || xp == null || yn == null || yp == null) return false;
-
-            // The last-closing pair meet along the line running between the FIRST-closing pair's hinges.
-            Vector3 seamDir = xp.position - xn.position;
-            Vector3 acrossSeam = yp.position - yn.position;
-            float seamLength = seamDir.magnitude;
-            if (seamLength < 1e-5f || acrossSeam.sqrMagnitude < 1e-10f) return false;
-
-            seamDir /= seamLength;
-            Vector3 lidNormal = Vector3.Cross(acrossSeam.normalized, seamDir).normalized;
-            if (Vector3.Dot(lidNormal, Vector3.up) < 0f) lidNormal = -lidNormal;
-
-            // Orientation lives on the GROUP, so the pop-in scale that follows grows the model out from the
-            // seam's centre. Putting it on the model instead would make it swell out of one end.
-            group.SetPositionAndRotation((yn.position + yp.position) * 0.5f,
-                                         Quaternion.LookRotation(lidNormal, seamDir));
-
-            display.transform.localRotation = Quaternion.identity;
-            display.transform.localScale = Vector3.one;
-
-            // Fitted against BOTH lid axes, not just the seam. A T-pose is nearly as wide across the arms
-            // as it is long, so sizing it to fill the seam alone left the arms hanging over the sides of
-            // the box - the lid is markedly narrower across the seam than along it. Whichever axis runs out
-            // first decides the scale.
-            float lengthAt1 = MeasureExtentAlong(display, seamDir);
-            float armSpanAt1 = MeasureExtentAlong(display, acrossSeam.normalized);
-            if (lengthAt1 < 1e-5f || armSpanAt1 < 1e-5f) return false;
-
-            float acrossLength = acrossSeam.magnitude;
-            float scaleFactor = Mathf.Min(seamLength * mechaLidFillRatio / lengthAt1,
-                                          acrossLength * mechaLidFillRatio / armSpanAt1);
-
-            float targetLength = lengthAt1 * scaleFactor;
-            display.transform.localScale = Vector3.one * scaleFactor;
-
-            // Offsets go through InverseTransformVector rather than being written straight into
-            // localPosition. seamLength and targetLength are WORLD measurements, but localPosition is in
-            // the group's own space - and the group hangs off a box scaled to about 0.0066, so writing
-            // world numbers there shrank the offset to essentially nothing and the model sat off-centre.
-            //
-            // The mecha's origin is at its FEET, so it has to come back half its own length along the seam
-            // to end up centred on it.
-            Vector3 seamCentre = group.position;
-            display.transform.localPosition =
-                group.InverseTransformVector(-seamDir * (targetLength * 0.5f));
-
-            // Then it is settled onto the lid by measurement: the model lies on its back, so how far its
-            // back reaches below its own pivot depends on the rig, and guessing an offset sinks it into the
-            // cardboard (measured -0.05 before this).
-            float lowest = float.MaxValue;
-            foreach (Renderer r in display.GetComponentsInChildren<Renderer>())
-            {
-                if (!r.enabled) continue;
-                Bounds rb = r.bounds;
-                for (int i = 0; i < 8; i++)
-                {
-                    var corner = new Vector3(
-                        (i & 1) == 0 ? rb.min.x : rb.max.x,
-                        (i & 2) == 0 ? rb.min.y : rb.max.y,
-                        (i & 4) == 0 ? rb.min.z : rb.max.z);
-                    lowest = Mathf.Min(lowest, Vector3.Dot(corner - seamCentre, lidNormal));
-                }
-            }
-
-            if (lowest < float.MaxValue)
-            {
-                float lift = seamLength * mechaLidClearance - lowest;
-                display.transform.localPosition += group.InverseTransformVector(lidNormal * lift);
-            }
-
-            return true;
-        }
-
-        /// <summary>How far the object's visible geometry reaches along a world axis, at its current pose.</summary>
-        private static float MeasureExtentAlong(GameObject go, Vector3 axis)
-        {
-            float min = float.MaxValue;
-            float max = float.MinValue;
-
-            foreach (Renderer r in go.GetComponentsInChildren<Renderer>())
-            {
-                if (!r.enabled) continue;
-                Bounds b = r.bounds;
-                for (int i = 0; i < 8; i++)
-                {
-                    var corner = new Vector3(
-                        (i & 1) == 0 ? b.min.x : b.max.x,
-                        (i & 2) == 0 ? b.min.y : b.max.y,
-                        (i & 4) == 0 ? b.min.z : b.max.z);
-
-                    float p = Vector3.Dot(corner, axis);
-                    if (p < min) min = p;
-                    if (p > max) max = p;
-                }
-            }
-
-            return max > min ? max - min : 0f;
-        }
-
-        private static Transform FindDeepChild(Transform root, string childName)
-        {
-            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
-            {
-                if (t.name == childName) return t;
-            }
-            return null;
-        }
-
-        private int completedBoxesCount = 0;
-        private readonly List<GameObject> completedBoxObjects = new List<GameObject>();
-
-        private const int COMPLETED_BOXES_PER_ROW = 4;
-
-        /// <summary>
-        /// Computes the world-space footprint a box has once it lands on the shelf, from the same
-        /// slot-size math used to size dock boxes rather than reading a live box's current bounds.
-        /// A live read could land mid-tween (e.g. the box shrinking/growing during its own closing or
-        /// respawn animation) and return a transient size, which made consecutive shelf gaps uneven.
-        /// The unscaled mesh extent cancels out of ComputeFitScaleForSlot's ratio, so this reproduces
-        /// the exact final on-shelf size (dock fit * 1.30 ship base * 1.15 shelf scale) deterministically.
-        /// </summary>
-        /// <summary>
-        /// How much room one shipped box takes up along the belt, which is what the spacing between them is
-        /// built from. Derived from the same on-belt size the boxes are actually scaled to, so spacing and
-        /// size can no longer drift apart.
-        /// </summary>
-        private float EstimateShippedBoxFootprint()
-        {
-            float footprint = GetShippedBoxWorldSize();
-            return footprint > 1e-4f ? footprint : 0.5f;
-        }
-
-        private int GetTotalExpectedCompletedBoxes()
-        {
-            if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null && MatchGoalManager.Instance.levelGoals.Count > 0)
-            {
-                int totalBoxes = 0;
-                foreach (var goal in MatchGoalManager.Instance.levelGoals)
-                {
-                    totalBoxes += Mathf.Max(1, Mathf.CeilToInt(goal.totalRequired / 3.0f));
-                }
-                if (totalBoxes > 0) return Mathf.Max(4, totalBoxes);
-            }
-            return 4;
-        }
-
-        public Vector3 GetRedMarkedCompletedBoxWorldPos(int index)
-        {
-            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
-            float depth = dockCameraDepth + 0.40f;
-
-            if (mainCamera == null) return new Vector3(-1.2f + index * 0.65f, 0.60f, -1.6f);
-
-            float idealSpacing = GetIdealConveyorBoxSpacing();
-            Vector3 camRight = mainCamera.transform.right;
-
-            GameObject lastBox = null;
-            for (int i = completedBoxObjects.Count - 1; i >= 0; i--)
-            {
-                if (completedBoxObjects[i] != null && !tweeningDockObjects.Contains(completedBoxObjects[i]))
-                {
-                    lastBox = completedBoxObjects[i];
-                    break;
-                }
-            }
-
-            Vector3 targetPos;
-            if (lastBox != null)
-            {
-                targetPos = lastBox.transform.position - camRight * idealSpacing;
-            }
-            else if (TryGetBeltBounds(out Bounds belt))
-            {
-                // First box of a run enters near the START of the belt, so it has the whole run to travel.
-                // This used to be a viewport reading at dock depth, which has no relation to where the belt
-                // is: it dropped the box most of the way along the run and the trip was over almost at once.
-                targetPos = new Vector3(Mathf.Lerp(belt.min.x, belt.max.x, conveyorBoxEntryFraction),
-                                        belt.max.y, belt.center.z);
-            }
-            else
-            {
-                targetPos = mainCamera.ViewportToWorldPoint(new Vector3(0.25f, 0.235f, depth));
-            }
-
-            // Only the position ALONG the belt is worked out above; the height and depth come from the belt
-            // itself, so a box lands centred on it rather than on a viewport guess.
-            if (TryGetBeltRideCentre(out Vector3 rideCentre))
-            {
-                targetPos.y = rideCentre.y;
-                targetPos.z = rideCentre.z;
-            }
-
-            if (TryGetBeltBounds(out Bounds beltBounds))
-            {
-                if (targetPos.x < beltBounds.min.x) targetPos.x = beltBounds.min.x;
-            }
-
-            return targetPos;
-        }
-
-        private void AnimateSlowBoxClosingAndShipping(int slotIndex)
-        {
-            slotProcessing[slotIndex] = true;
-            bool isMechaSlot = (slotIndex == 2);
-
-            // Reserve the shipping index immediately so sequential boxes never get duplicate or skipped indices
-            int shipIndex = isMechaSlot ? -1 : completedBoxesCount++;
-
-
-            List<DockItemData> filledItems = new List<DockItemData>(slotBoxContents[slotIndex]);
-            GameObject box = slotBox[slotIndex];
-
-            // Rename the shipped box immediately so FindOrCreateSlotBox and AlignDocked3DObjectsWithSlots
-            // never confuse it with the dock slot box or pull it back to the dock!
-            if (box != null && !isMechaSlot)
-            {
-                box.name = $"Delivery_3DBox_{shipIndex}";
-            }
-
-            DockItemData firstItemData = filledItems.Count > 0 ? filledItems[0] : null;
-
-            float baseScale = box != null ? ComputeShippedBoxScale(box) : 0.18f;
-
-            Sequence boxSeq = DOTween.Sequence();
-
-            // Phase 1: Items inside shrink smoothly into the box bottom (0.45s)
-            foreach (var itemData in filledItems)
-            {
-                if (itemData.targetObject != null)
-                {
-                    tweeningDockObjects.Add(itemData.targetObject.gameObject);
-                    boxSeq.Join(itemData.targetObject.transform.DOScale(Vector3.zero, 0.45f).SetEase(Ease.InCubic));
-                }
-            }
-
-            // Phase 2: The box's own four lid flaps fold shut in place and the tape gun then runs over the
-            // seam - the box never moves or scales, so it can't appear to sink into the ground.
-            // The duration was 0.65s while the clip was flaps-only (70 frames); the taping re-export
-            // doubled it to 140 frames, which played the whole thing at twice the intended speed.
-            if (box != null)
-            {
-                tweeningDockObjects.Add(box);
-                AnimateBoxFlaps(boxSeq, box, true, 1.1f);
-            }
-
-            // Phase 3: Rest a small replica of the packed item on the sealed lid
-            boxSeq.AppendCallback(() =>
-            {
-                if (box != null) AttachItemVisualToBox(box, firstItemData);
-            });
-
-            // Phase 4: Brief 0.30s pause so the player clearly sees the sealed box resting on the slot
-            boxSeq.AppendInterval(0.30f);
-
-            if (!isMechaSlot)
-            {
-                // Regular food boxes: Jump to the walking 3D conveyor belt.
-                //
-                // The landing spot is worked out INSIDE the callback, not when this sequence is built.
-                // Building it up front baked in a target that was already ~2.4s stale by the time the box
-                // touched down (0.45s of items shrinking + 0.65s of flaps + a 0.30s pause + the 1.0s jump),
-                // and the belt keeps running throughout - about a full unit of travel. The box therefore
-                // landed a whole slot behind the formation and then slid forwards into place, which is the
-                // "distances re-animating" that shows up whenever a box joins the run.
-                //
-                // The extra lead of speed x flight time is what makes it land where its slot WILL be,
-                // rather than where the slot was when it set off.
-                const float shipFlight = 1.0f;
-                if (box != null)
-                {
-                    boxSeq.AppendCallback(() =>
-                    {
-                        if (box == null) return;
-
-                        Vector3 target = GetRedMarkedCompletedBoxWorldPos(shipIndex);
-
-                        // The lead compensates for the run moving under the box during its flight - so it
-                        // only applies when the belt is ACTUALLY running. The belt now idles until a box is
-                        // on it, so for the first box of a run there is nothing to compensate for, and the
-                        // lead (which grew with the belt speed) simply threw it most of the way down the run.
-                        if (mainCamera != null && conveyorRunning)
-                        {
-                            target += mainCamera.transform.right * (conveyorBoxMoveSpeed * shipFlight);
-                        }
-
-                        box.transform.DOJump(target, GetDockJumpPower(0.9f), 1, shipFlight).SetEase(Ease.OutCubic);
-                        box.transform.DOScale(baseScale * 1.15f, shipFlight);
-                        box.transform.DORotateQuaternion(BoxDisplayRotation(BoxShelfTiltEuler), shipFlight);
-                    });
-                    boxSeq.AppendInterval(shipFlight);
-                }
-
-                boxSeq.OnComplete(() =>
-                {
-                    if (box != null)
-                    {
-                        tweeningDockObjects.Remove(box);
-                        completedBoxObjects.Add(box);
-                        StartBoxRideAndDisappear(box);
-                    }
-
-                    // Spawn a fresh open box for this slot so a new item can start filling it
-                    GameObject newBox = CreatePackagingBox(slotIndex);
-                    if (newBox != null)
-                    {
-                        newBox.transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
-                        newBox.transform.position = GetSlotWorldPosition(slotIndex);
-                        newBox.transform.localScale = Vector3.zero;
-                        slotBox[slotIndex] = newBox;
-
-                        float openBaseScale = ComputeFitScaleForSlot(slotIndex, newBox) * boxSlotScaleMultiplier;
-                        tweeningDockObjects.Add(newBox);
-                        newBox.transform.DOScale(openBaseScale, 0.55f).SetEase(Ease.OutBack).OnComplete(() =>
-                        {
-                            tweeningDockObjects.Remove(newBox);
-                        });
-                    }
-
-                    foreach (var itemData in filledItems)
-                    {
-                        if (itemData.targetObject != null)
-                        {
-                            tweeningDockObjects.Remove(itemData.targetObject.gameObject);
-                            Destroy(itemData.targetObject.gameObject);
-                        }
-                    }
-
-                    if (MatchGoalManager.Instance != null && filledItems.Count > 0)
-                    {
-                        RefreshTargetGoalsUI();
-                    }
-
-                    slotBoxContents[slotIndex].Clear();
-                    slotAssignedItemName[slotIndex] = null;
-                    slotRequiredCount[slotIndex] = 0;
-
-                    UpdateSlotBadgesUI();
-                    slotProcessing[slotIndex] = false;
-                });
-            }
-            else
-            {
-                // Mecha Box: When ALL Mechas enter, close flaps shut and STAY CLOSED permanently on dock!
-                boxSeq.OnComplete(() =>
-                {
-                    if (box != null)
-                    {
-                        tweeningDockObjects.Remove(box);
-                        PunchBox(box, new Vector3(0.20f, 0.20f, 0.20f), 0.45f, 12, 1f);
-                    }
-
-                    // DO NOT spawn a new open box! The Mecha Box remains closed and sealed resting on the dock.
-
-                    foreach (var itemData in filledItems)
-                    {
-                        if (itemData.targetObject != null)
-                        {
-                            tweeningDockObjects.Remove(itemData.targetObject.gameObject);
-                            Destroy(itemData.targetObject.gameObject);
-                        }
-                    }
-
-                    if (MatchGoalManager.Instance != null && filledItems.Count > 0)
-                    {
-                        RefreshTargetGoalsUI();
-                    }
-
-                    slotBoxContents[slotIndex].Clear();
-                    slotAssignedItemName[slotIndex] = "Mecha_Completed";
-
-                    UpdateSlotBadgesUI();
-                    slotProcessing[slotIndex] = false;
-                });
+                if (slotImages[i] == null) continue;
+                slotImages[i].DOKill();
+                slotImages[i].color = i < dockItems.Count ? dockSlotFilledColor : dockSlotEmptyColor;
             }
         }
 
-
-        private void UpdateSlotBadgesUI()
-        {
-            for (int i = 0; i < MAX_SLOTS; i++)
-            {
-                if (i < slotBadgeTexts.Count && slotBadgeTexts[i] != null)
-                {
-                    slotBadgeTexts[i].text = "";
-                }
-            }
-        }
+        // ---------------------------------------------------------------------------------------------
+        // Level lifecycle
+        // ---------------------------------------------------------------------------------------------
 
         public void HideAllOverlayPanels()
         {
-            // The name has always promised this, but until now it only reset the dock slots. LevelManager
-            // calls it on every load, so a Win/Lose popup opened by the previous level would otherwise stay
-            // on screen over the new one on any path that does not go through the panel's own button.
-            if (WinLosePanelController.Instance != null)
+            if (WinLosePanelController.Instance != null) WinLosePanelController.Instance.HideAll();
+
+            foreach (DockItemData data in dockItems)
             {
-                WinLosePanelController.Instance.HideAll();
+                if (data?.targetObject == null) continue;
+                data.targetObject.transform.DOKill();
+                SafeDestroy(data.targetObject.gameObject);
             }
-
-            ClearShippedBoxes();
-
-            for (int i = 0; i < MAX_SLOTS; i++)
-            {
-                List<DockItemData> content = GetSlotBoxContent(i);
-                for (int k = content.Count - 1; k >= 0; k--)
-                {
-                    if (content[k] != null && content[k].targetObject != null)
-                    {
-                        SafeDestroy(content[k].targetObject.gameObject);
-                    }
-                }
-                content.Clear();
-                slotAssignedItemName[i] = null;
-                slotRequiredCount[i] = 0;
-                slotProcessing[i] = false;
-            }
-
+            dockItems.Clear();
             tweeningDockObjects.Clear();
+            gameOverTriggered = false;
 
-            Ensure3DCardboardBoxes();
-            for (int i = 0; i < MAX_SLOTS; i++)
-            {
-                if (slotBox[i] != null)
-                {
-                    SetBoxFlapsInstant(slotBox[i], false);
-                    Vector3 slotPos = GetSlotWorldPosition(i);
-                    if (slotPos != Vector3.zero)
-                    {
-                        slotBox[i].transform.position = slotPos;
-                    }
-                    float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * boxSlotScaleMultiplier;
-                    slotBox[i].transform.localScale = Vector3.one * fitScale;
-                    slotBox[i].transform.rotation = BoxDisplayRotation(BoxSlotTiltEuler);
-                    Transform display = slotBox[i].transform.Find("Box_Item_Display");
-                    if (display != null) SafeDestroy(display.gameObject);
-                }
-            }
-
-            UpdateSlotBadgesUI();
+            UpdateSlotVisuals();
         }
     }
 }
