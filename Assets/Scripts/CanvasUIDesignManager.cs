@@ -302,7 +302,85 @@ namespace MechaFind3D.PhysicsInteraction
 
         private readonly List<RectTransform> slotRects = new List<RectTransform>();
         private readonly List<Text> slotBadgeTexts = new List<Text>();
+        private readonly List<Outline> slotOutlines = new List<Outline>();
         private readonly HashSet<GameObject> tweeningDockObjects = new HashSet<GameObject>();
+
+        public int selectedBoxIndex = 0;
+
+        public void SelectBox(int index)
+        {
+            if (index < 0 || index >= MAX_SLOTS) return;
+
+            bool changed = (selectedBoxIndex != index);
+            selectedBoxIndex = index;
+            UpdateBoxSelectionVisuals();
+
+            // 3D Box Selection Punch Pop Feedback
+            if (changed && selectedBoxIndex >= 0 && selectedBoxIndex < MAX_SLOTS && slotBox[selectedBoxIndex] != null)
+            {
+                GameObject boxObj = slotBox[selectedBoxIndex];
+                if (!tweeningDockObjects.Contains(boxObj))
+                {
+                    boxObj.transform.DOKill(true);
+                    boxObj.transform.DOPunchScale(Vector3.one * 0.10f, 0.25f, 6, 0.5f);
+                }
+            }
+        }
+
+        public void UpdateBoxSelectionVisuals()
+        {
+            for (int i = 0; i < slotRects.Count && i < MAX_SLOTS; i++)
+            {
+                bool isSelected = (i == selectedBoxIndex);
+
+                if (i < slotRects.Count && slotRects[i] != null)
+                {
+                    GameObject slotObj = slotRects[i].gameObject;
+
+                    Outline[] outlines = slotObj.GetComponents<Outline>();
+                    Shadow shadow = slotObj.GetComponent<Shadow>();
+                    Image img = slotObj.GetComponent<Image>();
+
+                    if (outlines != null && outlines.Length > 0)
+                    {
+                        if (isSelected)
+                        {
+                            outlines[0].effectColor = new Color(1.0f, 0.88f, 0.2f, 1.0f);
+                            outlines[0].effectDistance = new Vector2(3, -3);
+
+                            if (outlines.Length > 1)
+                            {
+                                outlines[1].effectColor = new Color(1.0f, 0.65f, 0.0f, 0.95f);
+                                outlines[1].effectDistance = new Vector2(-3, 3);
+                            }
+                        }
+                        else
+                        {
+                            outlines[0].effectColor = new Color(0.25f, 0.42f, 0.72f, 0.5f);
+                            outlines[0].effectDistance = new Vector2(1, -1);
+
+                            if (outlines.Length > 1)
+                            {
+                                outlines[1].effectColor = Color.clear;
+                            }
+                        }
+                    }
+
+                    if (shadow != null)
+                    {
+                        shadow.effectColor = isSelected ? new Color(1.0f, 0.82f, 0.15f, 0.65f) : Color.clear;
+                        shadow.effectDistance = isSelected ? new Vector2(2, -2) : Vector2.zero;
+                    }
+
+                    if (img != null)
+                    {
+                        img.color = isSelected 
+                            ? new Color(0.20f, 0.38f, 0.68f, 0.95f) 
+                            : new Color(0.12f, 0.18f, 0.36f, 0.75f);
+                    }
+                }
+            }
+        }
 
         private Camera mainCamera;
         // Per-slot rather than one global flag: a single lock froze ALL collection for the ~2.5s a full box
@@ -510,6 +588,7 @@ namespace MechaFind3D.PhysicsInteraction
             BuildHeaderGoalPanel(canvasObj.transform);
             BuildBottomDockPanel(canvasObj.transform);
             BuildShuffleButton(canvasObj.transform);
+            BuildTrashButton(canvasObj.transform);
             Canvas.ForceUpdateCanvases();
             Ensure3DCardboardBoxes();
 
@@ -718,6 +797,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             slotRects.Clear();
             slotBadgeTexts.Clear();
+            slotOutlines.Clear();
 
             for (int i = 0; i < MAX_SLOTS; i++)
             {
@@ -733,13 +813,34 @@ namespace MechaFind3D.PhysicsInteraction
                     slotObj.transform.SetParent(slotsContainerObj.transform, false);
                 }
 
+                // Clean up any stray SelectionBadge if it exists
+                Transform oldBadge = slotObj.transform.Find("SelectionBadge");
+                if (oldBadge != null)
+                {
+                    SafeDestroy(oldBadge.gameObject);
+                }
+
                 RectTransform slotRect = slotObj.GetComponent<RectTransform>() ?? slotObj.AddComponent<RectTransform>();
                 Image slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
-                slotBg.color = new Color(0.12f, 0.18f, 0.36f, 0.75f); // Visible Slot Spawn Point Badge
+                slotBg.color = new Color(0.12f, 0.18f, 0.36f, 0.75f);
 
-                Outline slotOutline = slotObj.GetComponent<Outline>() ?? slotObj.AddComponent<Outline>();
-                slotOutline.effectColor = new Color(0.25f, 0.42f, 0.72f, 0.65f);
-                slotOutline.effectDistance = new Vector2(1, -1);
+                Outline[] existingOutlines = slotObj.GetComponents<Outline>();
+                Outline slotOutline1 = (existingOutlines.Length > 0) ? existingOutlines[0] : slotObj.AddComponent<Outline>();
+                slotOutline1.effectColor = new Color(0.25f, 0.42f, 0.72f, 0.65f);
+                slotOutline1.effectDistance = new Vector2(1, -1);
+
+                Outline slotOutline2 = (existingOutlines.Length > 1) ? existingOutlines[1] : slotObj.AddComponent<Outline>();
+                slotOutline2.effectColor = Color.clear;
+
+                Shadow slotShadow = slotObj.GetComponent<Shadow>() ?? slotObj.AddComponent<Shadow>();
+                slotShadow.effectColor = Color.clear;
+
+                // Add Button listener for box selection
+                Button slotBtn = slotObj.GetComponent<Button>() ?? slotObj.AddComponent<Button>();
+                slotBtn.transition = Selectable.Transition.None;
+                int slotIdx = i;
+                slotBtn.onClick.RemoveAllListeners();
+                slotBtn.onClick.AddListener(() => SelectBox(slotIdx));
 
                 Transform labelChild = slotObj.transform.Find("LabelText");
                 GameObject labelObj;
@@ -778,7 +879,10 @@ namespace MechaFind3D.PhysicsInteraction
 
                 slotRects.Add(slotRect);
                 slotBadgeTexts.Add(labelTxt);
+                slotOutlines.Add(slotOutline1);
             }
+
+            UpdateBoxSelectionVisuals();
         }
 
         private void BuildShuffleButton(Transform parent)
@@ -868,6 +972,146 @@ namespace MechaFind3D.PhysicsInteraction
                     });
                 }
             }
+        }
+
+        private void BuildTrashButton(Transform parent)
+        {
+            Transform existingBtn = parent.Find("Trash_Button");
+            GameObject btnObj;
+            if (existingBtn != null)
+            {
+                btnObj = existingBtn.gameObject;
+            }
+            else
+            {
+                btnObj = new GameObject("Trash_Button");
+                btnObj.transform.SetParent(parent, false);
+
+                RectTransform btnRect = btnObj.AddComponent<RectTransform>();
+                btnRect.anchorMin = new Vector2(0f, 0f);
+                btnRect.anchorMax = new Vector2(0f, 0f);
+                btnRect.pivot = new Vector2(0f, 0f);
+                btnRect.anchoredPosition = shuffleButtonPosition + new Vector2(75f, 0f);
+                btnRect.sizeDelta = shuffleButtonSize;
+
+                Image btnBg = btnObj.AddComponent<Image>();
+                ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
+                btnBg.color = new Color(0.85f, 0.22f, 0.25f, 1.0f);
+
+                GameObject btnTextObj = new GameObject("LabelText");
+                btnTextObj.transform.SetParent(btnObj.transform, false);
+
+                RectTransform textRect = btnTextObj.AddComponent<RectTransform>();
+                textRect.anchorMin = Vector2.zero;
+                textRect.anchorMax = Vector2.one;
+                textRect.sizeDelta = Vector2.zero;
+                textRect.anchoredPosition = Vector2.zero;
+
+                Text txt = btnTextObj.AddComponent<Text>();
+                txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                txt.fontSize = 28;
+                txt.fontStyle = FontStyle.Bold;
+                txt.alignment = TextAnchor.MiddleCenter;
+                txt.color = Color.white;
+                txt.text = "🗑️";
+
+                Shadow shadow = btnTextObj.AddComponent<Shadow>();
+                shadow.effectColor = new Color(0, 0, 0, 0.8f);
+                shadow.effectDistance = new Vector2(1, -1);
+            }
+
+            Image bg = btnObj.GetComponent<Image>() ?? btnObj.AddComponent<Image>();
+            bg.raycastTarget = true;
+
+            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
+            btn.targetGraphic = bg;
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(OnTrashButtonClicked);
+        }
+
+        public void OnTrashButtonClicked()
+        {
+            if (selectedBoxIndex < 0 || selectedBoxIndex >= MAX_SLOTS) return;
+            if (IsSlotBusy(selectedBoxIndex)) return;
+
+            List<DockItemData> boxContents = GetSlotBoxContent(selectedBoxIndex);
+            if (boxContents == null || boxContents.Count == 0) return;
+
+            GameObject trashBtn = mainCanvas != null ? mainCanvas.transform.Find("Trash_Button")?.gameObject : GameObject.Find("Trash_Button");
+            if (trashBtn != null)
+            {
+                trashBtn.transform.DOKill(true);
+                trashBtn.transform.DOPunchScale(Vector3.one * 0.15f, 0.25f, 5, 0.5f);
+            }
+
+            List<DockItemData> itemsToReturn = new List<DockItemData>(boxContents);
+            boxContents.Clear();
+
+            if (CustomerOrderManager.Instance != null)
+            {
+                CustomerOrderManager.Instance.UnregisterAllItemsFromBox(selectedBoxIndex);
+            }
+
+            slotAssignedItemName[selectedBoxIndex] = null;
+
+            for (int i = 0; i < itemsToReturn.Count; i++)
+            {
+                DockItemData data = itemsToReturn[i];
+                if (data == null || data.targetObject == null) continue;
+
+                GameObject itemObj = data.targetObject.gameObject;
+
+                itemObj.transform.SetParent(null, true);
+
+                Rigidbody rb = itemObj.GetComponent<Rigidbody>();
+                if (rb == null) rb = itemObj.AddComponent<Rigidbody>();
+                rb.isKinematic = true;
+                rb.useGravity = true;
+
+                Collider col = itemObj.GetComponent<Collider>();
+                if (col != null)
+                {
+                    col.enabled = true;
+                    col.isTrigger = false;
+                }
+
+                Vector3 pileScale = Vector3.one;
+                FindTargetObject findTarget = itemObj.GetComponent<FindTargetObject>();
+                if (findTarget != null)
+                {
+                    findTarget.isDocked = false;
+                    if (findTarget.OriginalScale != Vector3.zero)
+                    {
+                        pileScale = findTarget.OriginalScale;
+                    }
+                }
+
+                Vector3 returnPos = new Vector3(
+                    Random.Range(-1.3f, 1.3f),
+                    Random.Range(0.2f, 0.6f),
+                    Random.Range(-1.3f, 1.3f)
+                );
+                Quaternion returnRot = Random.rotation;
+
+                float delay = i * 0.06f;
+                itemObj.transform.DOKill();
+                Sequence returnSeq = DOTween.Sequence();
+                returnSeq.AppendInterval(delay);
+                returnSeq.Append(itemObj.transform.DOJump(returnPos, 0.60f, 1, 0.40f).SetEase(Ease.OutQuad));
+                returnSeq.Join(itemObj.transform.DOScale(pileScale, 0.40f).SetEase(Ease.OutQuad));
+                returnSeq.Join(itemObj.transform.DORotateQuaternion(returnRot, 0.40f).SetEase(Ease.OutQuad));
+                returnSeq.OnComplete(() =>
+                {
+                    if (rb != null)
+                    {
+                        rb.isKinematic = false;
+                        rb.WakeUp();
+                    }
+                });
+            }
+
+            UpdateSlotBadgesUI();
+            BuildOrRefreshCustomerGoalCard(selectedBoxIndex, 0);
         }
 
         public void RefreshTargetGoalsUI()
@@ -1561,27 +1805,30 @@ namespace MechaFind3D.PhysicsInteraction
                 // with a wrong item - only the latter fails the level.
                 if (CustomerOrderManager.Instance != null)
                 {
-                    if (!CustomerOrderManager.Instance.ItemMatchesAnyActiveOrder(itemType))
+                    int reqSel = slotRequiredCount[selectedBoxIndex] > 0 ? slotRequiredCount[selectedBoxIndex] : CustomerOrderManager.Instance.GetRequiredCountForBox(selectedBoxIndex);
+                    if (!IsSlotBusy(selectedBoxIndex) && GetSlotBoxContent(selectedBoxIndex).Count < reqSel)
                     {
-                        if (MatchGoalManager.Instance != null)
-                        {
-                            MatchGoalManager.Instance.TriggerLose();
-                        }
-                        return false;
+                        targetSlot = selectedBoxIndex;
                     }
-
-                    targetSlot = CustomerOrderManager.Instance.GetTargetBoxForCollectedItem(itemType);
-                    if (targetSlot != -1 && IsSlotBusy(targetSlot))
+                    else
                     {
-                        int otherSlot = (targetSlot == 0) ? 1 : 0;
-                        if (!IsSlotBusy(otherSlot)) targetSlot = otherSlot;
-                        else targetSlot = -1;
+                        int otherSlot = (selectedBoxIndex == 0) ? 1 : 0;
+                        int reqOther = slotRequiredCount[otherSlot] > 0 ? slotRequiredCount[otherSlot] : CustomerOrderManager.Instance.GetRequiredCountForBox(otherSlot);
+                        if (!IsSlotBusy(otherSlot) && GetSlotBoxContent(otherSlot).Count < reqOther)
+                        {
+                            SelectBox(otherSlot);
+                            targetSlot = otherSlot;
+                        }
+                        else
+                        {
+                            targetSlot = -1;
+                        }
                     }
 
                     if (targetSlot != -1)
                     {
                         slotAssignedItemName[targetSlot] = itemType;
-                        slotRequiredCount[targetSlot] = CountTotalMatchingObjectsInLevel(item);
+                        slotRequiredCount[targetSlot] = CustomerOrderManager.Instance.GetRequiredCountForBox(targetSlot);
                     }
                 }
                 else
@@ -1729,6 +1976,11 @@ namespace MechaFind3D.PhysicsInteraction
                 if (willShip)
                 {
                     slotProcessing[targetSlot] = true;
+                    if (selectedBoxIndex == targetSlot)
+                    {
+                        int otherSlot = (targetSlot == 0) ? 1 : 0;
+                        SelectBox(otherSlot);
+                    }
                 }
 
                 // Unscrew spin animation (720 deg Y rotation + hop up)
@@ -1809,16 +2061,24 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (CustomerOrderManager.Instance != null)
                 {
-                    CustomerOrderManager.Instance.RegisterItemPackedIntoBox(targetSlot, item.colorName);
-                    TickCustomerGoalCard(targetSlot);
+                    if (CustomerOrderManager.Instance.ItemMatchesBoxOrder(targetSlot, item.colorName))
+                    {
+                        CustomerOrderManager.Instance.RegisterItemPackedIntoBox(targetSlot, item.colorName);
+                        TickCustomerGoalCard(targetSlot);
+                    }
                 }
 
                 bool orderDone = (CustomerOrderManager.Instance != null && CustomerOrderManager.Instance.IsOrderFulfilledForBox(targetSlot));
                 int reqCount = slotRequiredCount[targetSlot] > 0 ? slotRequiredCount[targetSlot] : 3;
-                bool willShip = orderDone || (GetSlotBoxContent(targetSlot).Count >= reqCount);
+                bool willShip = (CustomerOrderManager.Instance != null) ? (orderDone && GetSlotBoxContent(targetSlot).Count >= reqCount) : (GetSlotBoxContent(targetSlot).Count >= reqCount);
                 if (willShip)
                 {
                     slotProcessing[targetSlot] = true;
+                    if (selectedBoxIndex == targetSlot)
+                    {
+                        int otherSlot = (targetSlot == 0) ? 1 : 0;
+                        SelectBox(otherSlot);
+                    }
                 }
 
                 AnimateItemIntoBox(item.gameObject, targetSlot, () =>
@@ -2232,6 +2492,7 @@ namespace MechaFind3D.PhysicsInteraction
             Canvas.ForceUpdateCanvases();
             Ensure3DCardboardBoxes();
             EnsureConveyorBelt();
+            SetConveyorRunning(true);
         }
 
         private void CleanupDuplicateConveyorBelts()
@@ -2605,11 +2866,11 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 foreach (ConveyorBelt tile in conveyorTiles)
                 {
-                    if (tile != null) tile.AutoScroll = running;
+                    if (tile != null) tile.AutoScroll = true;
                 }
             }
 
-            conveyorRunning = running;
+            conveyorRunning = true;
         }
 
         private static RectTransform FindConveyorPanel()
@@ -2787,16 +3048,9 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (slotBox[i] != null && !tweeningDockObjects.Contains(slotBox[i]))
                 {
-                    if ((slotBox[i].transform.position - slotWorldPos).sqrMagnitude > 0.00001f)
+                    if (slotWorldPos != Vector3.zero)
                     {
-                        if (Vector3.Distance(slotBox[i].transform.position, slotWorldPos) > 1.0f)
-                        {
-                            slotBox[i].transform.position = slotWorldPos;
-                        }
-                        else
-                        {
-                            slotBox[i].transform.position = Vector3.Lerp(slotBox[i].transform.position, slotWorldPos, Time.deltaTime * 22f);
-                        }
+                        slotBox[i].transform.position = slotWorldPos;
                     }
                     float fitScale = ComputeFitScaleForSlot(i, slotBox[i]) * boxSlotScaleMultiplier;
                     slotBox[i].transform.localScale = Vector3.one * fitScale;

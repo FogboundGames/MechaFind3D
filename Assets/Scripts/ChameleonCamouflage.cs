@@ -144,6 +144,8 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
+        private static Material cachedWhiteMat;
+
         /// <summary>
         /// Drops the camouflage: repaints the mecha in a solid white material.
         /// </summary>
@@ -151,37 +153,40 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (mecha == null) return;
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            Material whiteMat = new Material(shader) { name = "RevealedMechaMat" };
+            if (cachedWhiteMat == null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                cachedWhiteMat = new Material(shader) { name = "RevealedMechaMat" };
 
-            if (whiteMat.HasProperty("_Surface")) whiteMat.SetFloat("_Surface", 0f);
-            if (whiteMat.HasProperty("_Blend")) whiteMat.SetFloat("_Blend", 0f);
-            if (whiteMat.HasProperty("_Mode")) whiteMat.SetFloat("_Mode", 0f);
-            if (whiteMat.HasProperty("_SrcBlend")) whiteMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.One);
-            if (whiteMat.HasProperty("_DstBlend")) whiteMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.Zero);
-            if (whiteMat.HasProperty("_ZWrite")) whiteMat.SetFloat("_ZWrite", 1f);
+                if (cachedWhiteMat.HasProperty("_Surface")) cachedWhiteMat.SetFloat("_Surface", 0f);
+                if (cachedWhiteMat.HasProperty("_Blend")) cachedWhiteMat.SetFloat("_Blend", 0f);
+                if (cachedWhiteMat.HasProperty("_Mode")) cachedWhiteMat.SetFloat("_Mode", 0f);
+                if (cachedWhiteMat.HasProperty("_SrcBlend")) cachedWhiteMat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.One);
+                if (cachedWhiteMat.HasProperty("_DstBlend")) cachedWhiteMat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.Zero);
+                if (cachedWhiteMat.HasProperty("_ZWrite")) cachedWhiteMat.SetFloat("_ZWrite", 1f);
 
-            whiteMat.SetOverrideTag("RenderType", "Opaque");
-            whiteMat.DisableKeyword("_ALPHABLEND_ON");
-            whiteMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-            whiteMat.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            whiteMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
+                cachedWhiteMat.SetOverrideTag("RenderType", "Opaque");
+                cachedWhiteMat.DisableKeyword("_ALPHABLEND_ON");
+                cachedWhiteMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                cachedWhiteMat.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                cachedWhiteMat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
 
-            if (whiteMat.HasProperty("_Smoothness")) whiteMat.SetFloat("_Smoothness", 0.45f);
-            if (whiteMat.HasProperty("_Metallic")) whiteMat.SetFloat("_Metallic", 0f);
+                if (cachedWhiteMat.HasProperty("_Smoothness")) cachedWhiteMat.SetFloat("_Smoothness", 0.45f);
+                if (cachedWhiteMat.HasProperty("_Metallic")) cachedWhiteMat.SetFloat("_Metallic", 0f);
 
-            Color white = Color.white;
-            if (whiteMat.HasProperty("_BaseColor")) whiteMat.SetColor("_BaseColor", white);
-            if (whiteMat.HasProperty("_Color")) whiteMat.SetColor("_Color", white);
-            if (whiteMat.HasProperty("_BaseMap")) whiteMat.SetTexture("_BaseMap", null);
-            if (whiteMat.HasProperty("_MainTex")) whiteMat.SetTexture("_MainTex", null);
-            whiteMat.mainTexture = null;
+                Color white = Color.white;
+                if (cachedWhiteMat.HasProperty("_BaseColor")) cachedWhiteMat.SetColor("_BaseColor", white);
+                if (cachedWhiteMat.HasProperty("_Color")) cachedWhiteMat.SetColor("_Color", white);
+                if (cachedWhiteMat.HasProperty("_BaseMap")) cachedWhiteMat.SetTexture("_BaseMap", null);
+                if (cachedWhiteMat.HasProperty("_MainTex")) cachedWhiteMat.SetTexture("_MainTex", null);
+                cachedWhiteMat.mainTexture = null;
+            }
 
             foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
             {
                 int slotCount = Mathf.Max(1, r.sharedMaterials.Length);
                 Material[] newMats = new Material[slotCount];
-                for (int m = 0; m < slotCount; m++) newMats[m] = whiteMat;
+                for (int m = 0; m < slotCount; m++) newMats[m] = cachedWhiteMat;
                 r.sharedMaterials = newMats;
             }
         }

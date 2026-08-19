@@ -214,11 +214,41 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
+        public void UnregisterAllItemsFromBox(int boxIndex)
+        {
+            CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
+            if (targetOrder == null) return;
+
+            foreach (var item in targetOrder.items)
+            {
+                item.packedCount = 0;
+            }
+            targetOrder.isCompleted = false;
+        }
+
         public bool IsOrderFulfilledForBox(int boxIndex)
         {
             CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
             if (targetOrder == null) return false;
             return targetOrder.IsFullyFulfilled;
+        }
+
+        public bool ItemMatchesBoxOrder(int boxIndex, string itemId)
+        {
+            CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
+            if (targetOrder == null || targetOrder.isCompleted) return false;
+            foreach (var item in targetOrder.items)
+            {
+                if (item.itemId == itemId && !item.IsFulfilled) return true;
+            }
+            return false;
+        }
+
+        public int GetRequiredCountForBox(int boxIndex)
+        {
+            CustomerOrder targetOrder = (boxIndex == 0) ? box0Order : box1Order;
+            if (targetOrder == null || targetOrder.items == null || targetOrder.items.Count == 0) return 3;
+            return targetOrder.items[0].requiredCount;
         }
 
         public void OnBoxShipped(int boxIndex)

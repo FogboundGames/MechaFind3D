@@ -136,8 +136,12 @@ namespace MechaFind3D
         }
 
 #if UNITY_EDITOR
+        private static RuntimeAnimatorController cachedMechaRunnerController;
+
         public static RuntimeAnimatorController GetOrCreateMechaAnimatorController()
         {
+            if (cachedMechaRunnerController != null) return cachedMechaRunnerController;
+
             string controllerPath = "Assets/Prefabs/MechaRunnerController.controller";
             AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
 
@@ -157,20 +161,15 @@ namespace MechaFind3D
             else if (runClip != null && controller.layers.Length > 0)
             {
                 var stateMachine = controller.layers[0].stateMachine;
-                if (stateMachine.states.Length > 0)
+                if (stateMachine.states.Length > 0 && stateMachine.states[0].state.motion != runClip)
                 {
                     stateMachine.states[0].state.motion = runClip;
+                    EditorUtility.SetDirty(controller);
+                    AssetDatabase.SaveAssets();
                 }
-                else
-                {
-                    AnimatorState state = stateMachine.AddState("Running");
-                    state.motion = runClip;
-                    stateMachine.defaultState = state;
-                }
-                EditorUtility.SetDirty(controller);
-                AssetDatabase.SaveAssets();
             }
 
+            cachedMechaRunnerController = controller;
             return controller;
         }
 

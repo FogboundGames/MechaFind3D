@@ -24,6 +24,8 @@ namespace MechaFind3D.PhysicsInteraction
         private Renderer objectRenderer;
         private Vector3 originalScale;
 
+        public Vector3 OriginalScale => (originalScale != Vector3.zero ? originalScale : Vector3.one);
+
         private void Awake()
         {
             objectRenderer = GetComponent<Renderer>();
