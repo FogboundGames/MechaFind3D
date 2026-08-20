@@ -138,6 +138,7 @@ namespace MechaFind3D.PhysicsInteraction
 
         private readonly List<RectTransform> slotRects = new List<RectTransform>();
         private readonly List<Image> slotImages = new List<Image>();
+        private readonly List<Transform> slot3DTransforms = new List<Transform>();
 
         // Left to right, one entry per occupied slot. Same-type entries are always contiguous because
         // inserts land right after the last item of their own kind.
@@ -326,6 +327,7 @@ namespace MechaFind3D.PhysicsInteraction
             EnsureBackgroundCanvas();
             BuildHeaderOrderPanel(canvasObj.transform);
             BuildBottomDockPanel(canvasObj.transform);
+            Setup3DDockSlots();
             BuildShuffleButton(canvasObj.transform);
             RemoveTrashButton(canvasObj.transform);
             Canvas.ForceUpdateCanvases();
@@ -560,106 +562,8 @@ namespace MechaFind3D.PhysicsInteraction
         /// </summary>
         private void BuildBottomDockPanel(Transform parent)
         {
-            GameObject dockObj = GetOrCreateChild(parent, "Bottom_Dock_Panel");
-
-            int slotCount = DockCapacity;
-            float slotSize = EffectiveSlotSize();
-            float panelWidth = slotCount * slotSize + (slotCount - 1) * dockSlotSpacing + dockPanelPadding * 2f;
-            float panelHeight = slotSize + dockPanelPadding * 2f;
-
-            dockPanelRect = dockObj.GetComponent<RectTransform>();
-            dockPanelRect.anchorMin = new Vector2(0.5f, 0f);
-            dockPanelRect.anchorMax = new Vector2(0.5f, 0f);
-            dockPanelRect.pivot = new Vector2(0.5f, 0f);
-            dockPanelRect.anchoredPosition = dockPanelAnchoredPosition;
-            dockPanelRect.sizeDelta = new Vector2(panelWidth, panelHeight);
-
-            Image bg = dockObj.GetComponent<Image>() ?? dockObj.AddComponent<Image>();
-            bg.sprite = null;
-            bg.color = Color.clear;
-
-            Outline dockOutline = dockObj.GetComponent<Outline>();
-            if (dockOutline != null) SafeDestroy(dockOutline);
-
-            GameObject slotsContainerObj = GetOrCreateChild(dockObj.transform, "Slots_Container");
-            RectTransform slotsRect = slotsContainerObj.GetComponent<RectTransform>();
-            slotsRect.anchorMin = Vector2.zero;
-            slotsRect.anchorMax = Vector2.one;
-            slotsRect.offsetMin = Vector2.zero;
-            slotsRect.offsetMax = Vector2.zero;
-
-            HorizontalLayoutGroup layout = slotsContainerObj.GetComponent<HorizontalLayoutGroup>() ?? slotsContainerObj.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(Mathf.RoundToInt(dockPanelPadding), Mathf.RoundToInt(dockPanelPadding),
-                                            Mathf.RoundToInt(dockPanelPadding), Mathf.RoundToInt(dockPanelPadding));
-            layout.spacing = dockSlotSpacing;
-            layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
-
-            // Slot count is fixed, so any leftovers from an older layout are removed rather than reused.
-            foreach (Transform child in slotsContainerObj.GetComponentsInChildren<Transform>(true))
-            {
-                if (child == slotsContainerObj.transform) continue;
-                if (child.parent != slotsContainerObj.transform) continue;
-                if (!child.name.StartsWith("DockSlot_")) continue;
-
-                bool parsed = int.TryParse(child.name.Substring("DockSlot_".Length), out int idx);
-                if (!parsed || idx < 0 || idx >= slotCount) SafeDestroy(child.gameObject);
-            }
-
-            slotRects.Clear();
-            slotImages.Clear();
-
-            for (int i = 0; i < slotCount; i++)
-            {
-                Transform existing = slotsContainerObj.transform.Find($"DockSlot_{i}");
-                GameObject slotObj;
-                RectTransform slotRect;
-                Image slotBg;
-
-                if (existing != null)
-                {
-                    // Preserve exact manual transforms (rotation, position, scale) set by user in Unity Editor
-                    slotObj = existing.gameObject;
-                    slotRect = slotObj.GetComponent<RectTransform>();
-                    slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
-                }
-                else
-                {
-                    slotObj = GetOrCreateChild(slotsContainerObj.transform, $"DockSlot_{i}");
-                    slotRect = slotObj.GetComponent<RectTransform>();
-                    slotRect.sizeDelta = new Vector2(slotSize, slotSize);
-                    slotRect.localRotation = Quaternion.Euler(55f, 0f, -18f);
-
-                    slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
-                }
-
-                if (slotBg != null)
-                {
-                    ApplySlicedSprite(slotBg, LoadUISprite("Buttons/Button Green"));
-                    slotBg.color = dockSlotEmptyColor;
-                    slotBg.raycastTarget = false;
-                }
-
-                Outline slotOutline = slotObj.GetComponent<Outline>() ?? slotObj.AddComponent<Outline>();
-                slotOutline.effectColor = new Color(0.18f, 0.48f, 0.08f, 0.95f);
-                slotOutline.effectDistance = new Vector2(1.5f, -1.5f);
-
-                slotObj.transform.SetSiblingIndex(i);
-
-                DestroyChildIfExists(slotObj.transform, "SelectionBadge");
-                DestroyChildIfExists(slotObj.transform, "LabelText");
-
-                Button staleBtn = slotObj.GetComponent<Button>();
-                if (staleBtn != null) SafeDestroy(staleBtn);
-
-                if (slotRect != null) slotRects.Add(slotRect);
-                if (slotBg != null) slotImages.Add(slotBg);
-            }
-
-            UpdateSlotVisuals();
+            // Remove 2D UI dock panel so only 3D Cube slots in 3D scene space are rendered
+            DestroyChildIfExists(parent, "Bottom_Dock_Panel");
         }
 
         private void BuildShuffleButton(Transform parent)
@@ -1459,7 +1363,8 @@ namespace MechaFind3D.PhysicsInteraction
             // A host object carrying a hidden mecha cannot be collected until the mecha is tapped off it.
             if (HasChildMecha(item)) return false;
 
-            if (dockItems.Count >= DockCapacity || dockItems.Count >= slotRects.Count) return false;
+            int maxCapacity = slot3DTransforms.Count > 0 ? slot3DTransforms.Count : slotRects.Count;
+            if (dockItems.Count >= DockCapacity || dockItems.Count >= maxCapacity) return false;
 
             item.isDocked = true;
 
@@ -1790,8 +1695,43 @@ namespace MechaFind3D.PhysicsInteraction
             return mainCamera.ScreenToWorldPoint(new Vector3(screenPos2D.x, screenPos2D.y, dockCameraDepth));
         }
 
-        public Vector3 GetSlotWorldPosition(int slotIndex)
+        public Vector3 GetSlotWorldPosition(int slotIndex, GameObject obj3D = null)
         {
+            if (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)
+            {
+                Transform t = slot3DTransforms[slotIndex];
+                float tileHalfHeight = Mathf.Max(0.04f, t.localScale.y * 0.5f);
+                float cubeTopY = t.position.y + tileHalfHeight;
+
+                Vector3 targetPos = new Vector3(t.position.x, cubeTopY + 0.22f, t.position.z);
+
+                if (obj3D != null)
+                {
+                    Renderer[] rends = obj3D.GetComponentsInChildren<Renderer>();
+                    if (rends != null && rends.Length > 0)
+                    {
+                        Bounds b = rends[0].bounds;
+                        for (int i = 1; i < rends.Length; i++)
+                        {
+                            if (rends[i] != null && rends[i].enabled) b.Encapsulate(rends[i].bounds);
+                        }
+
+                        // Center the 3D mesh geometric center (b.center) horizontally over the 3D Cube tile
+                        Vector3 centerOffset = obj3D.transform.position - b.center;
+                        targetPos.x = t.position.x + centerOffset.x;
+                        targetPos.z = t.position.z + centerOffset.z;
+
+                        float targetMinY = cubeTopY + 0.04f;
+                        if (b.min.y < targetMinY)
+                        {
+                            float diff = targetMinY - b.min.y;
+                            targetPos.y += diff;
+                        }
+                    }
+                }
+
+                return targetPos;
+            }
             if (slotIndex < 0 || slotIndex >= slotRects.Count) return Vector3.zero;
             Vector3 pos = GetUIWorldPosition(slotRects[slotIndex]);
             if (mainCamera != null && pos != Vector3.zero)
@@ -1801,8 +1741,33 @@ namespace MechaFind3D.PhysicsInteraction
             return pos;
         }
 
+        private float GetObjectBottomOffset(GameObject obj)
+        {
+            if (obj == null) return 0f;
+            Renderer[] rends = obj.GetComponentsInChildren<Renderer>();
+            if (rends == null || rends.Length == 0) return 0f;
+
+            Bounds b = rends[0].bounds;
+            for (int i = 1; i < rends.Length; i++)
+            {
+                if (rends[i] != null && rends[i].enabled) b.Encapsulate(rends[i].bounds);
+            }
+
+            float pivotToBottom = obj.transform.position.y - b.min.y;
+            return Mathf.Max(0f, pivotToBottom);
+        }
+
         private float ComputeFitScaleForSlot(int slotIndex, GameObject obj3D)
         {
+            if (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)
+            {
+                Transform t = slot3DTransforms[slotIndex];
+                float slot3DWorldSize = Mathf.Max(t.localScale.x, t.localScale.z) * 0.85f;
+                float localMax = GetObjectStaticUnscaledMaxExtent(obj3D);
+                float computedScale = localMax > 1e-4f ? slot3DWorldSize / localMax : slot3DWorldSize;
+                return Mathf.Max(computedScale, 0.28f);
+            }
+
             if (slotIndex < 0 || slotIndex >= slotRects.Count || mainCamera == null) return miniObjectDockScale;
 
             RectTransform rect = slotRects[slotIndex];
@@ -1823,8 +1788,8 @@ namespace MechaFind3D.PhysicsInteraction
 
             float targetWorldSize = Vector3.Distance(worldEdgeA, worldEdgeB) * dockItemFillRatio;
 
-            float localMax = GetObjectStaticUnscaledMaxExtent(obj3D);
-            return localMax > 1e-4f ? targetWorldSize / localMax : targetWorldSize;
+            float localMaxExtent = GetObjectStaticUnscaledMaxExtent(obj3D);
+            return localMaxExtent > 1e-4f ? targetWorldSize / localMaxExtent : targetWorldSize;
         }
 
         private static readonly Dictionary<int, float> unscaledExtentCache = new Dictionary<int, float>();
@@ -1856,8 +1821,6 @@ namespace MechaFind3D.PhysicsInteraction
 
             float maxExtent = Mathf.Max(combined.size.x, combined.size.y, combined.size.z);
 
-            // SkinnedMeshRenderers can report 1000+ bounds before the Animator updates on frame 1. An
-            // absurd value is not cached, and a safe fallback is returned so the item isn't microscopic.
             if (maxExtent > 500f) return 48f;
 
             float finalExtent = maxExtent > 1e-4f ? maxExtent : 1f;
@@ -1865,9 +1828,150 @@ namespace MechaFind3D.PhysicsInteraction
             return finalExtent;
         }
 
-        private static Quaternion GetDockItemRotation()
+        private Quaternion GetDockItemRotation(int slotIndex = 0, GameObject obj3D = null)
         {
-            return Quaternion.Euler(12f, 25f, 0f);
+            Quaternion slotRot = (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)
+                ? slot3DTransforms[slotIndex].rotation
+                : Quaternion.identity;
+
+            if (obj3D != null)
+            {
+                string n = obj3D.name.ToLowerInvariant();
+                if (n.Contains("watermelon_002") || n.Contains("watermelon_003"))
+                {
+                    // Lay triangular slice flat on its surface area on top of the cube
+                    return slotRot * Quaternion.Euler(-90f, 0f, 45f);
+                }
+                if (n.Contains("watermelon_001"))
+                {
+                    return slotRot * Quaternion.Euler(-90f, 0f, 0f);
+                }
+            }
+
+            return slotRot * Quaternion.Euler(0f, 20f, 0f);
+        }
+
+        public void Setup3DDockSlots()
+        {
+            slot3DTransforms.Clear();
+
+            // 1. Delete legacy 2D UI dock panel if present inside Canvas
+            GameObject canvasObj = GameObject.Find("MatchFactory_Canvas");
+            if (canvasObj != null)
+            {
+                Transform legacyPanel = canvasObj.transform.Find("Bottom_Dock_Panel");
+                if (legacyPanel != null) SafeDestroy(legacyPanel.gameObject);
+            }
+
+            // 2. Setup 3D Container
+            GameObject container = GameObject.Find("Dock_3D_Slots");
+            if (container == null)
+            {
+                GameObject physicsController = GameObject.Find("Physics_Scene_Controller");
+                Transform parent = physicsController != null ? physicsController.transform : null;
+                container = new GameObject("Dock_3D_Slots");
+                if (parent != null) container.transform.SetParent(parent, false);
+            }
+
+            int slotCount = DockCapacity;
+            for (int i = 0; i < slotCount; i++)
+            {
+                Transform existingSlot = container.transform.Find($"DockSlot_3D_{i}");
+                if (existingSlot == null) existingSlot = container.transform.Find($"DockSlot_{i}");
+
+                if (existingSlot == null)
+                {
+                    GameObject slotObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    slotObj.name = $"DockSlot_3D_{i}";
+                    slotObj.transform.SetParent(container.transform, false);
+
+                    Collider col = slotObj.GetComponent<Collider>();
+                    if (col != null) SafeDestroy(col);
+
+                    slotObj.transform.localScale = new Vector3(0.68f, 0.08f, 0.68f);
+
+                    float spacing = 0.75f;
+                    float startX = -(slotCount - 1) * 0.5f * spacing;
+                    slotObj.transform.localPosition = new Vector3(startX + i * spacing, 0.08f, -3.0f);
+                    slotObj.transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
+
+                    existingSlot = slotObj.transform;
+                }
+
+                // Apply sleek grey material and full shadow casting/receiving to 3D slot
+                Renderer rend = existingSlot.GetComponent<Renderer>();
+                if (rend != null)
+                {
+                    rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+                    rend.receiveShadows = true;
+
+                    Material mat = rend.sharedMaterial;
+                    if (mat == null || mat.shader == null || !mat.name.Contains("SlateGrey"))
+                    {
+                        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+                        mat = new Material(shader);
+                        mat.name = "Mat_SlateGrey_3D_Slot";
+                    }
+
+                    Color slateGrey = new Color(0.26f, 0.30f, 0.36f, 1.0f);
+                    mat.color = slateGrey;
+
+                    if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.45f);
+                    else if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.45f);
+
+                    if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0.20f);
+
+                    rend.material = mat;
+                }
+
+                slot3DTransforms.Add(existingSlot);
+            }
+        }
+
+        private void UpdateSlotVisuals()
+        {
+            for (int i = 0; i < slotImages.Count; i++)
+            {
+                if (slotImages[i] == null) continue;
+                slotImages[i].DOKill();
+                slotImages[i].color = i < dockItems.Count ? dockSlotFilledColor : dockSlotEmptyColor;
+            }
+
+            for (int i = 0; i < slot3DTransforms.Count; i++)
+            {
+                Transform t = slot3DTransforms[i];
+                if (t == null) continue;
+
+                Renderer rend = t.GetComponent<Renderer>();
+                if (rend != null && rend.material != null)
+                {
+                    Material mat = rend.material;
+                    bool isFilled = i < dockItems.Count;
+
+                    if (isFilled)
+                    {
+                        Color glowColor = new Color(0.38f, 0.82f, 0.20f, 1.0f);
+                        mat.color = glowColor;
+
+                        if (mat.HasProperty("_EmissionColor"))
+                        {
+                            mat.EnableKeyword("_EMISSION");
+                            mat.SetColor("_EmissionColor", new Color(0.20f, 0.70f, 0.12f) * 1.5f);
+                        }
+                    }
+                    else
+                    {
+                        Color slateGrey = new Color(0.26f, 0.30f, 0.36f, 1.0f);
+                        mat.color = slateGrey;
+
+                        if (mat.HasProperty("_EmissionColor"))
+                        {
+                            mat.DisableKeyword("_EMISSION");
+                            mat.SetColor("_EmissionColor", Color.black);
+                        }
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -1896,10 +2000,7 @@ namespace MechaFind3D.PhysicsInteraction
                 return;
             }
 
-            // A slot that could not be measured returns Vector3.zero, and jumping there flings the item to
-            // the world origin - the middle of the tray. That is what a missing slot looked like on screen,
-            // so it is treated as "stay put" instead.
-            Vector3 slotWorldPos = GetSlotWorldPosition(slotIndex);
+            Vector3 slotWorldPos = GetSlotWorldPosition(slotIndex, obj3D);
             if (slotWorldPos == Vector3.zero) slotWorldPos = obj3D.transform.position;
 
             Vector3 targetScale = Vector3.one * ComputeFitScaleForSlot(slotIndex, obj3D);
@@ -1907,16 +2008,45 @@ namespace MechaFind3D.PhysicsInteraction
             tweeningDockObjects.Add(obj3D);
             obj3D.transform.DOKill();
 
+            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
+
+            // Phase 1: Lift & Zoom towards camera
+            Vector3 startPos = obj3D.transform.position;
+            Vector3 camPos = mainCamera != null ? mainCamera.transform.position : startPos + Vector3.up * 2f;
+            Vector3 popPos = Vector3.Lerp(startPos, camPos, 0.22f) + Vector3.up * 0.45f;
+            Vector3 popScale = obj3D.transform.localScale * 1.25f;
+
+            float popDuration = 0.14f;
+            float flightDuration = collectFlightDuration > 0f ? collectFlightDuration : 0.32f;
+
             Sequence seq = DOTween.Sequence();
-            seq.Append(obj3D.transform.DOJump(slotWorldPos, GetDockJumpPower(1.15f), 1, collectFlightDuration).SetEase(Ease.OutCubic));
-            seq.Join(obj3D.transform.DOScale(targetScale, collectFlightDuration).SetEase(Ease.OutQuad));
-            seq.Join(obj3D.transform.DORotateQuaternion(GetDockItemRotation(), collectFlightDuration).SetEase(Ease.OutQuad));
+
+            // 1. Pop towards camera
+            seq.Append(obj3D.transform.DOMove(popPos, popDuration).SetEase(Ease.OutBack, 1.4f));
+            seq.Join(obj3D.transform.DOScale(popScale, popDuration).SetEase(Ease.OutQuad));
+
+            // 2. Flight arc into 3D slot
+            seq.Append(obj3D.transform.DOJump(slotWorldPos, GetDockJumpPower(1.10f), 1, flightDuration).SetEase(Ease.InOutCubic));
+            seq.Join(obj3D.transform.DOScale(targetScale, flightDuration).SetEase(Ease.OutQuad));
+            seq.Join(obj3D.transform.DORotateQuaternion(GetDockItemRotation(slotIndex, obj3D), flightDuration).SetEase(Ease.OutQuad));
+
+            // 3. Touchdown & tile bounce
             seq.OnComplete(() =>
             {
                 tweeningDockObjects.Remove(obj3D);
-                if (obj3D != null) obj3D.transform.DOPunchScale(targetScale * 0.18f, 0.20f, 5, 0.5f);
+                if (obj3D != null)
+                {
+                    obj3D.transform.DOPunchScale(targetScale * 0.20f, 0.22f, 5, 0.5f);
+                }
+
+                if (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)
+                {
+                    slot3DTransforms[slotIndex].DOPunchScale(Vector3.one * 0.08f, 0.20f, 5, 0.5f);
+                }
+
                 onComplete?.Invoke();
             });
+
             seq.Play();
         }
 
@@ -1926,7 +2056,8 @@ namespace MechaFind3D.PhysicsInteraction
         /// </summary>
         private void AlignDockItemsWithSlots()
         {
-            for (int i = 0; i < dockItems.Count && i < slotRects.Count; i++)
+            int maxSlots = slot3DTransforms.Count > 0 ? slot3DTransforms.Count : slotRects.Count;
+            for (int i = 0; i < dockItems.Count && i < maxSlots; i++)
             {
                 DockItemData data = dockItems[i];
                 if (data?.targetObject == null) continue;
@@ -1934,7 +2065,7 @@ namespace MechaFind3D.PhysicsInteraction
                 GameObject obj = data.targetObject.gameObject;
                 if (tweeningDockObjects.Contains(obj)) continue;
 
-                Vector3 slotWorldPos = GetSlotWorldPosition(i);
+                Vector3 slotWorldPos = GetSlotWorldPosition(i, obj);
                 if (slotWorldPos != Vector3.zero &&
                     (obj.transform.position - slotWorldPos).sqrMagnitude > 0.0000001f)
                 {
@@ -1943,7 +2074,7 @@ namespace MechaFind3D.PhysicsInteraction
 
                 obj.transform.localScale = Vector3.one * ComputeFitScaleForSlot(i, obj);
 
-                Quaternion targetRot = GetDockItemRotation();
+                Quaternion targetRot = GetDockItemRotation(i, obj);
                 if (Quaternion.Angle(obj.transform.rotation, targetRot) > 0.05f)
                 {
                     obj.transform.rotation = Quaternion.Slerp(obj.transform.rotation, targetRot, Time.deltaTime * 15f);
@@ -1951,15 +2082,7 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
-        private void UpdateSlotVisuals()
-        {
-            for (int i = 0; i < slotImages.Count; i++)
-            {
-                if (slotImages[i] == null) continue;
-                slotImages[i].DOKill();
-                slotImages[i].color = i < dockItems.Count ? dockSlotFilledColor : dockSlotEmptyColor;
-            }
-        }
+
 
         // ---------------------------------------------------------------------------------------------
         // Level lifecycle
