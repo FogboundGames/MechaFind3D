@@ -491,53 +491,76 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void BuildHeaderOrderPanel(Transform parent)
         {
+            Transform existingHeader = parent.Find("Header_Goal_Panel");
+            bool headerExisted = existingHeader != null;
+
             GameObject headerObj = GetOrCreateChild(parent, "Header_Goal_Panel");
             RectTransform headerRect = headerObj.GetComponent<RectTransform>();
-            headerRect.anchorMin = new Vector2(0.5f, 1f);
-            headerRect.anchorMax = new Vector2(0.5f, 1f);
-            headerRect.pivot = new Vector2(0.5f, 1f);
-            headerRect.anchoredPosition = headerAnchoredPosition;
-            headerRect.sizeDelta = headerSize;
+
+            if (!headerExisted)
+            {
+                headerRect.anchorMin = new Vector2(0.5f, 1f);
+                headerRect.anchorMax = new Vector2(0.5f, 1f);
+                headerRect.pivot = new Vector2(0.5f, 1f);
+                headerRect.anchoredPosition = headerAnchoredPosition;
+                headerRect.sizeDelta = headerSize;
+            }
 
             DestroyChildIfExists(headerObj.transform, "Level_Badge");
             DestroyChildIfExists(headerObj.transform, "Level_Text");
             DestroyChildIfExists(headerObj.transform, "Mecha_Goal_Badge");
             DestroyChildIfExists(headerObj.transform, "Mecha_Goal_Text");
 
+            Transform existingTimerBadge = headerObj.transform.Find("timer_badge");
+            bool timerExisted = existingTimerBadge != null;
+
             GameObject timerBadgeObj = GetOrCreateChild(headerObj.transform, "timer_badge");
             RectTransform timerBadgeRect = timerBadgeObj.GetComponent<RectTransform>();
-            timerBadgeRect.anchorMin = new Vector2(0.5f, 0.0f);
-            timerBadgeRect.anchorMax = new Vector2(0.5f, 0.0f);
-            timerBadgeRect.pivot = new Vector2(0.5f, 1.0f);
-            timerBadgeRect.anchoredPosition = new Vector2(0f, -14f);
-            timerBadgeRect.sizeDelta = new Vector2(260f, 52f);
-            if (timerBadgeObj.GetComponent<Image>() == null)
+            if (!timerExisted)
             {
-                Image timerBadge = timerBadgeObj.AddComponent<Image>();
-                ApplySlicedSprite(timerBadge, LoadUISprite(UIAccentButton));
-                timerBadge.color = UIAccentTint;
+                timerBadgeRect.anchorMin = new Vector2(0.5f, 0.0f);
+                timerBadgeRect.anchorMax = new Vector2(0.5f, 0.0f);
+                timerBadgeRect.pivot = new Vector2(0.5f, 1.0f);
+                timerBadgeRect.anchoredPosition = new Vector2(0f, -10f);
+                timerBadgeRect.sizeDelta = new Vector2(210f, 44f);
+
+                Image timerBadge = timerBadgeObj.GetComponent<Image>() ?? timerBadgeObj.AddComponent<Image>();
+                ApplySlicedSprite(timerBadge, LoadUISprite("Buttons/Button Green"));
+                timerBadge.color = new Color(0.20f, 0.25f, 0.32f, 0.98f);
+
+                Outline timerOutline = timerBadgeObj.GetComponent<Outline>() ?? timerBadgeObj.AddComponent<Outline>();
+                timerOutline.effectColor = new Color(0.42f, 0.52f, 0.65f, 0.95f);
+                timerOutline.effectDistance = new Vector2(2f, -2f);
+
+                Shadow timerDropShadow = timerBadgeObj.GetComponent<Shadow>() ?? timerBadgeObj.AddComponent<Shadow>();
+                timerDropShadow.effectColor = new Color(0f, 0f, 0f, 0.40f);
+                timerDropShadow.effectDistance = new Vector2(0f, -3f);
             }
+
+            Transform existingTimerText = headerObj.transform.Find("timer_text");
+            bool timerTextExisted = existingTimerText != null;
 
             GameObject timerTextObj = GetOrCreateChild(headerObj.transform, "timer_text");
             RectTransform timerTextRect = timerTextObj.GetComponent<RectTransform>();
-            timerTextRect.anchorMin = new Vector2(0.5f, 0.0f);
-            timerTextRect.anchorMax = new Vector2(0.5f, 0.0f);
-            timerTextRect.pivot = new Vector2(0.5f, 1.0f);
-            timerTextRect.anchoredPosition = new Vector2(0f, -14f);
-            timerTextRect.sizeDelta = new Vector2(260f, 52f);
-            if (timerTextObj.GetComponent<Text>() == null)
+            if (!timerTextExisted)
             {
-                Text timerTxt = timerTextObj.AddComponent<Text>();
+                timerTextRect.anchorMin = new Vector2(0.5f, 0.0f);
+                timerTextRect.anchorMax = new Vector2(0.5f, 0.0f);
+                timerTextRect.pivot = new Vector2(0.5f, 1.0f);
+                timerTextRect.anchoredPosition = new Vector2(0f, -10f);
+                timerTextRect.sizeDelta = new Vector2(210f, 44f);
+
+                Text timerTxt = timerTextObj.GetComponent<Text>() ?? timerTextObj.AddComponent<Text>();
                 timerTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                timerTxt.fontSize = titleFontSize;
+                timerTxt.fontSize = 24;
                 timerTxt.fontStyle = FontStyle.Bold;
                 timerTxt.color = Color.white;
-                timerTxt.text = "00:00";
+                timerTxt.text = "⏱️ 00:00";
                 timerTxt.alignment = TextAnchor.MiddleCenter;
 
-                Shadow timerShadow = timerTextObj.AddComponent<Shadow>();
-                timerShadow.effectColor = new Color(0, 0, 0, 0.8f);
-                timerShadow.effectDistance = new Vector2(2, -2);
+                Shadow timerTextShadow = timerTextObj.GetComponent<Shadow>() ?? timerTextObj.AddComponent<Shadow>();
+                timerTextShadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
+                timerTextShadow.effectDistance = new Vector2(1.5f, -1.5f);
             }
 
             GameObject goalsContainer = GetOrCreateChild(headerObj.transform, "Goals_Container");
@@ -763,18 +786,11 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (topGoalContainer == null) return;
 
-            // Detached from the container BEFORE being destroyed. In Play, Destroy() only takes effect at
-            // the end of the frame, so a card rebuilt further down this same call would otherwise still
-            // find the old one as "existing" and skip itself.
-            var staleCards = new List<Transform>();
-            foreach (Transform child in topGoalContainer) staleCards.Add(child);
-            foreach (Transform child in staleCards)
-            {
-                KillCardTweens(child);
-                child.SetParent(null, false);
-                SafeDestroy(child.gameObject);
-            }
-
+            // SyncOrderCards() already removes only cards whose order is no longer live and skips
+            // rebuilding cards that already match a live order (see FindOrderCard below). This used to be
+            // preceded by an unconditional "destroy every card, then rebuild" pass, which meant every
+            // refresh (including the very first one in Start()) wiped out any card appearance set up by
+            // hand in the scene and replaced it with the hardcoded default styling from BuildOrderCard.
             SyncOrderCards();
         }
 
@@ -791,11 +807,20 @@ namespace MechaFind3D.PhysicsInteraction
                 if (order != null && !order.isCompleted) live.Add(order.orderId);
             }
 
+            // Removes cards whose order is no longer live, and any duplicate that already shares an orderId
+            // with an earlier sibling. Duplicates can happen because SetupCustomerOrders() re-rolls which
+            // item occupies each slot every time it runs (and it runs more than once during startup) while
+            // orderId itself is always renumbered 1..N the same way - a build before card identity was
+            // matched by orderId (see BuildOrderCard) could leave more than one card per slot sitting in the
+            // scene, including ones already saved into it from [ExecuteAlways] running in the Editor.
+            var seenOrderIds = new HashSet<int>();
             var toRemove = new List<Transform>();
             foreach (Transform child in topGoalContainer)
             {
                 if (!child.name.StartsWith(OrderCardPrefix)) continue; // retiring cards own their own removal
-                if (!live.Contains(GetCardOrderId(child))) toRemove.Add(child);
+                int orderId = GetCardOrderId(child);
+                bool duplicate = !seenOrderIds.Add(orderId);
+                if (duplicate || !live.Contains(orderId)) toRemove.Add(child);
             }
             foreach (Transform child in toRemove)
             {
@@ -808,8 +833,11 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 CustomerOrder order = orders[i];
                 if (order == null || order.isCompleted) continue;
-                if (FindOrderCard(order.orderId) != null) continue;
 
+                // Always runs, even for a card that already matches this order: BuildOrderCard only
+                // constructs the shell for a genuinely new card, but it (and BuildOrderCardIcon) still need
+                // to run every sync to populate/refresh the order's icon and remaining-count text - which is
+                // the part a hand-authored scene card never has to begin with.
                 GameObject card = BuildOrderCard(order, i);
                 card.transform.SetSiblingIndex(Mathf.Min(i, topGoalContainer.childCount - 1));
             }
@@ -918,67 +946,66 @@ namespace MechaFind3D.PhysicsInteraction
 
         private GameObject BuildOrderCard(CustomerOrder order, int spawnIndex)
         {
-            GameObject cardObj = NewUIObject($"{OrderCardPrefix}{order.orderId}_{order.itemId}", topGoalContainer);
+            string cardName = $"{OrderCardPrefix}{order.orderId}_{order.itemId}";
 
-            RectTransform cardRect = cardObj.GetComponent<RectTransform>();
-            cardRect.sizeDelta = goalCardSize;
+            // Matched by orderId alone (same lookup FindOrderCard uses elsewhere), not the full name.
+            // CustomerOrderManager re-rolls which item occupies each order slot every time
+            // SetupCustomerOrders() runs (and it runs more than once during startup), while orderId itself
+            // is always renumbered 1..N the same way each time. Matching on the full "orderId_itemId" name
+            // meant a slot whose item changed between rolls silently spawned a second card and never
+            // cleaned up the first - the "too many cards" bug. Matching on orderId treats it as the same
+            // slot and just renames/updates it in place.
+            Transform existingCard = FindOrderCard(order.orderId);
+            bool cardExisted = existingCard != null;
 
-            LayoutElement le = cardObj.GetComponent<LayoutElement>() ?? cardObj.AddComponent<LayoutElement>();
-            le.preferredWidth = goalCardSize.x;
-            le.preferredHeight = goalCardSize.y;
-            le.minWidth = goalCardSize.x;
-            le.minHeight = goalCardSize.y;
-            le.flexibleWidth = 0f;
-            le.flexibleHeight = 0f;
+            GameObject cardObj;
+            if (cardExisted)
+            {
+                cardObj = existingCard.gameObject;
+                cardObj.name = cardName;
+            }
+            else
+            {
+                // Clone whatever card is already sitting in the container (hand-authored in the scene, or a
+                // previous runtime-built one) so a brand-new customer's card matches the established look
+                // instead of the hardcoded fallback shell below. Only falls back to that shell when the
+                // container is completely empty (e.g. a fresh scene with zero cards authored yet).
+                Transform template = FindOrderCardTemplate();
+                if (template != null)
+                {
+                    cardObj = Instantiate(template.gameObject, topGoalContainer, false);
+                    cardObj.name = cardName;
+                }
+                else
+                {
+                    cardObj = BuildDefaultOrderCardShell(cardName);
+                }
+            }
 
-            Image cardBg = cardObj.AddComponent<Image>();
-            ApplySlicedSprite(cardBg, LoadUISprite("Buttons/Button Green"));
-            cardBg.color = Color.white;
+            // Populates/refreshes the order's icon and remaining-count text without touching the card's
+            // own images/colors, whether the card is hand-authored, cloned, or freshly built.
+            Transform windowTr = cardObj.transform.Find("Inner_Window");
+            Transform iconTr = windowTr != null ? windowTr.Find("Icon") : cardObj.transform.Find("Icon");
+            if (iconTr != null)
+            {
+                BuildOrderCardIcon(iconTr.gameObject, order);
+            }
 
-            Outline cardOutline = cardObj.GetComponent<Outline>() ?? cardObj.AddComponent<Outline>();
-            cardOutline.effectColor = new Color(0.18f, 0.48f, 0.08f, 0.95f);
-            cardOutline.effectDistance = new Vector2(2.5f, -2.5f);
+            Text countTxt = cardObj.GetComponentInChildren<Text>();
+            if (countTxt != null)
+            {
+                int remCount = RemainingForOrder(order);
+                countTxt.text = remCount > 0 ? $"{remCount}" : "✓";
+            }
 
-            GameObject iconObj = NewUIObject("Icon", cardObj.transform);
-            RectTransform iconRect = iconObj.GetComponent<RectTransform>();
-            iconRect.anchorMin = new Vector2(0.02f, 0.20f);
-            iconRect.anchorMax = new Vector2(0.98f, 0.98f);
-            iconRect.pivot = new Vector2(0.5f, 0.5f);
-            iconRect.anchoredPosition = Vector2.zero;
-            iconRect.sizeDelta = Vector2.zero;
-
-            BuildOrderCardIcon(iconObj, order);
-
-            GameObject textObj = NewUIObject("Text", cardObj.transform);
-            RectTransform textRect = textObj.GetComponent<RectTransform>();
-            textRect.anchorMin = new Vector2(0f, 0.02f);
-            textRect.anchorMax = new Vector2(1f, 0.26f);
-            textRect.pivot = new Vector2(0.5f, 0.5f);
-            textRect.anchoredPosition = Vector2.zero;
-            textRect.sizeDelta = Vector2.zero;
-
-            Text txt = textObj.AddComponent<Text>();
-            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            txt.fontSize = goalCardFontSize;
-            txt.fontStyle = FontStyle.Bold;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.color = Color.white;
-            txt.horizontalOverflow = HorizontalWrapMode.Overflow;
-            txt.verticalOverflow = VerticalWrapMode.Overflow;
-            txt.text = $"{RemainingForOrder(order)}";
-
-            Shadow shadow = textObj.AddComponent<Shadow>();
-            shadow.effectColor = new Color(0, 0, 0, 0.9f);
-            shadow.effectDistance = new Vector2(2, -2);
-
-            Outline textOutline = textObj.AddComponent<Outline>();
-            textOutline.effectColor = new Color(0, 0, 0, 0.9f);
-            textOutline.effectDistance = new Vector2(1.5f, -1.5f);
-
-            if (Application.isPlaying)
+            if (Application.isPlaying && !cardExisted)
             {
                 cardObj.transform.localScale = Vector3.zero;
-                CanvasGroup cg = cardObj.AddComponent<CanvasGroup>();
+                // Not "GetComponent<CanvasGroup>() ?? AddComponent<CanvasGroup>()": ?? doesn't go through
+                // UnityEngine.Object's overloaded null-equality, so it can hold onto a component reference
+                // Unity itself considers gone and crash the next time it's touched.
+                CanvasGroup cg = cardObj.GetComponent<CanvasGroup>();
+                if (cg == null) cg = cardObj.AddComponent<CanvasGroup>();
                 cg.alpha = 0f;
 
                 Sequence spawnSeq = DOTween.Sequence();
@@ -987,7 +1014,7 @@ namespace MechaFind3D.PhysicsInteraction
                 spawnSeq.Join(cg.DOFade(1f, goalSpawnFadeDuration));
                 spawnSeq.Play();
             }
-            else
+            else if (!cardExisted)
             {
                 cardObj.transform.localScale = Vector3.one;
             }
@@ -995,13 +1022,121 @@ namespace MechaFind3D.PhysicsInteraction
             return cardObj;
         }
 
+        /// <summary>Any already-built order card in the container, used as the visual template for a new one.</summary>
+        private Transform FindOrderCardTemplate()
+        {
+            if (topGoalContainer == null) return null;
+            foreach (Transform child in topGoalContainer)
+            {
+                if (child.name.StartsWith(OrderCardPrefix)) return child;
+            }
+            return null;
+        }
+
+        /// <summary>Hardcoded fallback shell, used only when the container has no existing card to clone from.</summary>
+        private GameObject BuildDefaultOrderCardShell(string cardName)
+        {
+            GameObject cardObj = NewUIObject(cardName, topGoalContainer);
+            RectTransform cardRect = cardObj.GetComponent<RectTransform>();
+
+            Vector2 cardSize = new Vector2(140f, 155f);
+            cardRect.sizeDelta = cardSize;
+
+            LayoutElement le = cardObj.AddComponent<LayoutElement>();
+            le.preferredWidth = cardSize.x;
+            le.preferredHeight = cardSize.y;
+            le.minWidth = cardSize.x;
+            le.minHeight = cardSize.y;
+            le.flexibleWidth = 0f;
+            le.flexibleHeight = 0f;
+
+            Image cardBg = cardObj.AddComponent<Image>();
+            ApplySlicedSprite(cardBg, LoadUISprite("Buttons/Button Green"));
+            cardBg.color = new Color(0.91f, 0.22f, 0.30f, 1.0f);
+
+            Outline cardOutline = cardObj.AddComponent<Outline>();
+            cardOutline.effectColor = new Color(0.08f, 0.08f, 0.08f, 0.95f);
+            cardOutline.effectDistance = new Vector2(2.5f, -2.5f);
+
+            Shadow cardShadow = cardObj.AddComponent<Shadow>();
+            cardShadow.effectColor = new Color(0f, 0f, 0f, 0.45f);
+            cardShadow.effectDistance = new Vector2(0f, -4f);
+
+            GameObject windowObj = NewUIObject("Inner_Window", cardObj.transform);
+            RectTransform windowRect = windowObj.GetComponent<RectTransform>();
+            windowRect.anchorMin = new Vector2(0.06f, 0.28f);
+            windowRect.anchorMax = new Vector2(0.94f, 0.95f);
+            windowRect.offsetMin = Vector2.zero;
+            windowRect.offsetMax = Vector2.zero;
+
+            Image windowBg = windowObj.AddComponent<Image>();
+            ApplySlicedSprite(windowBg, LoadUISprite("Buttons/Button Green"));
+            windowBg.color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+
+            Outline windowOutline = windowObj.AddComponent<Outline>();
+            windowOutline.effectColor = new Color(0.12f, 0.12f, 0.12f, 0.90f);
+            windowOutline.effectDistance = new Vector2(1.5f, -1.5f);
+
+            GameObject iconObj = NewUIObject("Icon", windowObj.transform);
+            RectTransform iconRect = iconObj.GetComponent<RectTransform>();
+            iconRect.anchorMin = new Vector2(0.04f, 0.04f);
+            iconRect.anchorMax = new Vector2(0.96f, 0.96f);
+            iconRect.pivot = new Vector2(0.5f, 0.5f);
+            iconRect.anchoredPosition = Vector2.zero;
+            iconRect.sizeDelta = Vector2.zero;
+
+            GameObject dividerObj = NewUIObject("Divider_Line", cardObj.transform);
+            RectTransform dividerRect = dividerObj.GetComponent<RectTransform>();
+            dividerRect.anchorMin = new Vector2(0.06f, 0.26f);
+            dividerRect.anchorMax = new Vector2(0.94f, 0.27f);
+            dividerRect.sizeDelta = Vector2.zero;
+
+            Image dividerImg = dividerObj.AddComponent<Image>();
+            dividerImg.color = new Color(0.42f, 0.68f, 0.88f, 0.90f);
+
+            GameObject footerObj = NewUIObject("Footer_Bar", cardObj.transform);
+            RectTransform footerRect = footerObj.GetComponent<RectTransform>();
+            footerRect.anchorMin = new Vector2(0.05f, 0.05f);
+            footerRect.anchorMax = new Vector2(0.95f, 0.25f);
+            footerRect.offsetMin = Vector2.zero;
+            footerRect.offsetMax = Vector2.zero;
+
+            GameObject textObj = NewUIObject("Text", footerObj.transform);
+            RectTransform textRect = textObj.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+
+            Text txt = textObj.AddComponent<Text>();
+            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            txt.fontSize = 22;
+            txt.fontStyle = FontStyle.Bold;
+            txt.alignment = TextAnchor.MiddleCenter;
+            txt.color = Color.white;
+
+            return cardObj;
+        }
+
         private void BuildOrderCardIcon(GameObject iconObj, CustomerOrder order)
         {
+            // Cleared first so a repeat call on a card that already has an icon (matched to a live order on
+            // every sync now, not just once) doesn't stack a second 3D model wrapper on top of the old one.
+            // Detached before destroying: in Play, Destroy() only lands at end of frame, so an un-detached
+            // stale wrapper would still answer Find()/GetComponentsInChildren for the rest of this call.
+            Transform staleModel = iconObj.transform.Find("3D_Icon_Wrapper");
+            if (staleModel != null)
+            {
+                staleModel.SetParent(null, false);
+                SafeDestroy(staleModel.gameObject);
+            }
+
             GameObject displayPrefab = FindDisplayPrefabForItem(order.itemId);
 
             if (displayPrefab == null)
             {
-                Image iconImg = iconObj.AddComponent<Image>();
+                Image iconImg = iconObj.GetComponent<Image>() ?? iconObj.AddComponent<Image>();
+                iconImg.enabled = true;
                 Sprite foodIcon = order.itemIcon != null ? order.itemIcon
                                 : (string.IsNullOrEmpty(order.itemId) ? null : IconSprite(order.itemId));
                 if (foodIcon != null)
@@ -1018,6 +1153,12 @@ namespace MechaFind3D.PhysicsInteraction
                 }
                 return;
             }
+
+            // The 3D model wrapper renders on top of/instead of the flat icon sprite, so that Image (if any,
+            // e.g. left over from a previous order on this same card) is hidden rather than destroyed - an
+            // in-place disable is safe to repeat every call, unlike destroying and immediately re-adding one.
+            Image existingIconImg = iconObj.GetComponent<Image>();
+            if (existingIconImg != null) existingIconImg.enabled = false;
 
             Quaternion modelRotation = Quaternion.Euler(goalCard3DModelTiltX, -25f, 0f);
             string itemIdLower = order.itemId != null ? order.itemId.ToLowerInvariant() : "";
@@ -1074,7 +1215,7 @@ namespace MechaFind3D.PhysicsInteraction
                 float worldUnitInUIPixels = modelWrapper.transform.lossyScale.x;
                 float rawMeshSizeInUIPixels = (worldUnitInUIPixels > 0.00001f) ? (maxWorldDim / worldUnitInUIPixels) : maxWorldDim;
 
-                float effectiveTargetSize = Mathf.Max(150f, goalCard3DModelTargetSize);
+                float effectiveTargetSize = 100f;
                 float scaleFactor = (rawMeshSizeInUIPixels > 0.0001f) ? (effectiveTargetSize / rawMeshSizeInUIPixels) : 1f;
 
                 modelObj.transform.localScale = Vector3.one * scaleFactor;
@@ -1085,7 +1226,11 @@ namespace MechaFind3D.PhysicsInteraction
                 modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
             }
 
-            // Fixed orientation - UIRotator is NOT added to keep objects static from a single view direction
+            if (Application.isPlaying)
+            {
+                modelWrapper.transform.DOLocalMoveY(goalCard3DModelLocalPosition.y + 4f, 1.8f).SetEase(Ease.InOutSine).SetLoops(-1, LoopType.Yoyo);
+                modelWrapper.transform.DORotate(modelRotation.eulerAngles + new Vector3(0f, 12f, 0f), 3.2f).SetEase(Ease.InOutSine).SetLoops(-1, LoopType.Yoyo);
+            }
         }
 
         /// <summary>
