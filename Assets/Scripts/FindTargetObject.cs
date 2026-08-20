@@ -24,12 +24,15 @@ namespace MechaFind3D.PhysicsInteraction
         private Renderer objectRenderer;
         private Vector3 originalScale;
 
+        private ItemOutlineHighlighter outlineHighlighter;
+
         public Vector3 OriginalScale => (originalScale != Vector3.zero ? originalScale : Vector3.one);
 
         private void Awake()
         {
             objectRenderer = GetComponent<Renderer>();
             originalScale = transform.localScale;
+            outlineHighlighter = GetComponent<ItemOutlineHighlighter>();
         }
 
         public void Initialize(ObjectShapeType shape, Color color, string nameStr)
@@ -50,6 +53,18 @@ namespace MechaFind3D.PhysicsInteraction
             transform.DOKill();
             transform.localScale = originalScale;
             transform.DOPunchScale(originalScale * 0.4f, 0.5f, 8, 1f);
+        }
+
+        /// <summary>
+        /// Activates or deactivates the vibrant yellow outline pass around this object.
+        /// </summary>
+        public void SetYellowOutlineActive(bool active, Color? customColor = null)
+        {
+            if (outlineHighlighter == null)
+            {
+                outlineHighlighter = gameObject.AddComponent<ItemOutlineHighlighter>();
+            }
+            outlineHighlighter.SetOutlineActive(active, customColor);
         }
     }
 }

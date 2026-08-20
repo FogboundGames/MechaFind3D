@@ -1512,6 +1512,7 @@ namespace MechaFind3D.PhysicsInteraction
             if (dockItems.Count >= DockCapacity || dockItems.Count >= maxCapacity) return false;
 
             item.isDocked = true;
+            item.SetYellowOutlineActive(true);
 
             Rigidbody rb = item.GetComponent<Rigidbody>();
             if (rb != null)
@@ -1768,6 +1769,10 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     tweeningDockObjects.Remove(obj);
                     PunchOrderCard(card);
+                    if (VFXManager.Instance != null)
+                    {
+                        VFXManager.Instance.PlayMatchBlastVFX(target, data.objectColor);
+                    }
                     SafeDestroy(obj);
 
                     if (++landed >= total) CompleteDeliveredOrder(order, total);

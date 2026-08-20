@@ -75,6 +75,11 @@ namespace MechaFind3D
             // 3. Reveal solid opaque mecha material so it stands out clearly
             ChameleonCamouflage.ApplyRevealedMaterial(gameObject);
 
+            if (PhysicsInteraction.VFXManager.Instance != null)
+            {
+                PhysicsInteraction.VFXManager.Instance.PlayMechaRevealVFX(transform.position);
+            }
+
             // 4. STEP 1: APPEAR ANIMATION (Sahnede Belirme)
             Vector3 startPos = host != null ? host.transform.position : transform.position;
             startPos.y = 0.05f;

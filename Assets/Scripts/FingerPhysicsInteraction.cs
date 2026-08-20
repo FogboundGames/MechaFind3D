@@ -471,9 +471,16 @@ namespace MechaFind3D.PhysicsInteraction
             if (TryHandleStandaloneMechaTap(screenPos)) return;
 
             GetTouchWorldPosition(screenPos, out FindTargetObject targetItem, out Collider hitCollider);
-            if (targetItem != null && CanvasUIDesignManager.Instance != null)
+            if (targetItem != null)
             {
-                CanvasUIDesignManager.Instance.TryCollectItemToDock(targetItem, hitCollider);
+                if (VFXManager.Instance != null)
+                {
+                    VFXManager.Instance.PlayTouchRippleVFX(targetItem.transform.position);
+                }
+                if (CanvasUIDesignManager.Instance != null)
+                {
+                    CanvasUIDesignManager.Instance.TryCollectItemToDock(targetItem, hitCollider);
+                }
             }
         }
 
