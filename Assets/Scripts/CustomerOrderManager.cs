@@ -48,7 +48,7 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Tooltip("Kaç sipariş kartı aynı anda üstte dursun.")]
         [Min(1)]
-        [SerializeField] private int activeOrderCount = 3;
+        [SerializeField] private int activeOrderCount = 4;
 
         [Tooltip("Bir siparişin isteyebileceği en az / en çok adet. Seviye hedefi bu aralıkta parçalara bölünür.")]
         [SerializeField] private Vector2Int orderSizeRange = new Vector2Int(2, 3);
@@ -114,7 +114,9 @@ namespace MechaFind3D.PhysicsInteraction
 
             BuildOrderQueue();
 
-            for (int i = 0; i < Mathf.Max(1, activeOrderCount); i++)
+            if (activeOrderCount < 4) activeOrderCount = 4;
+
+            for (int i = 0; i < activeOrderCount; i++)
             {
                 activeOrders.Add(pendingOrders.Count > 0 ? pendingOrders.Dequeue() : null);
             }

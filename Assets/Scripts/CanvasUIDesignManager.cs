@@ -57,7 +57,7 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float goalCardIconSize = 65f;
         [SerializeField] private int goalCardFontSize = 32;
         [SerializeField] private float goalCard3DModelScale = 450f;
-        [SerializeField] private float goalCard3DModelTargetSize = 115f;
+        [SerializeField] private float goalCard3DModelTargetSize = 150f;
         [SerializeField] private Vector3 goalCard3DModelLocalPosition = new Vector3(0f, 0f, -25f);
         [SerializeField] private float goalCard3DModelTiltX = 15f;
 
@@ -84,9 +84,9 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float dockPanelMaxWidth = 1020f;
         [SerializeField] private float dockSlotSpacing = 18f;
         [SerializeField] private float dockPanelPadding = 22f;
-        [SerializeField] private Color dockPanelColor = new Color(0.06f, 0.10f, 0.22f, 0.94f);
-        [SerializeField] private Color dockSlotEmptyColor = new Color(0.12f, 0.18f, 0.36f, 0.85f);
-        [SerializeField] private Color dockSlotFilledColor = new Color(0.20f, 0.34f, 0.62f, 0.95f);
+        [SerializeField] private Color dockPanelColor = new Color(0f, 0f, 0f, 0f);
+        [SerializeField] private Color dockSlotEmptyColor = new Color(0.38f, 0.78f, 0.12f, 0.95f);
+        [SerializeField] private Color dockSlotFilledColor = new Color(0.52f, 0.94f, 0.20f, 1.0f);
 
         [Header("Item Collection Flight")]
         [SerializeField] private float collectFlightDuration = 0.38f;
@@ -504,10 +504,11 @@ namespace MechaFind3D.PhysicsInteraction
 
             GameObject timerBadgeObj = GetOrCreateChild(headerObj.transform, "timer_badge");
             RectTransform timerBadgeRect = timerBadgeObj.GetComponent<RectTransform>();
-            timerBadgeRect.anchorMin = new Vector2(0.35f, 0.0f);
-            timerBadgeRect.anchorMax = new Vector2(0.65f, 0.16f);
-            timerBadgeRect.anchoredPosition = Vector2.zero;
-            timerBadgeRect.sizeDelta = Vector2.zero;
+            timerBadgeRect.anchorMin = new Vector2(0.5f, 0.0f);
+            timerBadgeRect.anchorMax = new Vector2(0.5f, 0.0f);
+            timerBadgeRect.pivot = new Vector2(0.5f, 1.0f);
+            timerBadgeRect.anchoredPosition = new Vector2(0f, -14f);
+            timerBadgeRect.sizeDelta = new Vector2(260f, 52f);
             if (timerBadgeObj.GetComponent<Image>() == null)
             {
                 Image timerBadge = timerBadgeObj.AddComponent<Image>();
@@ -517,10 +518,11 @@ namespace MechaFind3D.PhysicsInteraction
 
             GameObject timerTextObj = GetOrCreateChild(headerObj.transform, "timer_text");
             RectTransform timerTextRect = timerTextObj.GetComponent<RectTransform>();
-            timerTextRect.anchorMin = new Vector2(0.35f, 0.0f);
-            timerTextRect.anchorMax = new Vector2(0.65f, 0.16f);
-            timerTextRect.anchoredPosition = Vector2.zero;
-            timerTextRect.sizeDelta = Vector2.zero;
+            timerTextRect.anchorMin = new Vector2(0.5f, 0.0f);
+            timerTextRect.anchorMax = new Vector2(0.5f, 0.0f);
+            timerTextRect.pivot = new Vector2(0.5f, 1.0f);
+            timerTextRect.anchoredPosition = new Vector2(0f, -14f);
+            timerTextRect.sizeDelta = new Vector2(260f, 52f);
             if (timerTextObj.GetComponent<Text>() == null)
             {
                 Text timerTxt = timerTextObj.AddComponent<Text>();
@@ -538,7 +540,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             GameObject goalsContainer = GetOrCreateChild(headerObj.transform, "Goals_Container");
             topGoalContainer = goalsContainer.GetComponent<RectTransform>();
-            topGoalContainer.anchorMin = new Vector2(0.01f, 0.18f);
+            topGoalContainer.anchorMin = new Vector2(0.01f, 0.0f);
             topGoalContainer.anchorMax = new Vector2(0.99f, 1f);
             topGoalContainer.sizeDelta = Vector2.zero;
 
@@ -574,11 +576,10 @@ namespace MechaFind3D.PhysicsInteraction
 
             Image bg = dockObj.GetComponent<Image>() ?? dockObj.AddComponent<Image>();
             bg.sprite = null;
-            bg.color = dockPanelColor;
+            bg.color = Color.clear;
 
-            Outline dockOutline = dockObj.GetComponent<Outline>() ?? dockObj.AddComponent<Outline>();
-            dockOutline.effectColor = new Color(0.18f, 0.32f, 0.58f, 0.75f);
-            dockOutline.effectDistance = new Vector2(2, -2);
+            Outline dockOutline = dockObj.GetComponent<Outline>();
+            if (dockOutline != null) SafeDestroy(dockOutline);
 
             GameObject slotsContainerObj = GetOrCreateChild(dockObj.transform, "Slots_Container");
             RectTransform slotsRect = slotsContainerObj.GetComponent<RectTransform>();
@@ -613,38 +614,49 @@ namespace MechaFind3D.PhysicsInteraction
 
             for (int i = 0; i < slotCount; i++)
             {
-                GameObject slotObj = GetOrCreateChild(slotsContainerObj.transform, $"DockSlot_{i}");
+                Transform existing = slotsContainerObj.transform.Find($"DockSlot_{i}");
+                GameObject slotObj;
+                RectTransform slotRect;
+                Image slotBg;
+
+                if (existing != null)
+                {
+                    // Preserve exact manual transforms (rotation, position, scale) set by user in Unity Editor
+                    slotObj = existing.gameObject;
+                    slotRect = slotObj.GetComponent<RectTransform>();
+                    slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
+                }
+                else
+                {
+                    slotObj = GetOrCreateChild(slotsContainerObj.transform, $"DockSlot_{i}");
+                    slotRect = slotObj.GetComponent<RectTransform>();
+                    slotRect.sizeDelta = new Vector2(slotSize, slotSize);
+                    slotRect.localRotation = Quaternion.Euler(55f, 0f, -18f);
+
+                    slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
+                }
+
+                if (slotBg != null)
+                {
+                    ApplySlicedSprite(slotBg, LoadUISprite("Buttons/Button Green"));
+                    slotBg.color = dockSlotEmptyColor;
+                    slotBg.raycastTarget = false;
+                }
+
+                Outline slotOutline = slotObj.GetComponent<Outline>() ?? slotObj.AddComponent<Outline>();
+                slotOutline.effectColor = new Color(0.18f, 0.48f, 0.08f, 0.95f);
+                slotOutline.effectDistance = new Vector2(1.5f, -1.5f);
+
                 slotObj.transform.SetSiblingIndex(i);
 
                 DestroyChildIfExists(slotObj.transform, "SelectionBadge");
                 DestroyChildIfExists(slotObj.transform, "LabelText");
 
-                RectTransform slotRect = slotObj.GetComponent<RectTransform>();
-                slotRect.sizeDelta = new Vector2(slotSize, slotSize);
-
-                LayoutElement le = slotObj.GetComponent<LayoutElement>() ?? slotObj.AddComponent<LayoutElement>();
-                le.preferredWidth = slotSize;
-                le.preferredHeight = slotSize;
-                le.minWidth = slotSize;
-                le.minHeight = slotSize;
-
-                Image slotBg = slotObj.GetComponent<Image>() ?? slotObj.AddComponent<Image>();
-                ApplySlicedSprite(slotBg, LoadUISprite(UIAccentSquareButton));
-                slotBg.color = dockSlotEmptyColor;
-                slotBg.raycastTarget = false;
-
-                // An empty slot's fill sits very close to the panel behind it, so the outline is what
-                // actually draws the square. Kept bright enough to read at phone size.
-                Outline slotOutline = slotObj.GetComponent<Outline>() ?? slotObj.AddComponent<Outline>();
-                slotOutline.effectColor = new Color(0.38f, 0.58f, 0.92f, 0.85f);
-                slotOutline.effectDistance = new Vector2(2, -2);
-
-                // The slots used to be selectable boxes; nothing about the dock reacts to a click now.
                 Button staleBtn = slotObj.GetComponent<Button>();
                 if (staleBtn != null) SafeDestroy(staleBtn);
 
-                slotRects.Add(slotRect);
-                slotImages.Add(slotBg);
+                if (slotRect != null) slotRects.Add(slotRect);
+                if (slotBg != null) slotImages.Add(slotBg);
             }
 
             UpdateSlotVisuals();
@@ -1025,8 +1037,8 @@ namespace MechaFind3D.PhysicsInteraction
 
             GameObject iconObj = NewUIObject("Icon", cardObj.transform);
             RectTransform iconRect = iconObj.GetComponent<RectTransform>();
-            iconRect.anchorMin = new Vector2(0.05f, 0.26f);
-            iconRect.anchorMax = new Vector2(0.95f, 0.96f);
+            iconRect.anchorMin = new Vector2(0.02f, 0.20f);
+            iconRect.anchorMax = new Vector2(0.98f, 0.98f);
             iconRect.pivot = new Vector2(0.5f, 0.5f);
             iconRect.anchoredPosition = Vector2.zero;
             iconRect.sizeDelta = Vector2.zero;
@@ -1103,10 +1115,27 @@ namespace MechaFind3D.PhysicsInteraction
                 return;
             }
 
+            Quaternion modelRotation = Quaternion.Euler(goalCard3DModelTiltX, -25f, 0f);
+            string itemIdLower = order.itemId != null ? order.itemId.ToLowerInvariant() : "";
+            if (itemIdLower.Equals("watermelon_001"))
+            {
+                // Half watermelon (round red cut face facing front)
+                modelRotation = Quaternion.Euler(-75f, 0f, 0f);
+            }
+            else if (itemIdLower.Contains("watermelon"))
+            {
+                // Triangular watermelon slice (watermelon_002 / watermelon_003): tilted diagonally at ~40 deg (matching Image 2)
+                modelRotation = Quaternion.Euler(15f, -30f, 40f);
+            }
+            else if (itemIdLower.Contains("fish"))
+            {
+                modelRotation = Quaternion.Euler(15f, -45f, 10f);
+            }
+
             GameObject modelWrapper = new GameObject("3D_Icon_Wrapper");
             modelWrapper.transform.SetParent(iconObj.transform, false);
             modelWrapper.transform.localPosition = new Vector3(0f, 0f, goalCard3DModelLocalPosition.z);
-            modelWrapper.transform.localRotation = Quaternion.Euler(goalCard3DModelTiltX, -25f, 0f);
+            modelWrapper.transform.localRotation = modelRotation;
             modelWrapper.transform.localScale = Vector3.one;
 
             GameObject modelObj = Instantiate(displayPrefab, modelWrapper.transform);
@@ -1141,7 +1170,7 @@ namespace MechaFind3D.PhysicsInteraction
                 float worldUnitInUIPixels = modelWrapper.transform.lossyScale.x;
                 float rawMeshSizeInUIPixels = (worldUnitInUIPixels > 0.00001f) ? (maxWorldDim / worldUnitInUIPixels) : maxWorldDim;
 
-                float effectiveTargetSize = (goalCard3DModelTargetSize > 180f || goalCard3DModelTargetSize <= 0f) ? 115f : goalCard3DModelTargetSize;
+                float effectiveTargetSize = Mathf.Max(150f, goalCard3DModelTargetSize);
                 float scaleFactor = (rawMeshSizeInUIPixels > 0.0001f) ? (effectiveTargetSize / rawMeshSizeInUIPixels) : 1f;
 
                 modelObj.transform.localScale = Vector3.one * scaleFactor;
@@ -1764,7 +1793,12 @@ namespace MechaFind3D.PhysicsInteraction
         public Vector3 GetSlotWorldPosition(int slotIndex)
         {
             if (slotIndex < 0 || slotIndex >= slotRects.Count) return Vector3.zero;
-            return GetUIWorldPosition(slotRects[slotIndex]);
+            Vector3 pos = GetUIWorldPosition(slotRects[slotIndex]);
+            if (mainCamera != null && pos != Vector3.zero)
+            {
+                pos += mainCamera.transform.up * 0.02f;
+            }
+            return pos;
         }
 
         private float ComputeFitScaleForSlot(int slotIndex, GameObject obj3D)
@@ -1833,7 +1867,7 @@ namespace MechaFind3D.PhysicsInteraction
 
         private static Quaternion GetDockItemRotation()
         {
-            return Quaternion.Euler(22f, 35f, 0f);
+            return Quaternion.Euler(12f, 25f, 0f);
         }
 
         /// <summary>
