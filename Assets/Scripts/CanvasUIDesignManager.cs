@@ -40,13 +40,13 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float miniObjectDockScale = 0.08f;
 
         [Header("Header Order Panel")]
-        [SerializeField] private Vector2 headerSize = new Vector2(1000f, 170f);
-        [SerializeField] private Vector2 headerAnchoredPosition = new Vector2(0f, -100f);
+        [SerializeField] private Vector2 headerSize = new Vector2(950f, 220f);
+        [SerializeField] private Vector2 headerAnchoredPosition = new Vector2(0f, -60f);
         [SerializeField] private int titleFontSize = 28;
-        [SerializeField] private int goalContainerSpacing = 5;
+        [SerializeField] private int goalContainerSpacing = 24;
 
         [Header("Order Cards")]
-        [SerializeField] private Vector2 goalCardSize = new Vector2(330f, 100f);
+        [SerializeField] private Vector2 goalCardSize = new Vector2(180f, 155f);
         [Tooltip("Where the rule down an order card sits, as a fraction of its width. Left of it: the item and how many are still wanted. Right of it: the customer the order belongs to.")]
         [Range(0.3f, 0.9f)]
         [SerializeField] private float goalCardDividerX = 0.60f;
@@ -54,11 +54,11 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private Color goalCardDividerColor = new Color(1f, 1f, 1f, 0.65f);
         [Tooltip("Portrait for the customer half of an order card. Left empty, a plain placeholder panel is drawn so the zone is still visible.")]
         [SerializeField] private Sprite customerPortraitSprite;
-        [SerializeField] private float goalCardIconSize = 78f;
-        [SerializeField] private int goalCardFontSize = 34;
+        [SerializeField] private float goalCardIconSize = 65f;
+        [SerializeField] private int goalCardFontSize = 32;
         [SerializeField] private float goalCard3DModelScale = 450f;
-        [SerializeField] private float goalCard3DModelTargetSize = 95f;
-        [SerializeField] private Vector3 goalCard3DModelLocalPosition = new Vector3(32.5f, 0f, -25f);
+        [SerializeField] private float goalCard3DModelTargetSize = 115f;
+        [SerializeField] private Vector3 goalCard3DModelLocalPosition = new Vector3(0f, 0f, -25f);
         [SerializeField] private float goalCard3DModelTiltX = 15f;
 
         [Header("Order Card Animations")]
@@ -76,7 +76,7 @@ namespace MechaFind3D.PhysicsInteraction
         [Header("Bottom Dock (square slots)")]
         [Tooltip("Kaç kare slot olsun. Slotlar dolar ve hiçbir sipariş tamamlanmazsa oyun biter.")]
         [Min(1)]
-        [SerializeField] private int dockCapacity = 7;
+        [SerializeField] private int dockCapacity = 5;
         [SerializeField] private Vector2 dockPanelAnchoredPosition = new Vector2(0f, 90f);
         [Tooltip("Edge length of one square slot, in reference-resolution pixels. Slots shrink below this when the row would otherwise be wider than Dock Panel Max Width.")]
         [SerializeField] private float dockSlotSize = 165f;
@@ -208,7 +208,34 @@ namespace MechaFind3D.PhysicsInteraction
         private void OnEnable()
         {
             if (Instance == null) Instance = this;
+            if (!Application.isPlaying)
+            {
+                EnsureCanvasStructure();
+            }
         }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (!Application.isPlaying)
+            {
+                UnityEditor.EditorApplication.delayCall -= EditorRefresh;
+                UnityEditor.EditorApplication.delayCall += EditorRefresh;
+            }
+        }
+
+        private void EditorRefresh()
+        {
+            if (this == null) return;
+            EnsureCanvasStructure();
+        }
+
+        [ContextMenu("Rebuild UI")]
+        public void RebuildUIFromContextMenu()
+        {
+            EnsureCanvasStructure();
+        }
+#endif
 
         private void Start()
         {
@@ -300,7 +327,7 @@ namespace MechaFind3D.PhysicsInteraction
             BuildHeaderOrderPanel(canvasObj.transform);
             BuildBottomDockPanel(canvasObj.transform);
             BuildShuffleButton(canvasObj.transform);
-            BuildTrashButton(canvasObj.transform);
+            RemoveTrashButton(canvasObj.transform);
             Canvas.ForceUpdateCanvases();
 
             CustomerOrderManager orderManager = EnsureSingleOrderManager();
@@ -359,7 +386,7 @@ namespace MechaFind3D.PhysicsInteraction
                 if (go == null) continue;
                 if (go.name.StartsWith("Slot3DBox") || go.name.StartsWith("Delivery_3DBox")
                     || go.name.StartsWith("PackagingBox") || go.name.StartsWith("Cardboard Box")
-                    || go.name.StartsWith("ConveyorInitialBox"))
+                    || go.name.StartsWith("ConveyorInitialBox") || go.name.StartsWith("Trash_Button"))
                 {
                     SafeDestroy(go);
                 }
@@ -477,8 +504,8 @@ namespace MechaFind3D.PhysicsInteraction
 
             GameObject timerBadgeObj = GetOrCreateChild(headerObj.transform, "timer_badge");
             RectTransform timerBadgeRect = timerBadgeObj.GetComponent<RectTransform>();
-            timerBadgeRect.anchorMin = new Vector2(0.30f, 0.02f);
-            timerBadgeRect.anchorMax = new Vector2(0.70f, 0.34f);
+            timerBadgeRect.anchorMin = new Vector2(0.35f, 0.0f);
+            timerBadgeRect.anchorMax = new Vector2(0.65f, 0.16f);
             timerBadgeRect.anchoredPosition = Vector2.zero;
             timerBadgeRect.sizeDelta = Vector2.zero;
             if (timerBadgeObj.GetComponent<Image>() == null)
@@ -490,8 +517,8 @@ namespace MechaFind3D.PhysicsInteraction
 
             GameObject timerTextObj = GetOrCreateChild(headerObj.transform, "timer_text");
             RectTransform timerTextRect = timerTextObj.GetComponent<RectTransform>();
-            timerTextRect.anchorMin = new Vector2(0.30f, 0.02f);
-            timerTextRect.anchorMax = new Vector2(0.70f, 0.34f);
+            timerTextRect.anchorMin = new Vector2(0.35f, 0.0f);
+            timerTextRect.anchorMax = new Vector2(0.65f, 0.16f);
             timerTextRect.anchoredPosition = Vector2.zero;
             timerTextRect.sizeDelta = Vector2.zero;
             if (timerTextObj.GetComponent<Text>() == null)
@@ -511,16 +538,18 @@ namespace MechaFind3D.PhysicsInteraction
 
             GameObject goalsContainer = GetOrCreateChild(headerObj.transform, "Goals_Container");
             topGoalContainer = goalsContainer.GetComponent<RectTransform>();
-            topGoalContainer.anchorMin = new Vector2(0.02f, 0.44f);
-            topGoalContainer.anchorMax = new Vector2(0.98f, 1f);
+            topGoalContainer.anchorMin = new Vector2(0.01f, 0.18f);
+            topGoalContainer.anchorMax = new Vector2(0.99f, 1f);
             topGoalContainer.sizeDelta = Vector2.zero;
 
             HorizontalLayoutGroup layout = goalsContainer.GetComponent<HorizontalLayoutGroup>() ?? goalsContainer.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(10, 10, 10, 10);
+            layout.padding = new RectOffset(4, 4, 4, 4);
             layout.spacing = goalContainerSpacing;
             layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
         }
 
         /// <summary>
@@ -706,56 +735,13 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
-        private void BuildTrashButton(Transform parent)
+        private void RemoveTrashButton(Transform parent)
         {
             Transform existingBtn = parent.Find("Trash_Button");
-            GameObject btnObj;
             if (existingBtn != null)
             {
-                btnObj = existingBtn.gameObject;
+                SafeDestroy(existingBtn.gameObject);
             }
-            else
-            {
-                btnObj = NewUIObject("Trash_Button", parent);
-
-                RectTransform btnRect = btnObj.GetComponent<RectTransform>();
-                btnRect.anchorMin = Vector2.zero;
-                btnRect.anchorMax = Vector2.zero;
-                btnRect.pivot = Vector2.zero;
-                btnRect.anchoredPosition = shuffleButtonPosition + new Vector2(shuffleButtonSize.x + 15f, 0f);
-                btnRect.sizeDelta = shuffleButtonSize;
-
-                Image btnBg = btnObj.AddComponent<Image>();
-                ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
-                btnBg.color = new Color(0.85f, 0.22f, 0.25f, 1.0f);
-
-                GameObject btnTextObj = NewUIObject("LabelText", btnObj.transform);
-                RectTransform textRect = btnTextObj.GetComponent<RectTransform>();
-                textRect.anchorMin = Vector2.zero;
-                textRect.anchorMax = Vector2.one;
-                textRect.sizeDelta = Vector2.zero;
-                textRect.anchoredPosition = Vector2.zero;
-
-                Text txt = btnTextObj.AddComponent<Text>();
-                txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                txt.fontSize = 28;
-                txt.fontStyle = FontStyle.Bold;
-                txt.alignment = TextAnchor.MiddleCenter;
-                txt.color = Color.white;
-                txt.text = "🗑️";
-
-                Shadow shadow = btnTextObj.AddComponent<Shadow>();
-                shadow.effectColor = new Color(0, 0, 0, 0.8f);
-                shadow.effectDistance = new Vector2(1, -1);
-            }
-
-            Image bg = btnObj.GetComponent<Image>() ?? btnObj.AddComponent<Image>();
-            bg.raycastTarget = true;
-
-            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
-            btn.targetGraphic = bg;
-            btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(OnTrashButtonClicked);
         }
 
         /// <summary>
@@ -961,15 +947,56 @@ namespace MechaFind3D.PhysicsInteraction
             return null;
         }
 
-        /// <summary>Finds the level-goal entry for an item id, purely to reuse its 3D display prefab for the order-card icon.</summary>
+        /// <summary>Finds the level-goal entry or ItemDataSO asset for an item id, to reuse its 3D display prefab for the order-card icon.</summary>
         private GameObject FindDisplayPrefabForItem(string itemId)
         {
-            if (MatchGoalManager.Instance == null || MatchGoalManager.Instance.levelGoals == null || string.IsNullOrEmpty(itemId)) return null;
+            if (string.IsNullOrEmpty(itemId)) return null;
 
-            foreach (MatchGoal g in MatchGoalManager.Instance.levelGoals)
+            if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null)
             {
-                if (g.colorName != null && g.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase)) return g.displayPrefab;
+                foreach (MatchGoal g in MatchGoalManager.Instance.levelGoals)
+                {
+                    if (g != null && g.colorName != null && g.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (g.displayPrefab != null) return g.displayPrefab;
+                    }
+                }
             }
+
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                LevelDataSO levelData = LevelManager.Instance.ActiveLevelData;
+                if (levelData != null && levelData.targetGoals != null)
+                {
+                    foreach (var goal in levelData.targetGoals)
+                    {
+                        if (goal != null && goal.itemData != null)
+                        {
+                            if (goal.itemData.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (goal.itemData.prefab != null) return goal.itemData.prefab;
+                            }
+                        }
+                    }
+                }
+            }
+
+#if UNITY_EDITOR
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:ItemDataSO");
+            if (guids != null)
+            {
+                foreach (string g in guids)
+                {
+                    string path = UnityEditor.AssetDatabase.GUIDToAssetPath(g);
+                    ItemDataSO itemSO = UnityEditor.AssetDatabase.LoadAssetAtPath<ItemDataSO>(path);
+                    if (itemSO != null && itemSO.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (itemSO.prefab != null) return itemSO.prefab;
+                    }
+                }
+            }
+#endif
+
             return null;
         }
 
@@ -980,36 +1007,39 @@ namespace MechaFind3D.PhysicsInteraction
             RectTransform cardRect = cardObj.GetComponent<RectTransform>();
             cardRect.sizeDelta = goalCardSize;
 
+            LayoutElement le = cardObj.GetComponent<LayoutElement>() ?? cardObj.AddComponent<LayoutElement>();
+            le.preferredWidth = goalCardSize.x;
+            le.preferredHeight = goalCardSize.y;
+            le.minWidth = goalCardSize.x;
+            le.minHeight = goalCardSize.y;
+            le.flexibleWidth = 0f;
+            le.flexibleHeight = 0f;
+
             Image cardBg = cardObj.AddComponent<Image>();
-            ApplySlicedSprite(cardBg, LoadUISprite(UIAccentButton));
-            cardBg.color = UIAccentTint;
+            ApplySlicedSprite(cardBg, LoadUISprite("Buttons/Button Green"));
+            cardBg.color = Color.white;
+
+            Outline cardOutline = cardObj.GetComponent<Outline>() ?? cardObj.AddComponent<Outline>();
+            cardOutline.effectColor = new Color(0.18f, 0.48f, 0.08f, 0.95f);
+            cardOutline.effectDistance = new Vector2(2.5f, -2.5f);
 
             GameObject iconObj = NewUIObject("Icon", cardObj.transform);
-
-            // ID-card layout: the item and its count share the left half, a rule divides the card, and the
-            // customer this order belongs to sits on the right.
-            //
-            // The icon zone is sized from the 3D model's own target size rather than from goalCardIconSize.
-            // The model is not clipped by its RectTransform, so a zone narrower than the model simply lets
-            // it hang off the card.
-            float iconZone = Mathf.Max(goalCardIconSize, goalCard3DModelTargetSize) + 10f;
-
             RectTransform iconRect = iconObj.GetComponent<RectTransform>();
-            iconRect.anchorMin = new Vector2(0f, 0.5f);
-            iconRect.anchorMax = new Vector2(0f, 0.5f);
+            iconRect.anchorMin = new Vector2(0.05f, 0.26f);
+            iconRect.anchorMax = new Vector2(0.95f, 0.96f);
             iconRect.pivot = new Vector2(0.5f, 0.5f);
-            iconRect.anchoredPosition = new Vector2(iconZone * 0.5f, 0f);
-            iconRect.sizeDelta = new Vector2(goalCardIconSize, goalCardIconSize);
+            iconRect.anchoredPosition = Vector2.zero;
+            iconRect.sizeDelta = Vector2.zero;
 
             BuildOrderCardIcon(iconObj, order);
 
             GameObject textObj = NewUIObject("Text", cardObj.transform);
-
             RectTransform textRect = textObj.GetComponent<RectTransform>();
-            textRect.anchorMin = new Vector2(0f, 0f);
-            textRect.anchorMax = new Vector2(goalCardDividerX, 1f);
-            textRect.offsetMin = new Vector2(iconZone, 0f);
-            textRect.offsetMax = Vector2.zero;
+            textRect.anchorMin = new Vector2(0f, 0.02f);
+            textRect.anchorMax = new Vector2(1f, 0.26f);
+            textRect.pivot = new Vector2(0.5f, 0.5f);
+            textRect.anchoredPosition = Vector2.zero;
+            textRect.sizeDelta = Vector2.zero;
 
             Text txt = textObj.AddComponent<Text>();
             txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -1017,56 +1047,34 @@ namespace MechaFind3D.PhysicsInteraction
             txt.fontStyle = FontStyle.Bold;
             txt.alignment = TextAnchor.MiddleCenter;
             txt.color = Color.white;
-            // "x2" is two glyphs and must never wrap; a zone a few pixels too narrow was breaking it onto
-            // two lines rather than simply overflowing.
             txt.horizontalOverflow = HorizontalWrapMode.Overflow;
             txt.verticalOverflow = VerticalWrapMode.Overflow;
-            txt.text = $"x{RemainingForOrder(order)}";
+            txt.text = $"{RemainingForOrder(order)}";
 
             Shadow shadow = textObj.AddComponent<Shadow>();
-            shadow.effectColor = new Color(0, 0, 0, 0.8f);
+            shadow.effectColor = new Color(0, 0, 0, 0.9f);
             shadow.effectDistance = new Vector2(2, -2);
 
-            GameObject dividerObj = NewUIObject("Divider", cardObj.transform);
+            Outline textOutline = textObj.AddComponent<Outline>();
+            textOutline.effectColor = new Color(0, 0, 0, 0.9f);
+            textOutline.effectDistance = new Vector2(1.5f, -1.5f);
 
-            RectTransform dividerRect = dividerObj.GetComponent<RectTransform>();
-            dividerRect.anchorMin = new Vector2(goalCardDividerX, 0.16f);
-            dividerRect.anchorMax = new Vector2(goalCardDividerX, 0.84f);
-            dividerRect.pivot = new Vector2(0.5f, 0.5f);
-            dividerRect.sizeDelta = new Vector2(goalCardDividerWidth, 0f);
-
-            Image dividerImg = dividerObj.AddComponent<Image>();
-            dividerImg.color = goalCardDividerColor;
-
-            GameObject portraitObj = NewUIObject("CustomerPortrait", cardObj.transform);
-
-            RectTransform portraitRect = portraitObj.GetComponent<RectTransform>();
-            portraitRect.anchorMin = new Vector2(goalCardDividerX, 0f);
-            portraitRect.anchorMax = new Vector2(1f, 1f);
-            portraitRect.offsetMin = new Vector2(8f, 8f);
-            portraitRect.offsetMax = new Vector2(-8f, -8f);
-
-            Image portraitImg = portraitObj.AddComponent<Image>();
-            if (customerPortraitSprite != null)
+            if (Application.isPlaying)
             {
-                portraitImg.sprite = customerPortraitSprite;
-                portraitImg.preserveAspect = true;
-                portraitImg.color = Color.white;
+                cardObj.transform.localScale = Vector3.zero;
+                CanvasGroup cg = cardObj.AddComponent<CanvasGroup>();
+                cg.alpha = 0f;
+
+                Sequence spawnSeq = DOTween.Sequence();
+                spawnSeq.AppendInterval(spawnIndex * goalSpawnStaggerDelay);
+                spawnSeq.Append(cardObj.transform.DOScale(Vector3.one, goalSpawnScaleDuration).SetEase(Ease.OutBack, 1.6f));
+                spawnSeq.Join(cg.DOFade(1f, goalSpawnFadeDuration));
+                spawnSeq.Play();
             }
             else
             {
-                portraitImg.color = new Color(1f, 1f, 1f, 0.20f);
+                cardObj.transform.localScale = Vector3.one;
             }
-
-            cardObj.transform.localScale = Vector3.zero;
-            CanvasGroup cg = cardObj.AddComponent<CanvasGroup>();
-            cg.alpha = 0f;
-
-            Sequence spawnSeq = DOTween.Sequence();
-            spawnSeq.AppendInterval(spawnIndex * goalSpawnStaggerDelay);
-            spawnSeq.Append(cardObj.transform.DOScale(Vector3.one, goalSpawnScaleDuration).SetEase(Ease.OutBack, 1.6f));
-            spawnSeq.Join(cg.DOFade(1f, goalSpawnFadeDuration));
-            spawnSeq.Play();
 
             return cardObj;
         }
@@ -1089,17 +1097,16 @@ namespace MechaFind3D.PhysicsInteraction
                 }
                 else
                 {
-                    iconImg.color = order.itemColor;
+                    ApplySlicedSprite(iconImg, LoadUISprite(UIAccentSquareButton));
+                    iconImg.color = new Color(order.itemColor.r, order.itemColor.g, order.itemColor.b, 0.65f);
                 }
                 return;
             }
 
             GameObject modelWrapper = new GameObject("3D_Icon_Wrapper");
             modelWrapper.transform.SetParent(iconObj.transform, false);
-            // Centred in the icon zone; only the DEPTH is taken from the serialized offset. Its x/y were
-            // tuned for an older single-column card and push the model off the left edge of this one.
             modelWrapper.transform.localPosition = new Vector3(0f, 0f, goalCard3DModelLocalPosition.z);
-            modelWrapper.transform.localRotation = Quaternion.Euler(goalCard3DModelTiltX, 0f, 0f);
+            modelWrapper.transform.localRotation = Quaternion.Euler(goalCard3DModelTiltX, -25f, 0f);
             modelWrapper.transform.localScale = Vector3.one;
 
             GameObject modelObj = Instantiate(displayPrefab, modelWrapper.transform);
@@ -1134,7 +1141,7 @@ namespace MechaFind3D.PhysicsInteraction
                 float worldUnitInUIPixels = modelWrapper.transform.lossyScale.x;
                 float rawMeshSizeInUIPixels = (worldUnitInUIPixels > 0.00001f) ? (maxWorldDim / worldUnitInUIPixels) : maxWorldDim;
 
-                float effectiveTargetSize = (goalCard3DModelTargetSize > 100f || goalCard3DModelTargetSize <= 0f) ? 85f : goalCard3DModelTargetSize;
+                float effectiveTargetSize = (goalCard3DModelTargetSize > 180f || goalCard3DModelTargetSize <= 0f) ? 115f : goalCard3DModelTargetSize;
                 float scaleFactor = (rawMeshSizeInUIPixels > 0.0001f) ? (effectiveTargetSize / rawMeshSizeInUIPixels) : 1f;
 
                 modelObj.transform.localScale = Vector3.one * scaleFactor;
@@ -1145,7 +1152,7 @@ namespace MechaFind3D.PhysicsInteraction
                 modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
             }
 
-            modelWrapper.AddComponent<MechaFind3D.UI.UIRotator>();
+            // Fixed orientation - UIRotator is NOT added to keep objects static from a single view direction
         }
 
         /// <summary>
@@ -1194,7 +1201,7 @@ namespace MechaFind3D.PhysicsInteraction
                 Text txt = textObj != null ? textObj.GetComponent<Text>() : null;
                 if (txt == null) continue;
 
-                string next = $"x{RemainingForOrder(order)}";
+                string next = $"{RemainingForOrder(order)}";
                 bool changed = txt.text != next;
                 txt.text = next;
 
@@ -1229,45 +1236,70 @@ namespace MechaFind3D.PhysicsInteraction
                   .OnComplete(() => cardBg.DOColor(orig, 0.25f).SetEase(Ease.InQuad));
         }
 
-        /// <summary>Pops a checkmark, then bounces and shrinks the card away and destroys it.</summary>
-        private void RetireOrderCard(Transform card)
+        /// <summary>
+        /// Smoothly flashes the completed order card green, shrinks it away without checkmark icons,
+        /// and invokes onComplete when the exit sequence finishes so the replacement card can enter.
+        /// </summary>
+        private void RetireOrderCard(Transform card, System.Action onComplete = null)
         {
-            if (card == null) return;
+            if (card == null)
+            {
+                onComplete?.Invoke();
+                return;
+            }
 
-            // Renamed so SyncOrderCards ignores it while it plays out - it no longer belongs to any live
-            // order, and the replacement customer's card is being built alongside it.
+            // Renamed so SyncOrderCards ignores it while it plays out
             card.name = RetiredCardPrefix + card.name;
 
             KillCardTweens(card);
             CanvasGroup cg = card.GetComponent<CanvasGroup>() ?? card.gameObject.AddComponent<CanvasGroup>();
 
-            if (card.Find("CheckIcon") == null)
+            // 1. Smoothly transition background and border to vibrant success green
+            Image cardBg = card.GetComponent<Image>();
+            if (cardBg != null)
             {
-                GameObject checkObj = NewUIObject("CheckIcon", card);
-                RectTransform cr = checkObj.GetComponent<RectTransform>();
-                cr.anchorMin = Vector2.zero;
-                cr.anchorMax = Vector2.one;
-                cr.sizeDelta = Vector2.zero;
-                Image ci = checkObj.AddComponent<Image>();
-                Sprite checkSprite = LoadUISprite("Icons/Check");
-                if (checkSprite != null) { ci.sprite = checkSprite; ci.preserveAspect = true; }
-                else ci.color = successAccentColor;
-                checkObj.transform.localScale = Vector3.zero;
-                checkObj.transform.DOScale(Vector3.one * 1.3f, 0.2f).SetEase(Ease.OutBack);
+                cardBg.DOKill();
+                cardBg.DOColor(new Color(0.18f, 0.80f, 0.44f, 0.98f), 0.15f).SetEase(Ease.OutQuad);
             }
 
+            Outline cardOutline = card.GetComponent<Outline>();
+            if (cardOutline != null)
+            {
+                cardOutline.DOKill();
+                cardOutline.DOColor(new Color(0.55f, 1.0f, 0.65f, 0.98f), 0.15f).SetEase(Ease.OutQuad);
+            }
+
+            // Remove any CheckIcon child if present (no checkmark icon)
+            Transform oldCheck = card.Find("CheckIcon");
+            if (oldCheck != null) SafeDestroy(oldCheck.gameObject);
+
+            // Update count text to "0"
             Transform textT = card.Find("Text");
             if (textT != null)
             {
                 Text t = textT.GetComponent<Text>();
-                if (t != null) t.text = "";
+                if (t != null)
+                {
+                    t.text = "0";
+                    t.color = Color.white;
+                }
             }
 
+            // 2. Smooth sequence: Success pop -> pause -> smooth shrink & fade exit -> callback
             Sequence removeSeq = DOTween.Sequence();
-            removeSeq.Append(card.DOScale(Vector3.one * goalRemoveBounceScale, goalRemoveBounceDuration).SetEase(Ease.OutQuad));
-            removeSeq.Append(card.DOScale(Vector3.zero, goalRemoveShrinkDuration).SetEase(Ease.InBack, 1.8f));
-            removeSeq.Join(cg.DOFade(0f, goalRemoveShrinkDuration * 0.8f).SetEase(Ease.InQuad));
-            removeSeq.OnComplete(() => { if (card != null) { KillCardGraphicTweens(card); SafeDestroy(card.gameObject); } });
+            removeSeq.Append(card.DOPunchScale(Vector3.one * 0.16f, 0.28f, 6, 0.5f));
+            removeSeq.AppendInterval(0.10f);
+            removeSeq.Append(card.DOScale(Vector3.zero, 0.32f).SetEase(Ease.InBack, 1.5f));
+            removeSeq.Join(cg.DOFade(0f, 0.25f).SetEase(Ease.InQuad));
+            removeSeq.OnComplete(() =>
+            {
+                if (card != null)
+                {
+                    KillCardGraphicTweens(card);
+                    SafeDestroy(card.gameObject);
+                }
+                onComplete?.Invoke();
+            });
             removeSeq.Play();
         }
 
@@ -1477,36 +1509,39 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>
-        /// Where a freshly tapped item slots in: immediately after the last item of its own kind, so a type
-        /// always reads as one unbroken group in the tray. Anything new goes on the end.
+        /// Freshly tapped items slot in sequential arrival order at the end of the dock.
+        /// They are NOT artificially re-ordered into the middle of the tray.
         /// </summary>
         private int GetInsertIndexForType(string itemId)
         {
-            for (int i = dockItems.Count - 1; i >= 0; i--)
-            {
-                if (dockItems[i] != null && dockItems[i].colorName != null &&
-                    dockItems[i].colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    return i + 1;
-                }
-            }
             return dockItems.Count;
         }
 
         private int CountInDock(string itemId)
         {
+            return CountMaxContiguousInDock(itemId);
+        }
+
+        private int CountMaxContiguousInDock(string itemId)
+        {
             if (string.IsNullOrEmpty(itemId)) return 0;
 
-            int count = 0;
-            foreach (DockItemData data in dockItems)
+            int maxStreak = 0;
+            int currentStreak = 0;
+            for (int i = 0; i < dockItems.Count; i++)
             {
-                if (data != null && data.colorName != null &&
-                    data.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                if (dockItems[i] != null && dockItems[i].colorName != null &&
+                    dockItems[i].colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
                 {
-                    count++;
+                    currentStreak++;
+                    if (currentStreak > maxStreak) maxStreak = currentStreak;
+                }
+                else
+                {
+                    currentStreak = 0;
                 }
             }
-            return count;
+            return maxStreak;
         }
 
         private void EvaluateDockAfterLanding(string itemId)
@@ -1547,8 +1582,55 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>
-        /// Launches the tray's group of <paramref name="itemId"/> at the order that wants it, once the group
-        /// is as large as that order asks for.
+        /// Finds a strictly CONTIGUOUS (side-by-side) group of requiredCount items of itemId.
+        /// Returns null if another item type is sitting between them, or if any item in the streak is still landing.
+        /// </summary>
+        private List<DockItemData> FindContiguousGroupForOrder(string itemId, int requiredCount)
+        {
+            if (string.IsNullOrEmpty(itemId) || requiredCount <= 0) return null;
+
+            int currentStreak = 0;
+            int streakStartIndex = -1;
+
+            for (int i = 0; i < dockItems.Count; i++)
+            {
+                DockItemData data = dockItems[i];
+                if (data != null && data.colorName != null &&
+                    data.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    // If any item in the streak is still flying to its slot, wait until it finishes landing
+                    if (data.targetObject != null && tweeningDockObjects.Contains(data.targetObject.gameObject))
+                    {
+                        return null;
+                    }
+
+                    if (currentStreak == 0) streakStartIndex = i;
+                    currentStreak++;
+
+                    if (currentStreak >= requiredCount)
+                    {
+                        var result = new List<DockItemData>();
+                        for (int k = streakStartIndex; k < streakStartIndex + requiredCount; k++)
+                        {
+                            result.Add(dockItems[k]);
+                        }
+                        return result;
+                    }
+                }
+                else
+                {
+                    // Different item type sitting in between breaks the contiguous streak!
+                    currentStreak = 0;
+                    streakStartIndex = -1;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Launches the tray's group of <paramref name="itemId"/> at the order that wants it, ONLY if the items
+        /// are CONTIGUOUS (side-by-side with no other item types in between) AND all items have finished landing.
         /// </summary>
         private bool TryDeliverGroup(string itemId)
         {
@@ -1557,17 +1639,8 @@ namespace MechaFind3D.PhysicsInteraction
             CustomerOrder order = CustomerOrderManager.Instance.FindOrderForItem(itemId);
             if (order == null) return false;
 
-            var group = new List<DockItemData>();
-            foreach (DockItemData data in dockItems)
-            {
-                if (data?.colorName == null) continue;
-                if (!data.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase)) continue;
-
-                group.Add(data);
-                if (group.Count >= order.requiredCount) break;
-            }
-
-            if (group.Count < order.requiredCount) return false;
+            List<DockItemData> group = FindContiguousGroupForOrder(itemId, order.requiredCount);
+            if (group == null || group.Count < order.requiredCount) return false;
 
             foreach (DockItemData data in group) dockItems.Remove(data);
             UpdateSlotVisuals();
@@ -1633,15 +1706,18 @@ namespace MechaFind3D.PhysicsInteraction
                 MatchGoalManager.Instance.RegisterMatchedItem(ObjectShapeType.Cube, order.itemId, deliveredCount);
             }
 
-            RetireOrderCard(FindOrderCard(order.orderId));
+            Transform card = FindOrderCard(order.orderId);
 
-            if (CustomerOrderManager.Instance != null) CustomerOrderManager.Instance.CompleteOrder(order);
+            RetireOrderCard(card, () =>
+            {
+                if (CustomerOrderManager.Instance != null) CustomerOrderManager.Instance.CompleteOrder(order);
 
-            SyncOrderCards();
-            RefreshOrderCardCounts(order.itemId);
+                SyncOrderCards();
+                RefreshOrderCardCounts(order.itemId);
 
-            // The customer who just slid in may already be satisfied by items sitting in the tray.
-            CheckDockForCompletions();
+                // The customer who just slid in may already be satisfied by items sitting in the tray.
+                CheckDockForCompletions();
+            });
         }
 
         private void TriggerGameOver()

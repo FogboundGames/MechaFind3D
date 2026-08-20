@@ -66,6 +66,46 @@ namespace MechaFind3D.PhysicsInteraction
             Instance = this;
         }
 
+        private void OnEnable()
+        {
+            if (Instance == null) Instance = this;
+            if (!Application.isPlaying)
+            {
+                SetupCustomerOrders();
+            }
+        }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (!Application.isPlaying)
+            {
+                UnityEditor.EditorApplication.delayCall -= EditorRefresh;
+                UnityEditor.EditorApplication.delayCall += EditorRefresh;
+            }
+        }
+
+        private void EditorRefresh()
+        {
+            if (this == null) return;
+            SetupCustomerOrders();
+            if (CanvasUIDesignManager.Instance != null)
+            {
+                CanvasUIDesignManager.Instance.RefreshTargetGoalsUI();
+            }
+        }
+
+        [ContextMenu("Setup Customer Orders")]
+        public void SetupOrdersContextMenu()
+        {
+            SetupCustomerOrders();
+            if (CanvasUIDesignManager.Instance != null)
+            {
+                CanvasUIDesignManager.Instance.RefreshTargetGoalsUI();
+            }
+        }
+#endif
+
         public void SetupCustomerOrders()
         {
             activeOrders.Clear();
@@ -96,8 +136,8 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (built.Count == 0)
             {
-                string[] sampleItems = { "watermelon", "pear", "sausage", "fish" };
-                Color[] sampleColors = { Color.red, Color.green, new Color(0.8f, 0.4f, 0.2f), Color.cyan };
+                string[] sampleItems = { "watermelon", "pear", "sausage", "fish", "onion", "banana" };
+                Color[] sampleColors = { Color.red, Color.green, new Color(0.8f, 0.4f, 0.2f), Color.cyan, Color.magenta, Color.yellow };
                 for (int i = 0; i < sampleItems.Length; i++)
                 {
                     SplitGoalIntoOrders(built, sampleItems[i], sampleColors[i], null, 6);
