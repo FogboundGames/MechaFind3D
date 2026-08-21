@@ -39,6 +39,25 @@ namespace MechaFind3D
         private Tween rotateTween;
         private Animator animator;
 
+        private static readonly List<MechaRunnerBehavior> activeRunners = new List<MechaRunnerBehavior>();
+
+        public static bool IsAnyMechaRunning()
+        {
+            for (int i = activeRunners.Count - 1; i >= 0; i--)
+            {
+                if (activeRunners[i] == null)
+                {
+                    activeRunners.RemoveAt(i);
+                    continue;
+                }
+                if (activeRunners[i].currentState == MechaState.RunningInArea)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private void Awake()
         {
             animator = GetComponent<Animator>();
@@ -54,6 +73,7 @@ namespace MechaFind3D
             if (currentState != MechaState.CamouflagedOnHost) return;
 
             currentState = MechaState.RunningInArea;
+            if (!activeRunners.Contains(this)) activeRunners.Add(this);
 
             // 1. Unparent from host object so host object is freed and can now be collected
             transform.SetParent(null, true);
@@ -267,6 +287,7 @@ namespace MechaFind3D
         {
             if (currentState == MechaState.Vanishing) return;
             currentState = MechaState.Vanishing;
+            activeRunners.Remove(this);
 
             if (moveTween != null && moveTween.IsActive()) moveTween.Kill();
             if (rotateTween != null && rotateTween.IsActive()) rotateTween.Kill();
@@ -305,6 +326,7 @@ namespace MechaFind3D
 
         private void OnDestroy()
         {
+            activeRunners.Remove(this);
             if (moveTween != null && moveTween.IsActive()) moveTween.Kill();
             if (rotateTween != null && rotateTween.IsActive()) rotateTween.Kill();
         }

@@ -2,9 +2,9 @@ Shader "MechaFind3D/YellowOutline"
 {
     Properties
     {
-        _OutlineColor ("Outline Color", Color) = (1.0, 0.84, 0.0, 1.0) // Vibrant Gold Yellow
-        _OutlineWidth ("Outline Width", Range(0.0005, 0.03)) = 0.005
-        _GlowIntensity ("Glow Intensity", Range(1.0, 2.5)) = 1.25
+        _OutlineColor ("Outline Color", Color) = (1.0, 0.88, 0.0, 1.0) // Vibrant Gold Yellow
+        _OutlineWidth ("Outline Width", Range(0.0005, 0.03)) = 0.006
+        _GlowIntensity ("Glow Intensity", Range(1.0, 2.5)) = 1.35
     }
     SubShader
     {

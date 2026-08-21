@@ -11,11 +11,9 @@ namespace MechaFind3D.PhysicsInteraction
     public class ItemOutlineHighlighter : MonoBehaviour
     {
         [Header("Outline Visual Settings")]
-        [SerializeField] private Color outlineColor = new Color(1.0f, 0.85f, 0.0f, 1.0f); // Bright Yellow / Gold
-        // Thinned at Emre's request (was 0.005) - now a touch/drag indicator rather than a permanent
-        // "docked" badge, so it reads better as a light finger-highlight instead of a heavy outline.
-        [SerializeField] private float outlineWidth = 0.003f;
-        [SerializeField] private float glowIntensity = 1.25f;
+        [SerializeField] private Color outlineColor = new Color(1.0f, 0.88f, 0.0f, 1.0f); // Bright Gold Yellow
+        [SerializeField] private float outlineWidth = 0.006f; // Bold, crisp outline
+        [SerializeField] private float glowIntensity = 1.35f;
 
         private static Material sharedOutlineMaterial;
         private readonly List<GameObject> outlineOverlays = new List<GameObject>();
@@ -44,10 +42,10 @@ namespace MechaFind3D.PhysicsInteraction
                 name = "YellowOutline_Runtime_Mat"
             };
 
-            Color gold = new Color(1.0f, 0.85f, 0.0f, 1.0f);
+            Color gold = new Color(1.0f, 0.88f, 0.0f, 1.0f);
             if (sharedOutlineMaterial.HasProperty("_OutlineColor")) sharedOutlineMaterial.SetColor("_OutlineColor", gold);
-            if (sharedOutlineMaterial.HasProperty("_OutlineWidth")) sharedOutlineMaterial.SetFloat("_OutlineWidth", 0.005f);
-            if (sharedOutlineMaterial.HasProperty("_GlowIntensity")) sharedOutlineMaterial.SetFloat("_GlowIntensity", 1.25f);
+            if (sharedOutlineMaterial.HasProperty("_OutlineWidth")) sharedOutlineMaterial.SetFloat("_OutlineWidth", 0.006f);
+            if (sharedOutlineMaterial.HasProperty("_GlowIntensity")) sharedOutlineMaterial.SetFloat("_GlowIntensity", 1.35f);
             if (sharedOutlineMaterial.HasProperty("_BaseColor")) sharedOutlineMaterial.SetColor("_BaseColor", gold);
             if (sharedOutlineMaterial.HasProperty("_Color")) sharedOutlineMaterial.SetColor("_Color", gold);
         }

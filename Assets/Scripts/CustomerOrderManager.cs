@@ -127,12 +127,25 @@ namespace MechaFind3D.PhysicsInteraction
             var built = new List<CustomerOrder>();
             LevelDataSO levelData = LevelManager.Instance != null ? LevelManager.Instance.ActiveLevelData : null;
 
-            if (levelData != null && levelData.targetGoals != null && levelData.targetGoals.Count > 0)
+            if (levelData != null)
             {
-                foreach (var goal in levelData.targetGoals)
+                List<ItemDataSO> spawnItems = levelData.BuildSpawnItemList();
+                if (spawnItems != null && spawnItems.Count > 0)
                 {
-                    if (goal == null || goal.itemData == null) continue;
-                    SplitGoalIntoOrders(built, goal.itemData.GetEffectiveItemId(), goal.itemData.targetColor, goal.itemData.icon, goal.requiredCount);
+                    Dictionary<ItemDataSO, int> itemCounts = new Dictionary<ItemDataSO, int>();
+                    foreach (var item in spawnItems)
+                    {
+                        if (item == null) continue;
+                        if (itemCounts.ContainsKey(item)) itemCounts[item]++;
+                        else itemCounts[item] = 1;
+                    }
+
+                    foreach (var kvp in itemCounts)
+                    {
+                        ItemDataSO itemData = kvp.Key;
+                        int totalRequired = kvp.Value;
+                        SplitGoalIntoOrders(built, itemData.GetEffectiveItemId(), itemData.targetColor, itemData.icon, totalRequired);
+                    }
                 }
             }
 
@@ -166,25 +179,10 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void SplitGoalIntoOrders(List<CustomerOrder> into, string itemId, Color color, Sprite icon, int totalRequired)
         {
-            int minSize = Mathf.Max(1, orderSizeRange.x);
-            int maxSize = Mathf.Max(minSize, orderSizeRange.y);
-
-            int remaining = Mathf.Max(1, totalRequired);
+            int remaining = Mathf.Max(3, totalRequired);
             while (remaining > 0)
             {
-                int batch;
-                if (remaining <= maxSize)
-                {
-                    batch = remaining;
-                }
-                else
-                {
-                    // Never leave a tail smaller than minSize behind: splitting 4 into 3+1 produced a
-                    // one-item order, which completes the instant it is tapped and reads as a bug.
-                    batch = Random.Range(minSize, maxSize + 1);
-                    batch = Mathf.Max(minSize, Mathf.Min(batch, remaining - minSize));
-                }
-
+                int batch = Mathf.Min(3, remaining);
                 into.Add(new CustomerOrder
                 {
                     itemId = itemId,

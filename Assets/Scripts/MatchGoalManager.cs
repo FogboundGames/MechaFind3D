@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using DG.Tweening;
 
 namespace MechaFind3D.PhysicsInteraction
 {
@@ -31,6 +32,12 @@ namespace MechaFind3D.PhysicsInteraction
         public float currentTime;
         public bool isTimerRunning = false;
         private UnityEngine.UI.Text cachedTimerText;
+        private RectTransform cachedTimerTextRect;
+        private GameObject cachedTimerBadgeObj;
+        private UnityEngine.UI.Image cachedTimerBadgeImage;
+        private RectTransform cachedTimerBadgeRect;
+        private Color defaultBadgeColor = new Color(0.20f, 0.25f, 0.32f, 0.98f);
+        private bool isFastDrainAnimating = false;
 
         private void Awake()
         {
@@ -55,34 +62,48 @@ namespace MechaFind3D.PhysicsInteraction
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
             {
                 LevelDataSO levelData = LevelManager.Instance.ActiveLevelData;
-                if (levelData.targetGoals != null && levelData.targetGoals.Count > 0)
+                List<ItemDataSO> spawnItems = levelData.BuildSpawnItemList();
+
+                if (spawnItems != null && spawnItems.Count > 0)
                 {
-                    foreach (var req in levelData.targetGoals)
+                    Dictionary<ItemDataSO, int> itemCounts = new Dictionary<ItemDataSO, int>();
+                    foreach (var item in spawnItems)
                     {
-                        if (req.itemData != null)
-                        {
-                            levelGoals.Add(new MatchGoal
-                            {
-                                shapeType = ObjectShapeType.Cube,
-                                colorName = req.itemData.GetEffectiveItemId(),
-                                targetColor = req.itemData.targetColor,
-                                totalRequired = req.requiredCount,
-                                currentCount = 0,
-                                displayPrefab = req.itemData.prefab
-                            });
-                        }
+                        if (item == null) continue;
+                        if (itemCounts.ContainsKey(item)) itemCounts[item]++;
+                        else itemCounts[item] = 1;
                     }
 
-                    // Add Mecha goal for the level
-                    levelGoals.Add(new MatchGoal
+                    foreach (var kvp in itemCounts)
                     {
-                        shapeType = ObjectShapeType.Cube,
-                        colorName = "Mecha",
-                        targetColor = new Color(0.4f, 0.95f, 1f),
-                        totalRequired = 1,
-                        currentCount = 0,
-                        displayPrefab = null
-                    });
+                        ItemDataSO itemData = kvp.Key;
+                        int totalCount = kvp.Value;
+
+                        levelGoals.Add(new MatchGoal
+                        {
+                            shapeType = ObjectShapeType.Cube,
+                            colorName = itemData.GetEffectiveItemId(),
+                            targetColor = itemData.targetColor,
+                            totalRequired = totalCount,
+                            currentCount = 0,
+                            displayPrefab = itemData.prefab
+                        });
+                    }
+
+                    // Add Mecha goal for the level based on actual configured mechas
+                    int mechaCount = levelData.GetAllMechaEntries().Count;
+                    if (mechaCount > 0)
+                    {
+                        levelGoals.Add(new MatchGoal
+                        {
+                            shapeType = ObjectShapeType.Cube,
+                            colorName = "Mecha",
+                            targetColor = new Color(0.4f, 0.95f, 1f),
+                            totalRequired = mechaCount,
+                            currentCount = 0,
+                            displayPrefab = null
+                        });
+                    }
 
                     return;
                 }
@@ -166,14 +187,17 @@ private void CheckLevelCompletion()
         {
             if (isTimerRunning && !isLevelComplete)
             {
-                currentTime -= Time.deltaTime;
+                bool isMechaRunning = MechaRunnerBehavior.IsAnyMechaRunning();
+                float drainMultiplier = isMechaRunning ? 1.5f : 1.0f;
+                currentTime -= Time.deltaTime * drainMultiplier;
+
                 if (currentTime <= 0f)
                 {
                     currentTime = 0f;
                     isTimerRunning = false;
                     TriggerLose();
                 }
-                UpdateTimerUI();
+                UpdateTimerUI(isMechaRunning);
             }
         }
 
@@ -189,19 +213,92 @@ private void CheckLevelCompletion()
             }
         }
 
-        private void UpdateTimerUI()
+        private void UpdateTimerUI(bool isMechaRunning = false)
         {
             if (cachedTimerText == null)
             {
                 GameObject timerObj = GameObject.Find("timer_text");
-                if (timerObj != null) cachedTimerText = timerObj.GetComponent<UnityEngine.UI.Text>();
+                if (timerObj != null)
+                {
+                    cachedTimerText = timerObj.GetComponent<UnityEngine.UI.Text>();
+                    cachedTimerTextRect = timerObj.GetComponent<RectTransform>();
+                }
+            }
+
+            if (cachedTimerBadgeObj == null)
+            {
+                cachedTimerBadgeObj = GameObject.Find("timer_badge");
+                if (cachedTimerBadgeObj != null)
+                {
+                    cachedTimerBadgeImage = cachedTimerBadgeObj.GetComponent<UnityEngine.UI.Image>();
+                    cachedTimerBadgeRect = cachedTimerBadgeObj.GetComponent<RectTransform>();
+                    if (cachedTimerBadgeImage != null)
+                    {
+                        defaultBadgeColor = cachedTimerBadgeImage.color;
+                    }
+                }
             }
 
             if (cachedTimerText != null)
             {
                 int minutes = Mathf.FloorToInt(currentTime / 60f);
                 int seconds = Mathf.FloorToInt(currentTime % 60f);
-                cachedTimerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
+
+                if (isMechaRunning)
+                {
+                    cachedTimerText.text = string.Format("⚡ {0:00}:{1:00} ⚡", minutes, seconds);
+
+                    float pingPong = Mathf.PingPong(Time.time * 4f, 1f);
+                    Color pulseTextColor = Color.Lerp(new Color(1f, 0.95f, 0.2f), new Color(1f, 0.25f, 0.25f), pingPong);
+                    cachedTimerText.color = pulseTextColor;
+
+                    if (cachedTimerBadgeImage != null)
+                    {
+                        Color pulseBadgeColor = Color.Lerp(new Color(0.85f, 0.15f, 0.15f, 0.98f), new Color(0.95f, 0.45f, 0.15f, 0.98f), pingPong);
+                        cachedTimerBadgeImage.color = pulseBadgeColor;
+                    }
+
+                    if (!isFastDrainAnimating)
+                    {
+                        isFastDrainAnimating = true;
+                        if (cachedTimerBadgeRect != null)
+                        {
+                            cachedTimerBadgeRect.DOKill();
+                            cachedTimerBadgeRect.DOScale(Vector3.one * 1.10f, 0.35f).SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
+                        }
+                        else if (cachedTimerTextRect != null)
+                        {
+                            cachedTimerTextRect.DOKill();
+                            cachedTimerTextRect.DOScale(Vector3.one * 1.12f, 0.35f).SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
+                        }
+                    }
+                }
+                else
+                {
+                    cachedTimerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
+                    cachedTimerText.color = Color.white;
+
+                    if (cachedTimerBadgeImage != null)
+                    {
+                        cachedTimerBadgeImage.color = defaultBadgeColor;
+                    }
+
+                    if (isFastDrainAnimating)
+                    {
+                        isFastDrainAnimating = false;
+                        if (cachedTimerBadgeRect != null)
+                        {
+                            cachedTimerBadgeRect.DOKill();
+                            cachedTimerBadgeRect.localScale = Vector3.one;
+                            cachedTimerBadgeRect.DOPunchScale(Vector3.one * 0.15f, 0.3f, 6, 0.8f);
+                        }
+                        if (cachedTimerTextRect != null)
+                        {
+                            cachedTimerTextRect.DOKill();
+                            cachedTimerTextRect.localScale = Vector3.one;
+                        }
+                    }
+                }
             }
         }
     }

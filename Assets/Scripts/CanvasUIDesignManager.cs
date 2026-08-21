@@ -908,7 +908,7 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>Finds the level-goal entry or ItemDataSO asset for an item id, to reuse its 3D display prefab for the order-card icon.</summary>
-        private GameObject FindDisplayPrefabForItem(string itemId)
+        public GameObject FindDisplayPrefabForItem(string itemId)
         {
             if (string.IsNullOrEmpty(itemId)) return null;
 
@@ -1551,6 +1551,9 @@ namespace MechaFind3D.PhysicsInteraction
                 return false;
             }
 
+            // A running mecha locks out collecting all other objects until it is caught!
+            if (MechaRunnerBehavior.IsAnyMechaRunning()) { return false; }
+
             // A host object carrying a hidden mecha cannot be collected until the mecha is tapped off it.
             if (HasChildMecha(item)) { return false; }
 
@@ -1561,11 +1564,8 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             item.isDocked = true;
-            // The glow is now a touch/drag indicator owned by FingerPhysicsInteraction, not a
-            // "docked" indicator - it must never persist once an item leaves the pile. Docking always
-            // clears it defensively even though FingerPhysicsInteraction.OnTouchEnded already does the
-            // same, in case this item is docked via some other path that skips that touch-up handler.
-            item.SetYellowOutlineActive(false);
+            // Activate the vibrant yellow outline on selection so the chosen item stands out clearly.
+            item.SetYellowOutlineActive(true);
 
             Rigidbody rb = item.GetComponent<Rigidbody>();
             if (rb != null)
@@ -1642,23 +1642,14 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>
-        /// A freshly tapped item slots in right after the last item of its own kind, so same-type items
-        /// stay grouped together instead of scattering across the tray in raw arrival order. This is not
-        /// cosmetic: <see cref="FindContiguousGroupForOrder"/> only recognizes a strictly CONTIGUOUS run as
-        /// deliverable, so egg/cookie/egg would never be seen as "2 eggs" even once both had landed - the
-        /// order sits stuck forever with the cookie wedged between them, exactly what a stray non-grouping
-        /// insert here reproduces.
+        /// Returns the slot insertion index for a freshly collected item.
+        /// Items are added strictly in raw arrival order (at the end of the dock array).
+        /// If another item type is sitting between previous items of this type, the new item
+        /// will NOT jump back between them, and orders will only complete when requiredCount
+        /// items are strictly contiguous (adjacent without interrupting item types).
         /// </summary>
         private int GetInsertIndexForType(string itemId)
         {
-            for (int i = dockItems.Count - 1; i >= 0; i--)
-            {
-                if (dockItems[i] != null && dockItems[i].colorName != null &&
-                    dockItems[i].colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    return i + 1;
-                }
-            }
             return dockItems.Count;
         }
 
@@ -1931,35 +1922,54 @@ namespace MechaFind3D.PhysicsInteraction
                 float tileHalfHeight = Mathf.Max(0.04f, t.localScale.y * 0.5f);
                 float cubeTopY = t.position.y + tileHalfHeight;
 
-                Vector3 targetPos = new Vector3(t.position.x, cubeTopY + 0.22f, t.position.z);
-
-                if (obj3D != null)
+                if (obj3D == null)
                 {
-                    Renderer[] rends = obj3D.GetComponentsInChildren<Renderer>();
-                    if (rends != null && rends.Length > 0)
-                    {
-                        Bounds b = rends[0].bounds;
-                        for (int i = 1; i < rends.Length; i++)
-                        {
-                            if (rends[i] != null && rends[i].enabled) b.Encapsulate(rends[i].bounds);
-                        }
-
-                        // Center the 3D mesh geometric center (b.center) horizontally over the 3D Cube tile
-                        Vector3 centerOffset = obj3D.transform.position - b.center;
-                        targetPos.x = t.position.x + centerOffset.x;
-                        targetPos.z = t.position.z + centerOffset.z;
-
-                        float targetMinY = cubeTopY + 0.04f;
-                        if (b.min.y < targetMinY)
-                        {
-                            float diff = targetMinY - b.min.y;
-                            targetPos.y += diff;
-                        }
-                    }
+                    return new Vector3(t.position.x, cubeTopY + 0.10f, t.position.z);
                 }
 
-                return targetPos;
+                // Compute exact dock target scale and rotation for this object
+                float fitScaleVal = ComputeFitScaleForSlot(slotIndex, obj3D);
+                Vector3 targetScale = Vector3.one * fitScaleVal;
+                Quaternion targetRot = GetDockItemRotation(slotIndex, obj3D);
+
+                // Temporarily apply target dock transform to calculate exact bottom-most surface Y
+                Vector3 origScale = obj3D.transform.localScale;
+                Quaternion origRot = obj3D.transform.rotation;
+                Vector3 origPos = obj3D.transform.position;
+
+                obj3D.transform.localScale = targetScale;
+                obj3D.transform.rotation = targetRot;
+
+                Renderer[] rends = obj3D.GetComponentsInChildren<Renderer>();
+                if (rends != null && rends.Length > 0)
+                {
+                    Bounds b = rends[0].bounds;
+                    for (int i = 1; i < rends.Length; i++)
+                    {
+                        if (rends[i] != null && rends[i].enabled) b.Encapsulate(rends[i].bounds);
+                    }
+
+                    // Restore original transform values
+                    obj3D.transform.localScale = origScale;
+                    obj3D.transform.rotation = origRot;
+
+                    // Exact distance from obj3D's pivot to its lowest surface point when in dock orientation
+                    float pivotToBottomDistanceY = origPos.y - b.min.y;
+                    Vector3 centerOffset = origPos - b.center;
+
+                    // Place target Y so that b.min.y sits exactly 0.005f (0.5mm) above cubeTopY
+                    float targetY = cubeTopY + pivotToBottomDistanceY + 0.005f;
+                    float targetX = t.position.x + centerOffset.x;
+                    float targetZ = t.position.z + centerOffset.z;
+
+                    return new Vector3(targetX, targetY, targetZ);
+                }
+
+                obj3D.transform.localScale = origScale;
+                obj3D.transform.rotation = origRot;
+                return new Vector3(t.position.x, cubeTopY + 0.10f, t.position.z);
             }
+
             if (slotIndex < 0 || slotIndex >= slotRects.Count) return Vector3.zero;
             Vector3 pos = GetUIWorldPosition(slotRects[slotIndex]);
             if (mainCamera != null && pos != Vector3.zero)
@@ -1985,15 +1995,30 @@ namespace MechaFind3D.PhysicsInteraction
             return Mathf.Max(0f, pivotToBottom);
         }
 
+        private readonly Dictionary<int, float> dockScaleCache = new Dictionary<int, float>();
+
         private float ComputeFitScaleForSlot(int slotIndex, GameObject obj3D)
         {
+            if (obj3D == null) return 1f;
+
             if (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)
             {
-                Transform t = slot3DTransforms[slotIndex];
-                float slot3DWorldSize = Mathf.Max(t.localScale.x, t.localScale.z) * 0.85f;
-                float localMax = GetObjectStaticUnscaledMaxExtent(obj3D);
-                float computedScale = localMax > 1e-4f ? slot3DWorldSize / localMax : slot3DWorldSize;
-                return Mathf.Max(computedScale, 0.28f);
+                int instanceId = obj3D.GetInstanceID();
+                if (dockScaleCache.TryGetValue(instanceId, out float cachedScale) && cachedScale > 1e-4f)
+                {
+                    return cachedScale;
+                }
+
+                float currentWorldExtent = GetCurrentWorldMaxExtent(obj3D);
+                // Prominent size: 0.53f world units fills ~78% of slot tile top surface (width 0.68f) perfectly
+                float targetDockWorldSize = 0.53f;
+                float currentScale = obj3D.transform.localScale.x;
+
+                float computedScale = currentScale * (targetDockWorldSize / currentWorldExtent);
+                float finalScale = Mathf.Max(computedScale, 0.05f);
+
+                dockScaleCache[instanceId] = finalScale;
+                return finalScale;
             }
 
             if (slotIndex < 0 || slotIndex >= slotRects.Count || mainCamera == null) return miniObjectDockScale;
@@ -2015,45 +2040,24 @@ namespace MechaFind3D.PhysicsInteraction
             Vector3 worldEdgeB = mainCamera.ScreenToWorldPoint(new Vector3(screenCenter.x + slotScreenSize * 0.5f, screenCenter.y, dockCameraDepth));
 
             float targetWorldSize = Vector3.Distance(worldEdgeA, worldEdgeB) * dockItemFillRatio;
-
-            float localMaxExtent = GetObjectStaticUnscaledMaxExtent(obj3D);
-            return localMaxExtent > 1e-4f ? targetWorldSize / localMaxExtent : targetWorldSize;
+            float currentWorldExt = GetCurrentWorldMaxExtent(obj3D);
+            return currentWorldExt > 1e-4f ? obj3D.transform.localScale.x * (targetWorldSize / currentWorldExt) : targetWorldSize;
         }
 
-        private static readonly Dictionary<int, float> unscaledExtentCache = new Dictionary<int, float>();
-
-        private static float GetObjectStaticUnscaledMaxExtent(GameObject obj)
+        private static float GetCurrentWorldMaxExtent(GameObject obj)
         {
             if (obj == null) return 1f;
-
-            int instanceId = obj.GetInstanceID();
-            if (unscaledExtentCache.TryGetValue(instanceId, out float cachedExtent) && cachedExtent > 1e-4f) return cachedExtent;
-
             Renderer[] rends = obj.GetComponentsInChildren<Renderer>();
             if (rends == null || rends.Length == 0) return 1f;
 
-            Vector3 origScale = obj.transform.localScale;
-            Quaternion origRot = obj.transform.rotation;
-
-            obj.transform.localScale = Vector3.one;
-            obj.transform.rotation = Quaternion.identity;
-
-            Bounds combined = rends[0].bounds;
+            Bounds b = rends[0].bounds;
             for (int i = 1; i < rends.Length; i++)
             {
-                if (rends[i] != null && rends[i].enabled) combined.Encapsulate(rends[i].bounds);
+                if (rends[i] != null && rends[i].enabled) b.Encapsulate(rends[i].bounds);
             }
 
-            obj.transform.localScale = origScale;
-            obj.transform.rotation = origRot;
-
-            float maxExtent = Mathf.Max(combined.size.x, combined.size.y, combined.size.z);
-
-            if (maxExtent > 500f) return 48f;
-
-            float finalExtent = maxExtent > 1e-4f ? maxExtent : 1f;
-            unscaledExtentCache[instanceId] = finalExtent;
-            return finalExtent;
+            float maxExtent = Mathf.Max(b.size.x, b.size.y, b.size.z);
+            return maxExtent > 1e-4f ? maxExtent : 1f;
         }
 
         private Quaternion GetDockItemRotation(int slotIndex = 0, GameObject obj3D = null)
@@ -2074,9 +2078,13 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     return slotRot * Quaternion.Euler(-90f, 0f, 0f);
                 }
+                if (n.Contains("sausage") || n.Contains("sasuage") || n.Contains("fish") || n.Contains("shrimp") || n.Contains("chili"))
+                {
+                    return slotRot * Quaternion.Euler(0f, 0f, 0f);
+                }
             }
 
-            return slotRot * Quaternion.Euler(0f, 20f, 0f);
+            return slotRot * Quaternion.Euler(0f, 15f, 0f);
         }
 
         public void Setup3DDockSlots()
@@ -2238,33 +2246,46 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
 
-            // Phase 1: Lift & Zoom towards camera
+            // Ensure yellow outline is active during selection & flight
+            FindTargetObject targetComp = obj3D.GetComponent<FindTargetObject>();
+            if (targetComp != null)
+            {
+                targetComp.SetYellowOutlineActive(true);
+            }
+
+            // Phase 1: Zoom towards screen/camera to clearly highlight selection
             Vector3 startPos = obj3D.transform.position;
             Vector3 camPos = mainCamera != null ? mainCamera.transform.position : startPos + Vector3.up * 2f;
-            Vector3 popPos = Vector3.Lerp(startPos, camPos, 0.22f) + Vector3.up * 0.45f;
-            Vector3 popScale = obj3D.transform.localScale * 1.25f;
+            Vector3 popPos = Vector3.Lerp(startPos, camPos, 0.32f) + Vector3.up * 0.50f;
+            Vector3 popScale = obj3D.transform.localScale * 1.40f;
 
-            float popDuration = 0.14f;
-            float flightDuration = collectFlightDuration > 0f ? collectFlightDuration : 0.32f;
+            float popDuration = 0.20f;
+            float flightDuration = collectFlightDuration > 0f ? collectFlightDuration : 0.44f;
 
             Sequence seq = DOTween.Sequence();
 
-            // 1. Pop towards camera
-            seq.Append(obj3D.transform.DOMove(popPos, popDuration).SetEase(Ease.OutBack, 1.4f));
+            // 1. Pop towards screen
+            seq.Append(obj3D.transform.DOMove(popPos, popDuration).SetEase(Ease.OutBack, 1.5f));
             seq.Join(obj3D.transform.DOScale(popScale, popDuration).SetEase(Ease.OutQuad));
+            seq.AppendInterval(0.04f);
 
-            // 2. Flight arc into 3D slot
-            seq.Append(obj3D.transform.DOJump(slotWorldPos, GetDockJumpPower(1.10f), 1, flightDuration).SetEase(Ease.InOutCubic));
+            // 2. Flight arc into 3D slot - gently floats & falls into slot
+            seq.Append(obj3D.transform.DOJump(slotWorldPos, GetDockJumpPower(1.20f), 1, flightDuration).SetEase(Ease.OutCubic));
             seq.Join(obj3D.transform.DOScale(targetScale, flightDuration).SetEase(Ease.OutQuad));
             seq.Join(obj3D.transform.DORotateQuaternion(GetDockItemRotation(slotIndex, obj3D), flightDuration).SetEase(Ease.OutQuad));
 
-            // 3. Touchdown & tile bounce
+            // 3. Touchdown into slot - turn off yellow outline ONLY when settled into slot!
             seq.OnComplete(() =>
             {
                 tweeningDockObjects.Remove(obj3D);
+                if (targetComp != null)
+                {
+                    targetComp.SetYellowOutlineActive(false);
+                }
+
                 if (obj3D != null)
                 {
-                    obj3D.transform.DOPunchScale(targetScale * 0.20f, 0.22f, 5, 0.5f);
+                    obj3D.transform.DOPunchScale(targetScale * 0.18f, 0.20f, 5, 0.5f);
                 }
 
                 if (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)

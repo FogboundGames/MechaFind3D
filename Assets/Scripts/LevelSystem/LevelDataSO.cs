@@ -216,21 +216,13 @@ namespace MechaFind3D.PhysicsInteraction
 
         public int GetTotalGoalRequiredCount()
         {
-            int total = 0;
-            if (targetGoals == null) return 0;
-            foreach (var g in targetGoals)
-            {
-                if (g.itemData != null)
-                {
-                    total += Mathf.Max(0, g.requiredCount);
-                }
-            }
-            return total;
+            List<ItemDataSO> items = BuildSpawnItemList();
+            return items != null ? items.Count : 0;
         }
 
         /// <summary>
         /// Builds an exact list of items to spawn for this level:
-        /// Spawns ONLY the explicitly configured target goals + filler items.
+        /// Spawns configured target goals + filler items + mecha host items in full triplets.
         /// </summary>
         public List<ItemDataSO> BuildSpawnItemList()
         {
@@ -266,7 +258,7 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // 3. Guarantee host object for Mecha camouflage if enabled
+            // 3. Guarantee host object for Mecha camouflage if enabled (3 instances per host)
             if (enableCamouflageMecha)
             {
                 foreach (var mechaEntry in GetAllMechaEntries())
@@ -275,7 +267,10 @@ namespace MechaFind3D.PhysicsInteraction
                     {
                         if (!spawnList.Contains(mechaEntry.hostItemSO))
                         {
-                            spawnList.Add(mechaEntry.hostItemSO);
+                            for (int m = 0; m < 3; m++)
+                            {
+                                spawnList.Add(mechaEntry.hostItemSO);
+                            }
                         }
                     }
                 }

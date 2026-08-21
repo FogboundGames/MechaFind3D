@@ -248,16 +248,16 @@ namespace MechaFind3D.PhysicsInteraction
 
             Ray ray = mainCamera.ScreenPointToRay(screenPos);
 
-            // 1. Direct RaycastAll for exact pixel hits
+            // 1. Direct RaycastAll for exact 2D screen pixel hits
             RaycastHit[] rayHits = Physics.RaycastAll(ray, 200f, ~0, QueryTriggerInteraction.Collide);
 
-            // 2. SphereCastAll with 0.35f radius for generous mobile finger-tap tolerance
-            RaycastHit[] sphereHits = Physics.SphereCastAll(ray.origin, 0.35f, ray.direction, 200f, ~0, QueryTriggerInteraction.Collide);
+            // 2. Tighter SphereCastAll (0.15f radius) for finger tap tolerance when missing exact mesh edges
+            RaycastHit[] sphereHits = Physics.SphereCastAll(ray.origin, 0.15f, ray.direction, 200f, ~0, QueryTriggerInteraction.Collide);
 
             List<RaycastHit> allHits = new List<RaycastHit>(rayHits);
             allHits.AddRange(sphereHits);
 
-            // HIGH-SENSITIVITY FIRST PRIORITY: Check if ANY hit in the tap radius touches a Mecha collider!
+            // HIGH-SENSITIVITY FIRST PRIORITY: Check if ANY hit touches an active Mecha collider!
             foreach (RaycastHit h in allHits)
             {
                 if (h.collider == null) continue;
@@ -272,28 +272,36 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // SECOND PRIORITY: Nearest general item under the tap point
-            float nearest = float.MaxValue;
-            Vector3 itemHitPoint = Vector3.zero;
-            bool foundItem = false;
+            // SECOND PRIORITY: Select candidate from hits using screen-space proximity
+            // Eliminates depth misclicks when items overlap or rest on top of each other
+            FindTargetObject bestItem = null;
+            Collider bestCollider = null;
+            Vector3 bestHitPoint = Vector3.zero;
+            float bestScore = float.MaxValue;
 
+            // A) Direct pixel hits (highest accuracy)
             foreach (RaycastHit h in rayHits)
             {
                 if (h.collider == null) continue;
                 FindTargetObject item = h.collider.GetComponentInParent<FindTargetObject>();
                 if (item == null || item.isDocked) continue;
 
-                if (h.distance < nearest)
+                Vector3 itemCenter = GetObjectBoundsCenter(item.gameObject);
+                Vector2 itemScreenPos = mainCamera.WorldToScreenPoint(itemCenter);
+                float screenDist = Vector2.Distance(screenPos, itemScreenPos);
+
+                float score = screenDist + (h.distance * 0.05f);
+                if (score < bestScore)
                 {
-                    nearest = h.distance;
-                    hitTargetObject = item;
-                    hitCollider = h.collider;
-                    itemHitPoint = h.point;
-                    foundItem = true;
+                    bestScore = score;
+                    bestItem = item;
+                    bestCollider = h.collider;
+                    bestHitPoint = h.point;
                 }
             }
 
-            if (!foundItem)
+            // B) Fallback to sphere hits only if no direct pixel hit was found
+            if (bestItem == null)
             {
                 foreach (RaycastHit h in sphereHits)
                 {
@@ -301,20 +309,26 @@ namespace MechaFind3D.PhysicsInteraction
                     FindTargetObject item = h.collider.GetComponentInParent<FindTargetObject>();
                     if (item == null || item.isDocked) continue;
 
-                    if (h.distance < nearest)
+                    Vector3 itemCenter = GetObjectBoundsCenter(item.gameObject);
+                    Vector2 itemScreenPos = mainCamera.WorldToScreenPoint(itemCenter);
+                    float screenDist = Vector2.Distance(screenPos, itemScreenPos);
+
+                    float score = screenDist + (h.distance * 0.05f);
+                    if (score < bestScore)
                     {
-                        nearest = h.distance;
-                        hitTargetObject = item;
-                        hitCollider = h.collider;
-                        itemHitPoint = h.point;
-                        foundItem = true;
+                        bestScore = score;
+                        bestItem = item;
+                        bestCollider = h.collider;
+                        bestHitPoint = h.point;
                     }
                 }
             }
 
-            if (foundItem)
+            if (bestItem != null)
             {
-                return itemHitPoint;
+                hitTargetObject = bestItem;
+                hitCollider = bestCollider;
+                return bestHitPoint;
             }
 
             if (groundPlane.Raycast(ray, out float enter))
@@ -323,6 +337,20 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             return Vector3.zero;
+        }
+
+        private Vector3 GetObjectBoundsCenter(GameObject obj)
+        {
+            if (obj == null) return Vector3.zero;
+            Renderer[] rends = obj.GetComponentsInChildren<Renderer>();
+            if (rends == null || rends.Length == 0) return obj.transform.position;
+
+            Bounds b = rends[0].bounds;
+            for (int i = 1; i < rends.Length; i++)
+            {
+                if (rends[i] != null && rends[i].enabled) b.Encapsulate(rends[i].bounds);
+            }
+            return b.center;
         }
 
         private void OnTouchBegan(Vector2 screenPos)
@@ -525,6 +553,9 @@ namespace MechaFind3D.PhysicsInteraction
             // FindTargetObject in the hierarchy and the lookup below would never find it.
             // Route taps on it directly instead of through the FindTargetObject pile flow.
             if (TryHandleStandaloneMechaTap(screenPos)) return;
+
+            // When a Mecha is running loose in the scene, block tapping all other objects!
+            if (MechaRunnerBehavior.IsAnyMechaRunning()) return;
 
             GetTouchWorldPosition(screenPos, out FindTargetObject targetItem, out Collider hitCollider);
             if (targetItem != null)

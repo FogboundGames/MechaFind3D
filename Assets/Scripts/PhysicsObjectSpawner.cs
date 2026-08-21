@@ -225,13 +225,15 @@ namespace MechaFind3D.PhysicsInteraction
                 if (useLevelItems)
                 {
                     ItemDataSO itemData = levelItems[i];
-                    if (itemData != null && itemData.prefab != null)
+                    GameObject itemPrefab = itemData != null ? (itemData.prefab != null ? itemData.prefab : FindPrefabForItemId(itemData.GetEffectiveItemId())) : null;
+
+                    if (itemPrefab != null)
                     {
-                        obj = Instantiate(itemData.prefab);
+                        obj = Instantiate(itemPrefab);
                         obj.name = $"LevelObj_{itemData.GetEffectiveItemId()}_{i}";
                         shapeType = ObjectShapeType.Cube;
                         itemId = itemData.GetEffectiveItemId();
-                        itemColor = itemData.targetColor;
+                        itemColor = itemData != null ? itemData.targetColor : Color.white;
                         isCustomModel = true;
 
                         float configuredSize = (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null) ? LevelManager.Instance.ActiveLevelData.foodTargetSize : 1.20f;
@@ -248,8 +250,8 @@ namespace MechaFind3D.PhysicsInteraction
                         obj = GameObject.CreatePrimitive(PrimitiveType.Cube);
                         obj.name = $"FallbackCube_{i}";
                         shapeType = ObjectShapeType.Cube;
-                        itemId = "cube";
-                        itemColor = Color.cyan;
+                        itemId = itemData != null ? itemData.GetEffectiveItemId() : "cube";
+                        itemColor = itemData != null ? itemData.targetColor : Color.cyan;
                         scale = minScale;
                         massSize = scale;
                     }
@@ -533,6 +535,31 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 Destroy(oldContainer.gameObject);
             }
+        }
+
+        private GameObject FindPrefabForItemId(string itemId)
+        {
+            if (string.IsNullOrEmpty(itemId)) return null;
+
+            if (foodModels != null)
+            {
+                foreach (var model in foodModels)
+                {
+                    if (model != null && model.name.Equals(itemId, System.StringComparison.OrdinalIgnoreCase)) return model;
+                }
+                foreach (var model in foodModels)
+                {
+                    if (model != null && model.name.ToLowerInvariant().Contains(itemId.ToLowerInvariant())) return model;
+                }
+            }
+
+            if (CanvasUIDesignManager.Instance != null)
+            {
+                GameObject displayPrefab = CanvasUIDesignManager.Instance.FindDisplayPrefabForItem(itemId);
+                if (displayPrefab != null) return displayPrefab;
+            }
+
+            return null;
         }
 
         private void OnDrawGizmosSelected()
