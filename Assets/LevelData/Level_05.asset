@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a864202d3e27464ba58b8fad0a86a44, type: 3}
+  m_Name: Level_05
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
+  levelNumber: 5
+  levelTitle: Seviye 5
+  timeLimit: 130
+  totalPileCount: 36
+  foodTargetSize: 1.2
+  targetGoals:
+  - itemData: {fileID: 11400000, guid: 4d9890ddf788031418def3f66963536e, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: d23494d243bfdfa4882253b5f9a0f576, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 11b43e6e978f862448e09e41524f9f6c, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 42c04b3d918c0f94c80ee1aed6df68b9, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 1279d126a7522994a9163643d1b2965c, type: 2}
+    requiredCount: 6
+  fillerItems:
+  - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
+  - {fileID: 11400000, guid: 4ab0cb04f86f8a84bbda74e8eb76773a, type: 2}
+  enableCamouflageMecha: 1
+  targetPivot: 1
+  customMechaPrefab: {fileID: 0}
+  hostItemSO: {fileID: 11400000, guid: 4d9890ddf788031418def3f66963536e, type: 2}
+  mechaHostKeyword: burger_001
+  mechaScaleRatio: 0.25
+  mechaWrapAmount: 0
+  mechaWorldSize: 0.5
+  mechaOpacity: 0.22
+  mechaLocalOffset: {x: 0, y: 0, z: 0}
+  mechaRotationOffset: {x: 90, y: 0, z: 0}
+  additionalMechas:
+  - targetPivot: 1
+    customMechaPrefab: {fileID: 0}
+    hostItemSO: {fileID: 11400000, guid: 1279d126a7522994a9163643d1b2965c, type: 2}
+    mechaHostKeyword: soda_002
+    mechaScaleRatio: 0.25
+    mechaWrapAmount: 0
+    mechaWorldSize: 0.5
+    mechaOpacity: 0.22
+    mechaLocalOffset: {x: 0, y: 0, z: 0}
+    mechaRotationOffset: {x: 90, y: 0, z: 0}

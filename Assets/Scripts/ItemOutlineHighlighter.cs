@@ -12,7 +12,9 @@ namespace MechaFind3D.PhysicsInteraction
     {
         [Header("Outline Visual Settings")]
         [SerializeField] private Color outlineColor = new Color(1.0f, 0.85f, 0.0f, 1.0f); // Bright Yellow / Gold
-        [SerializeField] private float outlineWidth = 0.005f;
+        // Thinned at Emre's request (was 0.005) - now a touch/drag indicator rather than a permanent
+        // "docked" badge, so it reads better as a light finger-highlight instead of a heavy outline.
+        [SerializeField] private float outlineWidth = 0.003f;
         [SerializeField] private float glowIntensity = 1.25f;
 
         private static Material sharedOutlineMaterial;

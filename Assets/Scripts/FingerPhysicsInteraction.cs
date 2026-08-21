@@ -20,6 +20,9 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Radius around touch point that pushes nearby items aside.")]
         [SerializeField] private float interactionRadius = 1.4f;
 
+        [Tooltip("Radius around touch point that lights an item's outline up. Kept far tighter than interactionRadius on purpose - that one is tuned for pushing a whole cluster aside, this one is meant to read as 'the one thing your finger is actually on', not the whole push radius.")]
+        [SerializeField] private float touchGlowRadius = 0.45f;
+
         [Tooltip("Force clamp to keep movement smooth and contained.")]
         [SerializeField] private float maxForceClamp = 1.2f;
 
@@ -47,6 +50,13 @@ namespace MechaFind3D.PhysicsInteraction
         private bool isDragging = false;
         private Vector2 touchStartScreenPos;
         private Plane groundPlane;
+
+        // Match Factory style: the yellow outline is a live "currently under your finger" indicator, not
+        // a "docked" one. These track which items are glowing right now so the set can be diffed each
+        // drag frame - only what changed gets an outline call, and nothing is ever left glowing once the
+        // finger moves off it or lifts.
+        private readonly HashSet<FindTargetObject> touchGlowActive = new HashSet<FindTargetObject>();
+        private readonly HashSet<FindTargetObject> touchGlowFrameSet = new HashSet<FindTargetObject>();
 
         private void Awake()
         {
@@ -326,6 +336,8 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
+            ClearAllTouchGlow();
+
             isTouching = true;
             isDragging = false;
             touchStartScreenPos = screenPos;
@@ -375,6 +387,12 @@ namespace MechaFind3D.PhysicsInteraction
         private void ApplyMatchFactoryFluidForces(Vector3 centerPoint, Vector3 swipeVelocity)
         {
             Collider[] hits = Physics.OverlapSphere(centerPoint, interactionRadius, interactableLayer);
+
+            // Deliberately a SEPARATE, much tighter query than `hits` above - interactionRadius is sized to
+            // push a whole cluster of items aside, and reusing it here was lighting up 8-10 items at once
+            // any time the pile was dense, instead of just the one or two the finger is actually on.
+            Collider[] glowHits = Physics.OverlapSphere(centerPoint, touchGlowRadius, interactableLayer);
+            UpdateTouchGlow(glowHits);
 
             Vector3 dragDir = new Vector3(swipeVelocity.x, 0f, swipeVelocity.z);
             float speed = dragDir.magnitude;
@@ -433,6 +451,43 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
+        /// <summary>
+        /// Diffs this frame's OverlapSphere hits against the currently-glowing set: turns the outline off
+        /// for anything the finger has moved away from, on for anything newly under it. Docked items are
+        /// skipped - they've already left the pile and the glow means "in the pile, under your finger".
+        /// </summary>
+        private void UpdateTouchGlow(Collider[] hits)
+        {
+            touchGlowFrameSet.Clear();
+            foreach (Collider col in hits)
+            {
+                FindTargetObject item = col.GetComponentInParent<FindTargetObject>();
+                if (item == null || item.isDocked) continue;
+                touchGlowFrameSet.Add(item);
+            }
+
+            touchGlowActive.RemoveWhere(item =>
+            {
+                if (item != null && touchGlowFrameSet.Contains(item)) return false;
+                if (item != null) item.SetYellowOutlineActive(false);
+                return true;
+            });
+
+            foreach (FindTargetObject item in touchGlowFrameSet)
+            {
+                if (touchGlowActive.Add(item)) item.SetYellowOutlineActive(true);
+            }
+        }
+
+        private void ClearAllTouchGlow()
+        {
+            foreach (FindTargetObject item in touchGlowActive)
+            {
+                if (item != null) item.SetYellowOutlineActive(false);
+            }
+            touchGlowActive.Clear();
+        }
+
         private Vector3 GetImpactPointOnCollider(Collider col, Vector3 centerPoint, Vector3 fallbackCom)
         {
             if (col == null) return fallbackCom;
@@ -456,6 +511,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             isTouching = false;
             isDragging = false;
+            ClearAllTouchGlow();
 
             if (indicatorObject != null)
             {

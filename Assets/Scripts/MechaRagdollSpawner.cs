@@ -61,7 +61,14 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Fallback color palette if flat color mode is selected.")]
         [SerializeField] private Color[] camouflagePalette = ChameleonCamouflage.DefaultPalette;
 
-        private GameObject currentSpawnedMecha;
+        // One level can now hide more than one mecha in its pile, each in its own host object - see
+        // LevelDataSO.GetAllMechaEntries(). Every entry here came from one call to SpawnOneMecha().
+        private readonly List<GameObject> currentSpawnedMechas = new List<GameObject>();
+
+        // Hosts already claimed during THIS spawn pass, so a second mecha never embeds into the same pile
+        // item as an earlier one. Cleared at the start of every SpawnAllForLevel()/SpawnRandom() call, not
+        // kept across calls - a host is only "taken" for the duration of one spawn pass.
+        private readonly HashSet<FindTargetObject> hostsClaimedThisPass = new HashSet<FindTargetObject>();
 
         private void Start()
         {
@@ -71,11 +78,11 @@ namespace MechaFind3D.PhysicsInteraction
 
         public void ClearAllExistingMechas()
         {
-            if (currentSpawnedMecha != null)
+            foreach (GameObject mecha in currentSpawnedMechas)
             {
-                Destroy(currentSpawnedMecha);
-                currentSpawnedMecha = null;
+                if (mecha != null) Destroy(mecha);
             }
+            currentSpawnedMechas.Clear();
 
             // Clean up any unattached standalone mecha objects in scene
             foreach (var obj in FindObjectsByType<GameObject>(FindObjectsSortMode.None))
@@ -118,27 +125,61 @@ namespace MechaFind3D.PhysicsInteraction
 #endif
         }
 
-        /// <summary>Instantiates a random character model at the spawn point and builds its ragdoll.</summary>
-        public GameObject SpawnRandom()
-        {
-            return SpawnRandomAt(spawnPosition, Quaternion.Euler(spawnTiltEuler));
-        }
-
-        /// <summary>Instantiates a random character model at an arbitrary pose and builds its ragdoll.</summary>
-        public GameObject SpawnRandomAt(Vector3 position, Quaternion rotation)
+        /// <summary>
+        /// Spawns every mecha the active level asks for (LevelDataSO.GetAllMechaEntries() - the level's own
+        /// primary mecha fields plus any entries in additionalMechas), each hiding in its own host object.
+        /// This is what LevelManager.LoadLevel() calls; SpawnRandom() below is the single-mecha path kept
+        /// for anything else that only ever wants one.
+        /// </summary>
+        public List<GameObject> SpawnAllForLevel()
         {
             AutoFindCharacterModelsIfEmpty();
             ClearAllExistingMechas();
+            hostsClaimedThisPass.Clear();
 
-            GameObject modelToSpawn = null;
-            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null && LevelManager.Instance.ActiveLevelData.customMechaPrefab != null)
+            bool hasLevelData = LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null;
+            if (!hasLevelData)
             {
-                modelToSpawn = LevelManager.Instance.ActiveLevelData.customMechaPrefab;
+                // No LevelManager/LevelData at all - fall back to this component's own inspector-configured
+                // single mecha, matching the original pre-multi-mecha behaviour. Deliberately NOT the same
+                // fallback for "LevelData exists but says zero mechas" (enableCamouflageMecha off, no
+                // additionalMechas) - that case must spawn nothing, so it stays out of this branch.
+                GameObject solo = SpawnOneMecha(null);
+                if (solo != null) currentSpawnedMechas.Add(solo);
+                return currentSpawnedMechas;
             }
-            if (modelToSpawn == null)
+
+            foreach (MechaSpawnEntry entry in LevelManager.Instance.ActiveLevelData.GetAllMechaEntries())
             {
-                modelToSpawn = customMechaPrefab;
+                GameObject mecha = SpawnOneMecha(entry);
+                if (mecha != null) currentSpawnedMechas.Add(mecha);
             }
+
+            return currentSpawnedMechas;
+        }
+
+        /// <summary>Single-mecha entry point kept for any caller that only ever wants one (e.g. outside a level flow).</summary>
+        public GameObject SpawnRandom()
+        {
+            AutoFindCharacterModelsIfEmpty();
+            ClearAllExistingMechas();
+            hostsClaimedThisPass.Clear();
+
+            GameObject mecha = SpawnOneMecha(null);
+            if (mecha != null) currentSpawnedMechas.Add(mecha);
+            return mecha;
+        }
+
+        /// <summary>
+        /// Instantiates and poses ONE mecha. <paramref name="entry"/> null means "use this component's own
+        /// legacy single-mecha inspector fields" (customMechaPrefab/preferredHostKeyword) instead of a
+        /// LevelDataSO entry - the same fallback the original single-mecha SpawnRandomAt used when no level
+        /// data was present.
+        /// </summary>
+        private GameObject SpawnOneMecha(MechaSpawnEntry entry)
+        {
+            GameObject modelToSpawn = entry != null ? entry.customMechaPrefab : null;
+            if (modelToSpawn == null) modelToSpawn = customMechaPrefab;
             if (modelToSpawn == null && characterModels != null && characterModels.Length > 0)
             {
                 modelToSpawn = characterModels[Random.Range(0, characterModels.Length)];
@@ -150,98 +191,83 @@ namespace MechaFind3D.PhysicsInteraction
                 return null;
             }
 
-            currentSpawnedMecha = Instantiate(modelToSpawn, position, rotation);
-            currentSpawnedMecha.name = $"MechaRagdoll_{modelToSpawn.name}";
+            GameObject spawned = Instantiate(modelToSpawn, spawnPosition, Quaternion.Euler(spawnTiltEuler));
+            spawned.name = $"MechaRagdoll_{modelToSpawn.name}";
 
             // Enforce compact mini size on raw mecha model by default (never a 2-meter giant!)
-            currentSpawnedMecha.transform.localScale = Vector3.one * 0.20f;
+            spawned.transform.localScale = Vector3.one * 0.20f;
 
             // Skinned/rigged mechas (e.g. meccha chameleon) must NOT be ragdoll-built: turning their
             // bones into falling physics bodies scatters the skeleton in world space, so after embedding
             // the visible mesh floats away from the host. Only ragdoll simple (non-skinned) characters.
             // (The embed step poses + strips physics itself, so ragdoll isn't needed for embedded mechas.)
-            if (currentSpawnedMecha.GetComponentInChildren<SkinnedMeshRenderer>() == null)
+            if (spawned.GetComponentInChildren<SkinnedMeshRenderer>() == null)
             {
-                RagdollBuilder.Build(currentSpawnedMecha, ragdollSettings);
+                RagdollBuilder.Build(spawned, ragdollSettings);
             }
 
             if (camouflage)
             {
-                ApplyCamouflageToMecha(currentSpawnedMecha);
+                ApplyCamouflageToMecha(spawned, entry);
             }
 
             // Fixed glass look: applied last so every mecha reads as a light, see-through white silhouette
             // no matter which disguise mode ran above (or whether embedding into a host object even happened).
-            // It must use the LEVEL's opacity: the embed path above already applied that value, and this
-            // call used to overwrite it with the hard-coded default, so a level asking for a fainter, better
-            // hidden mecha never actually got one.
-            float glassOpacity = 0.22f;
-            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
-            {
-                glassOpacity = LevelManager.Instance.ActiveLevelData.mechaOpacity;
-            }
+            // Must use THIS mecha's own opacity - the embed step above already applied it, and this call
+            // used to overwrite every mecha with one hard-coded default regardless of its own setting.
+            float glassOpacity = entry != null ? entry.mechaOpacity : 0.22f;
 
             Color hostColor = Color.white;
-            if (currentSpawnedMecha != null && currentSpawnedMecha.transform.parent != null)
+            if (spawned != null && spawned.transform.parent != null)
             {
-                hostColor = ChameleonCamouflage.GetHostDominantColor(currentSpawnedMecha.transform.parent.gameObject);
+                hostColor = ChameleonCamouflage.GetHostDominantColor(spawned.transform.parent.gameObject);
             }
 
-            ChameleonCamouflage.ApplyGlassMaterial(currentSpawnedMecha, glassOpacity, hostColor);
+            ChameleonCamouflage.ApplyGlassMaterial(spawned, glassOpacity, hostColor);
 
-            return currentSpawnedMecha;
+            return spawned;
         }
 
-        public void ApplyCamouflageToMecha(GameObject mecha)
+        /// <summary>
+        /// <paramref name="entry"/> null means "use this component's own legacy inspector fields" (the
+        /// original single-mecha fallback for when no LevelData is driving things). When spawning several
+        /// mechas in one pass, <see cref="hostsClaimedThisPass"/> keeps each one out of the others' way.
+        /// </summary>
+        public void ApplyCamouflageToMecha(GameObject mecha, MechaSpawnEntry entry = null)
         {
             if (mecha == null) return;
 
             if (embedInHostObject || camouflageMode == CamouflageMode.HostObjectEmbed)
             {
-                float targetScaleRatio = 0.85f;
-                float targetOpacity = 0.22f;
-                float absWorldSize = 0f;
-                float wrapAmount = 0f;
+                float targetScaleRatio = entry != null ? entry.mechaScaleRatio : 0.85f;
+                float targetOpacity = entry != null ? entry.mechaOpacity : 0.22f;
+                float absWorldSize = entry != null ? entry.mechaWorldSize : 0f;
+                float wrapAmount = entry != null ? entry.mechaWrapAmount : 0f;
+                Vector3 posOffset = entry != null ? entry.mechaLocalOffset : Vector3.zero;
+                Vector3 rotOffset = entry != null ? entry.mechaRotationOffset : Vector3.zero;
+                MechaPivotSelection pivotPref = entry != null ? entry.targetPivot : MechaPivotSelection.Auto;
+
                 string keyword = preferredHostKeyword;
-                Vector3 posOffset = Vector3.zero;
-                Vector3 rotOffset = Vector3.zero;
-
-                if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+                if (entry != null)
                 {
-                    targetScaleRatio = LevelManager.Instance.ActiveLevelData.mechaScaleRatio;
-                    targetOpacity = LevelManager.Instance.ActiveLevelData.mechaOpacity;
-                    absWorldSize = LevelManager.Instance.ActiveLevelData.mechaWorldSize;
-                    wrapAmount = LevelManager.Instance.ActiveLevelData.mechaWrapAmount;
-                    posOffset = LevelManager.Instance.ActiveLevelData.mechaLocalOffset;
-                    rotOffset = LevelManager.Instance.ActiveLevelData.mechaRotationOffset;
-
-                    if (LevelManager.Instance.ActiveLevelData.hostItemSO != null)
-                    {
-                        keyword = LevelManager.Instance.ActiveLevelData.hostItemSO.GetEffectiveItemId();
-                    }
-                    else if (!string.IsNullOrEmpty(LevelManager.Instance.ActiveLevelData.mechaHostKeyword))
-                    {
-                        keyword = LevelManager.Instance.ActiveLevelData.mechaHostKeyword;
-                    }
+                    if (entry.hostItemSO != null) keyword = entry.hostItemSO.GetEffectiveItemId();
+                    else if (!string.IsNullOrEmpty(entry.mechaHostKeyword)) keyword = entry.mechaHostKeyword;
                 }
 
                 FindTargetObject hostObj = FindBestHostObjectInPile(keyword);
-                if (hostObj == null && LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null && LevelManager.Instance.ActiveLevelData.hostItemSO != null && LevelManager.Instance.ActiveLevelData.hostItemSO.prefab != null)
+                if (hostObj == null && entry != null && entry.hostItemSO != null && entry.hostItemSO.prefab != null)
                 {
-                    GameObject spawnedHost = Instantiate(LevelManager.Instance.ActiveLevelData.hostItemSO.prefab, new Vector3(0f, 0.1f, 0f), Quaternion.identity);
-                    spawnedHost.name = $"Host_{LevelManager.Instance.ActiveLevelData.hostItemSO.GetEffectiveItemId()}";
+                    // Nothing in the live pile matched - spawn the configured host object fresh so this
+                    // mecha still has somewhere to hide, exactly as the single-mecha path always did.
+                    GameObject spawnedHost = Instantiate(entry.hostItemSO.prefab, new Vector3(0f, 0.1f, 0f), Quaternion.identity);
+                    spawnedHost.name = $"Host_{entry.hostItemSO.GetEffectiveItemId()}";
                     hostObj = spawnedHost.AddComponent<FindTargetObject>();
-                    hostObj.Initialize(ObjectShapeType.Cube, LevelManager.Instance.ActiveLevelData.hostItemSO.targetColor, LevelManager.Instance.ActiveLevelData.hostItemSO.GetEffectiveItemId());
-                }
-
-                MechaPivotSelection pivotPref = MechaPivotSelection.Auto;
-                if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
-                {
-                    pivotPref = LevelManager.Instance.ActiveLevelData.targetPivot;
+                    hostObj.Initialize(ObjectShapeType.Cube, entry.hostItemSO.targetColor, entry.hostItemSO.GetEffectiveItemId());
                 }
 
                 if (hostObj != null)
                 {
+                    hostsClaimedThisPass.Add(hostObj);
                     ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset, absWorldSize, pivotPref, wrapAmount);
                     return;
                 }
@@ -300,7 +326,7 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 foreach (var item in pileItems)
                 {
-                    if (item.isDocked) continue;
+                    if (item.isDocked || hostsClaimedThisPass.Contains(item)) continue;
                     string nameLower = item.gameObject.name.ToLowerInvariant();
                     string colorLower = item.colorName != null ? item.colorName.ToLowerInvariant() : "";
 
@@ -323,7 +349,7 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     foreach (var item in pileItems)
                     {
-                        if (item.isDocked) continue;
+                        if (item.isDocked || hostsClaimedThisPass.Contains(item)) continue;
                         string nameLower = item.gameObject.name.ToLowerInvariant();
                         string colorLower = item.colorName != null ? item.colorName.ToLowerInvariant() : "";
 
@@ -336,11 +362,11 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // 2. Fallback to any non-docked item in pile
+            // 2. Fallback to any non-docked, not-yet-claimed item in pile
             List<FindTargetObject> validItems = new List<FindTargetObject>();
             foreach (var item in pileItems)
             {
-                if (!item.isDocked) validItems.Add(item);
+                if (!item.isDocked && !hostsClaimedThisPass.Contains(item)) validItems.Add(item);
             }
 
             if (validItems.Count > 0)

@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a864202d3e27464ba58b8fad0a86a44, type: 3}
+  m_Name: Level_04
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
+  levelNumber: 4
+  levelTitle: Seviye 4
+  timeLimit: 120
+  totalPileCount: 36
+  foodTargetSize: 1.2
+  targetGoals:
+  - itemData: {fileID: 11400000, guid: 66dc5eb7e435de942817bca27b951238, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: b9ec21824735bc34da3685edb3d36a95, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 9f6b642d76a3f754ba349a194e7b013a, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 7b4286e1edc915c47b458c4273479366, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: c6d28120eea1b38429540773822e9d6e, type: 2}
+    requiredCount: 6
+  fillerItems:
+  - {fileID: 11400000, guid: 492f9081f7156dc499af3b717e806317, type: 2}
+  - {fileID: 11400000, guid: 65755a1709534c34d9cfeb10c42668f0, type: 2}
+  enableCamouflageMecha: 1
+  targetPivot: 1
+  customMechaPrefab: {fileID: 0}
+  hostItemSO: {fileID: 11400000, guid: 66dc5eb7e435de942817bca27b951238, type: 2}
+  mechaHostKeyword: donut_002
+  mechaScaleRatio: 0.25
+  mechaWrapAmount: 0
+  mechaWorldSize: 0.5
+  mechaOpacity: 0.22
+  mechaLocalOffset: {x: 0, y: 0, z: 0}
+  mechaRotationOffset: {x: 90, y: 0, z: 0}
+  additionalMechas:
+  - targetPivot: 1
+    customMechaPrefab: {fileID: 0}
+    hostItemSO: {fileID: 11400000, guid: c6d28120eea1b38429540773822e9d6e, type: 2}
+    mechaHostKeyword: coffee_005
+    mechaScaleRatio: 0.25
+    mechaWrapAmount: 0
+    mechaWorldSize: 0.5
+    mechaOpacity: 0.22
+    mechaLocalOffset: {x: 0, y: 0, z: 0}
+    mechaRotationOffset: {x: 90, y: 0, z: 0}

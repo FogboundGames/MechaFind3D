@@ -137,15 +137,13 @@ namespace MechaFind3D.PhysicsInteraction
                 CanvasUIDesignManager.Instance.HideAllOverlayPanels();
             }
 
-            // 4. Spawn single camouflaged Mecha for this level
+            // 4. Spawn every camouflaged Mecha this level configures (LevelDataSO.GetAllMechaEntries()) -
+            // SpawnAllForLevel() reads the active level itself and handles clearing the old ones, spawning
+            // zero when the level asks for none, and each mecha hiding in its own host object.
             MechaRagdollSpawner mechaSpawner = FindFirstObjectByType<MechaRagdollSpawner>();
             if (mechaSpawner != null)
             {
-                mechaSpawner.ClearAllExistingMechas();
-                if (ActiveLevelData == null || ActiveLevelData.enableCamouflageMecha)
-                {
-                    mechaSpawner.SpawnRandom();
-                }
+                mechaSpawner.SpawnAllForLevel();
             }
 
             Debug.Log($"🎮 Seviye {currentLevelIndex + 1} Başarıyla Yüklendi! (Başlık: {ActiveLevelData.levelTitle})");

@@ -1,0 +1,54 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a864202d3e27464ba58b8fad0a86a44, type: 3}
+  m_Name: Level_03
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
+  levelNumber: 3
+  levelTitle: Seviye 3: İtalyan Mutfağı
+  timeLimit: 110
+  totalPileCount: 33
+  foodTargetSize: 1.2
+  targetGoals:
+  - itemData: {fileID: 11400000, guid: ab68c81495a82e741b64e21a1a548533, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 035c14ba91471994ea6c8aa409c2e0dc, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: c07ad42b66ee7bd4f9e816039ca72300, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: d4501c4ce547596428750c64806548e3, type: 2}
+    requiredCount: 6
+  fillerItems:
+  - {fileID: 11400000, guid: e1e91384208b2394394cb7f5c48929b1, type: 2}
+  enableCamouflageMecha: 1
+  targetPivot: 1
+  customMechaPrefab: {fileID: 0}
+  hostItemSO: {fileID: 11400000, guid: ab68c81495a82e741b64e21a1a548533, type: 2}
+  mechaHostKeyword: mushroom_002
+  mechaScaleRatio: 0.25
+  mechaWrapAmount: 0
+  mechaWorldSize: 0.5
+  mechaOpacity: 0.22
+  mechaLocalOffset: {x: 0, y: 0, z: 0}
+  mechaRotationOffset: {x: 90, y: 0, z: 0}
+  additionalMechas:
+  - targetPivot: 1
+    customMechaPrefab: {fileID: 0}
+    hostItemSO: {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
+    mechaHostKeyword: avocado_001
+    mechaScaleRatio: 0.25
+    mechaWrapAmount: 0
+    mechaWorldSize: 0.5
+    mechaOpacity: 0.22
+    mechaLocalOffset: {x: 0, y: 0, z: 0}
+    mechaRotationOffset: {x: 90, y: 0, z: 0}

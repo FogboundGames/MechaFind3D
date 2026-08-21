@@ -15,6 +15,10 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         private string itemSearchQuery = "";
         private Object dragAndDropPrefabTarget;
 
+        // Expand/collapse state per additionalMechas entry, keyed by list index. Session-only (not saved
+        // with the asset) - purely so re-drawing the same OnGUI frame doesn't reset every foldout shut.
+        private readonly Dictionary<int, bool> mechaEntryFoldouts = new Dictionary<int, bool>();
+
         [MenuItem("Tools/Level Design Manager", false, 0)]
         public static void ShowWindow()
         {
@@ -270,82 +274,61 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             if (so.FindProperty("enableCamouflageMecha").boolValue)
             {
-                EditorGUI.BeginChangeCheck();
+                EditorGUILayout.HelpBox(
+                    "Bu seviyedeki tüm Mechalar aşağıda kart/pencere olarak listelenmiştir. İstediğiniz Mecha kartına tıklayarak alttan detaylarını açabilir ve sahnede nasıl durduğunu önizleyebilirsiniz.",
+                    MessageType.Info);
 
-                EditorGUILayout.BeginVertical(GUI.skin.box);
-                EditorGUILayout.PropertyField(so.FindProperty("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
-                EditorGUILayout.PropertyField(so.FindProperty("targetPivot"), new GUIContent("Yerleşeceği Pivot Noktası:"));
-                EditorGUILayout.PropertyField(so.FindProperty("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
-                EditorGUILayout.PropertyField(so.FindProperty("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
-                EditorGUILayout.PropertyField(so.FindProperty("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
-                EditorGUILayout.PropertyField(so.FindProperty("mechaScaleRatio"), new GUIContent("Mecha Ölçek Oranı (yalnızca Boy=0 ise):"));
-                EditorGUILayout.PropertyField(so.FindProperty("mechaWrapAmount"), new GUIContent("Objeye Sarılma (0=düz, 1=tam sarılır):"));
-                EditorGUILayout.PropertyField(so.FindProperty("mechaOpacity"), new GUIContent("Mecha Saydamlığı (0.55 = %55):"));
-                EditorGUILayout.PropertyField(so.FindProperty("mechaLocalOffset"), new GUIContent("Mecha Konum Öteleme (Offset):"));
-                EditorGUILayout.PropertyField(so.FindProperty("mechaRotationOffset"), new GUIContent("Mecha Dönüş Açısı (Euler):"));
+                EditorGUILayout.Space(5);
 
-                if (EditorGUI.EndChangeCheck())
+                // Upper Action Bar
+                EditorGUILayout.BeginHorizontal();
+                GUI.backgroundColor = new Color(0.3f, 0.85f, 1.0f);
+                if (GUILayout.Button("➕ Yeni Mecha Ekle", GUILayout.Height(30)))
                 {
-                    so.ApplyModifiedProperties();
-                    LiveUpdateScene3DPreview(level);
+                    AddNewMechaToLevel(so, level);
                 }
 
-                EditorGUILayout.Space(8);
-                Color prevBg = GUI.backgroundColor;
-                GUI.backgroundColor = new Color(0.2f, 0.8f, 1.0f);
-                if (GUILayout.Button("🔍 3D Canlı Önizlemeyi Sahnede Göster ve Odaklan (Scene View)", GUILayout.Height(34)))
+                var allEntries = level.GetAllMechaEntries();
+                if (allEntries.Count > 1)
                 {
-                    GenerateScene3DPreview(level);
+                    GUI.backgroundColor = new Color(0.1f, 0.65f, 0.95f);
+                    if (GUILayout.Button($"🌐 TÜM MECHALARI ({allEntries.Count} Adet) SAHNEDE YAN YANA GÖSTER", GUILayout.Height(30)))
+                    {
+                        GenerateAllScene3DPreviews(level);
+                    }
                 }
+
                 GUI.backgroundColor = new Color(0.3f, 0.9f, 0.4f);
-                if (GUILayout.Button("📦 Mecha GLB Modelini FBX Formatına Dönüştür (.fbx Exporter)", GUILayout.Height(28)))
+                if (GUILayout.Button("📦 GLB -> FBX Converter", GUILayout.Width(150), GUILayout.Height(30)))
                 {
                     MechaFind3D.EditorTools.GLBToFBXConverterTool.ConvertMechaGLBToFBX();
                 }
-                GUI.backgroundColor = prevBg;
+                GUI.backgroundColor = Color.white;
+                EditorGUILayout.EndHorizontal();
 
-                // Visual Preview & Dimension Stats Box
-                ItemDataSO hostSO = level.hostItemSO;
-                if (hostSO != null && hostSO.prefab != null)
+                EditorGUILayout.Space(8);
+
+                // Render each mecha as a collapsible window card
+                int mechaToRemoveIdx = -1;
+                int totalMechas = 1 + (level.additionalMechas != null ? level.additionalMechas.Count : 0);
+                for (int m = 0; m < totalMechas; m++)
                 {
-                    EditorGUILayout.Space(8);
-                    EditorGUILayout.BeginHorizontal(GUI.skin.box);
-
-                    // 2D Preview Thumbnail of Host Object
-                    Texture2D hostPreview = AssetPreview.GetAssetPreview(hostSO.prefab);
-                    if (hostPreview != null)
+                    if (DrawMechaCard(so, level, m))
                     {
-                        GUILayout.Label(hostPreview, GUILayout.Width(70), GUILayout.Height(70));
+                        mechaToRemoveIdx = m - 1; // additionalMechas index is m - 1
                     }
-
-                    EditorGUILayout.BeginVertical();
-                    GUILayout.Label($"📐 {hostSO.displayName} Boyut Bilgisi & Önizleme", EditorStyles.boldLabel);
-
-                    Renderer[] rends = hostSO.prefab.GetComponentsInChildren<Renderer>();
-                    if (rends != null && rends.Length > 0)
-                    {
-                        Bounds b = rends[0].bounds;
-                        for (int k = 1; k < rends.Length; k++) b.Encapsulate(rends[k].bounds);
-
-                        float maxDim = Mathf.Max(b.size.x, b.size.y, b.size.z);
-                        float ratio = level.mechaScaleRatio;
-                        float mechaSize = maxDim * ratio;
-
-                        GUILayout.Label($"Obje Mesh Boyutları (X, Y, Z): {b.size.x:F2}m x {b.size.y:F2}m x {b.size.z:F2}m", EditorStyles.miniLabel);
-                        GUILayout.Label($"Maksimum Obje Çapı: {maxDim:F2} birim", EditorStyles.miniLabel);
-
-                        GUIStyle highlightStyle = new GUIStyle(EditorStyles.boldLabel)
-                        {
-                            normal = { textColor = new Color(0.2f, 0.8f, 0.4f) }
-                        };
-                        GUILayout.Label($"📏 Geometrik Mecha Boyutu: {mechaSize:F2} birim (%{(ratio * 100):F0} oranında)", highlightStyle);
-                    }
-
-                    EditorGUILayout.EndVertical();
-                    EditorGUILayout.EndHorizontal();
                 }
 
-                EditorGUILayout.EndVertical();
+                if (mechaToRemoveIdx >= 0)
+                {
+                    SerializedProperty mechasProp = so.FindProperty("additionalMechas");
+                    if (mechaToRemoveIdx < mechasProp.arraySize)
+                    {
+                        mechasProp.DeleteArrayElementAtIndex(mechaToRemoveIdx);
+                        mechaEntryFoldouts.Remove(mechaToRemoveIdx + 1);
+                        so.ApplyModifiedProperties();
+                    }
+                }
             }
 
             EditorGUILayout.Space(10);
@@ -487,6 +470,161 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 EditorUtility.SetDirty(level);
                 AssetDatabase.SaveAssets();
             }
+        }
+
+        /// <summary>
+        /// Editor for LevelDataSO.additionalMechas - every mecha beyond the primary one configured just
+        /// above. Each entry gets its own collapsible box with the exact same fields as the primary mecha
+        /// (LevelDataSO.MechaSpawnEntry mirrors those fields 1:1), since MechaRagdollSpawner spawns every
+        /// entry through the identical per-mecha path (SpawnOneMecha) - there's no meaningful difference
+        /// between "the level's own mecha" and "an additional one" at spawn time, only in how they're stored.
+        /// </summary>
+        /// <summary>
+        /// Renders one Mecha card (window foldout). Handles both Mecha #1 (bound to LevelDataSO primary fields)
+        /// and Mecha #2+ (bound to LevelDataSO.additionalMechas elements).
+        /// </summary>
+        private bool DrawMechaCard(SerializedObject so, LevelDataSO level, int mechaIdx)
+        {
+            bool deleteRequested = false;
+            var entries = level.GetAllMechaEntries();
+            MechaSpawnEntry entry = mechaIdx < entries.Count ? entries[mechaIdx] : null;
+
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+
+            // Default foldout state: Mecha 1 (index 0) starts expanded by default, others start collapsed
+            if (!mechaEntryFoldouts.ContainsKey(mechaIdx))
+            {
+                mechaEntryFoldouts[mechaIdx] = (mechaIdx == 0);
+            }
+            bool expanded = mechaEntryFoldouts[mechaIdx];
+
+            ItemDataSO hostSO = entry != null ? entry.hostItemSO : null;
+            string hostName = hostSO != null ? hostSO.displayName : "Henüz Seçilmedi";
+            string title = $"🤖 Mecha #{mechaIdx + 1} — {hostName}";
+
+            // Header layout: Reserve clean 24px height, split into left Foldout and right Delete button
+            Rect headerRect = EditorGUILayout.GetControlRect(true, 24);
+            float buttonWidth = 75f;
+            float foldoutWidth = mechaIdx > 0 ? headerRect.width - buttonWidth - 5f : headerRect.width;
+
+            Rect foldoutRect = new Rect(headerRect.x, headerRect.y + 2, foldoutWidth, 20);
+            expanded = EditorGUI.Foldout(foldoutRect, expanded, title, true, EditorStyles.foldoutHeader);
+            mechaEntryFoldouts[mechaIdx] = expanded;
+
+            // Sleek Delete button neatly placed on far right (no text overlap)
+            if (mechaIdx > 0)
+            {
+                Rect buttonRect = new Rect(headerRect.xMax - buttonWidth, headerRect.y + 1, buttonWidth, 20);
+                Color prevBg = GUI.backgroundColor;
+                GUI.backgroundColor = new Color(1.0f, 0.3f, 0.3f);
+                if (GUI.Button(buttonRect, "🗑️ Kaldır", EditorStyles.miniButton))
+                {
+                    deleteRequested = true;
+                }
+                GUI.backgroundColor = prevBg;
+            }
+
+            if (expanded)
+            {
+                EditorGUILayout.Space(4);
+                EditorGUI.indentLevel++;
+                EditorGUI.BeginChangeCheck();
+
+                if (mechaIdx == 0)
+                {
+                    // Bind to Primary Mecha fields on LevelDataSO
+                    EditorGUILayout.PropertyField(so.FindProperty("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
+                    EditorGUILayout.PropertyField(so.FindProperty("targetPivot"), new GUIContent("Yerleşeceği Pivot Noktası:"));
+                    EditorGUILayout.PropertyField(so.FindProperty("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
+                    EditorGUILayout.PropertyField(so.FindProperty("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
+                    EditorGUILayout.PropertyField(so.FindProperty("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
+                    EditorGUILayout.PropertyField(so.FindProperty("mechaScaleRatio"), new GUIContent("Mecha Ölçek Oranı (yalnızca Boy=0 ise):"));
+                    EditorGUILayout.PropertyField(so.FindProperty("mechaWrapAmount"), new GUIContent("Objeye Sarılma (0=düz, 1=tam sarılır):"));
+                    EditorGUILayout.PropertyField(so.FindProperty("mechaOpacity"), new GUIContent("Mecha Saydamlığı (0.55 = %55):"));
+                    EditorGUILayout.PropertyField(so.FindProperty("mechaLocalOffset"), new GUIContent("Mecha Konum Öteleme (Offset):"));
+                    EditorGUILayout.PropertyField(so.FindProperty("mechaRotationOffset"), new GUIContent("Mecha Dönüş Açısı (Euler):"));
+                }
+                else
+                {
+                    // Bind to additionalMechas[addIdx] fields
+                    SerializedProperty mechasProp = so.FindProperty("additionalMechas");
+                    int addIdx = mechaIdx - 1;
+                    if (addIdx < mechasProp.arraySize)
+                    {
+                        SerializedProperty elem = mechasProp.GetArrayElementAtIndex(addIdx);
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("targetPivot"), new GUIContent("Yerleşeceği Pivot Noktası:"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaScaleRatio"), new GUIContent("Mecha Ölçek Oranı (yalnızca Boy=0 ise):"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaWrapAmount"), new GUIContent("Objeye Sarılma (0=düz, 1=tam sarılır):"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaOpacity"), new GUIContent("Mecha Saydamlığı (0.55 = %55):"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaLocalOffset"), new GUIContent("Mecha Konum Öteleme (Offset):"));
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaRotationOffset"), new GUIContent("Mecha Dönüş Açısı (Euler):"));
+                    }
+                }
+
+                if (EditorGUI.EndChangeCheck())
+                {
+                    so.ApplyModifiedProperties();
+                    var updatedEntries = level.GetAllMechaEntries();
+                    if (mechaIdx < updatedEntries.Count)
+                    {
+                        LiveUpdateScene3DPreview(level, updatedEntries[mechaIdx], mechaIdx);
+                    }
+                }
+
+                EditorGUILayout.Space(6);
+
+                // 3D Scene View Preview Button
+                Color btnBg = GUI.backgroundColor;
+                GUI.backgroundColor = new Color(0.2f, 0.8f, 1.0f);
+                if (GUILayout.Button($"🔍 3D Canlı Önizlemeyi Sahnede Göster ve Odaklan (Mecha #{mechaIdx + 1})", GUILayout.Height(30)))
+                {
+                    var updatedEntries = level.GetAllMechaEntries();
+                    if (mechaIdx < updatedEntries.Count)
+                    {
+                        GenerateScene3DPreview(level, updatedEntries[mechaIdx], mechaIdx);
+                    }
+                }
+                GUI.backgroundColor = btnBg;
+
+                // Rich Thumbnail & Size Info Box
+                var currentEntries = level.GetAllMechaEntries();
+                if (mechaIdx < currentEntries.Count)
+                {
+                    DrawMechaSizeInfoBox(currentEntries[mechaIdx]);
+                }
+
+                EditorGUI.indentLevel--;
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(4);
+
+            return deleteRequested;
+        }
+
+        private void AddNewMechaToLevel(SerializedObject so, LevelDataSO level)
+        {
+            SerializedProperty mechasProp = so.FindProperty("additionalMechas");
+            mechasProp.arraySize++;
+            SerializedProperty newElem = mechasProp.GetArrayElementAtIndex(mechasProp.arraySize - 1);
+            newElem.FindPropertyRelative("customMechaPrefab").objectReferenceValue = null;
+            newElem.FindPropertyRelative("targetPivot").enumValueIndex = (int)MechaPivotSelection.PivotTop;
+            newElem.FindPropertyRelative("hostItemSO").objectReferenceValue = null;
+            newElem.FindPropertyRelative("mechaHostKeyword").stringValue = "";
+            newElem.FindPropertyRelative("mechaScaleRatio").floatValue = 0.25f;
+            newElem.FindPropertyRelative("mechaWrapAmount").floatValue = 0f;
+            newElem.FindPropertyRelative("mechaWorldSize").floatValue = 0.5f;
+            newElem.FindPropertyRelative("mechaOpacity").floatValue = 0.22f;
+            newElem.FindPropertyRelative("mechaLocalOffset").vector3Value = Vector3.zero;
+            newElem.FindPropertyRelative("mechaRotationOffset").vector3Value = new Vector3(90f, 0f, 0f);
+
+            int newMechaIndex = mechasProp.arraySize; // index 0 is Primary Mecha, index arraySize is the new entry
+            mechaEntryFoldouts[newMechaIndex] = true;
+            so.ApplyModifiedProperties();
         }
 
         private void DrawItemLibraryTab()
@@ -747,24 +885,35 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             EditorUtility.DisplayDialog("Başarılı", $"{createdCount} adet prefab başarıyla Obje Kütüphanesine eklendi!", "Tamam");
         }
 
-        private static void GenerateScene3DPreview(LevelDataSO level)
+        /// <summary>
+        /// Previews ONE mecha entry in the Scene view. <paramref name="mechaIndex"/> (0 = the level's own
+        /// primary mecha, 1+ = additionalMechas) names the preview object uniquely per mecha, so previewing
+        /// mecha #2 does not destroy mecha #1's preview - clicking through every mecha's own button leaves
+        /// all of them standing in the scene at once, next to each other, exactly what "mechaları nasıl
+        /// duruyor görmek" (see how the mechas are positioned) needs.
+        /// </summary>
+        private static void GenerateScene3DPreview(LevelDataSO level, MechaSpawnEntry entry, int mechaIndex)
         {
-            if (level == null || level.hostItemSO == null || level.hostItemSO.prefab == null)
+            if (level == null || entry == null || entry.hostItemSO == null || entry.hostItemSO.prefab == null)
             {
-                EditorUtility.DisplayDialog("Uyarı", "Lütfen önce geçerli bir Hedef Obje (ItemDataSO) seçin!", "Tamam");
+                EditorUtility.DisplayDialog("Uyarı", "Lütfen önce bu mecha için geçerli bir Hedef Obje (ItemData) seçin!", "Tamam");
                 return;
             }
 
-            GameObject oldPreview = GameObject.Find("Mecha_3D_Preview_Instance");
+            string previewName = mechaIndex == 0 ? "Mecha_3D_Preview_Instance" : $"Mecha_3D_Preview_Instance_{mechaIndex}";
+
+            GameObject oldPreview = GameObject.Find(previewName);
             if (oldPreview != null) DestroyImmediate(oldPreview);
 
-            GameObject hostInstance = Instantiate(level.hostItemSO.prefab);
-            hostInstance.name = "Mecha_3D_Preview_Instance";
-            hostInstance.transform.position = Vector3.zero;
+            GameObject hostInstance = Instantiate(entry.hostItemSO.prefab);
+            hostInstance.name = previewName;
+            // Additional mechas' previews spread out along X so they don't all stack on top of each other -
+            // mecha #1 keeps world origin (matches its pre-multi-mecha position exactly), #2/#3/... offset.
+            hostInstance.transform.position = new Vector3(mechaIndex * 1.5f, 0f, 0f);
             hostInstance.transform.rotation = Quaternion.identity;
 
             // Load mecha model robustly
-            GameObject mechaPrefab = level.customMechaPrefab;
+            GameObject mechaPrefab = entry.customMechaPrefab;
             if (mechaPrefab == null)
             {
                 mechaPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/meccha chameleon.glb");
@@ -785,7 +934,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             }
 
             GameObject mechaInst = Instantiate(mechaPrefab);
-            mechaInst.name = "Preview_Mecha_Silhouette";
+            mechaInst.name = $"Preview_Mecha_Silhouette_{mechaIndex}";
             // Match play EXACTLY: PhysicsObjectSpawner normalizes each food to maxDim = Max(1.10, foodTargetSize)
             // (there's a hard 1.10 floor), NOT raw foodTargetSize. Scale the preview host to that same size so
             // the mecha (sized absolutely below) reads identically in preview and gameplay.
@@ -805,13 +954,13 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             ChameleonCamouflage.EmbedMechaInHostObject(
                 mechaInst,
                 hostInstance,
-                level.mechaScaleRatio,
-                level.mechaOpacity,
-                level.mechaLocalOffset,
-                level.mechaRotationOffset,
-                level.mechaWorldSize,
-                level.targetPivot,
-                level.mechaWrapAmount
+                entry.mechaScaleRatio,
+                entry.mechaOpacity,
+                entry.mechaLocalOffset,
+                entry.mechaRotationOffset,
+                entry.mechaWorldSize,
+                entry.targetPivot,
+                entry.mechaWrapAmount
             );
 
             Selection.activeGameObject = hostInstance;
@@ -819,18 +968,110 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             {
                 SceneView.lastActiveSceneView.FrameSelected();
             }
-            Debug.Log($"👁️ Mecha 3D Canlı Önizlemesi Sahnede (Scene View) Odaklandı! (Mecha: {mechaInst.name})");
+            Debug.Log($"👁️ Mecha #{mechaIndex + 1} 3D Canlı Önizlemesi Sahnede (Scene View) Odaklandı! (Mecha: {mechaInst.name})");
         }
 
-        private static void LiveUpdateScene3DPreview(LevelDataSO level)
+        private static void LiveUpdateScene3DPreview(LevelDataSO level, MechaSpawnEntry entry, int mechaIndex)
         {
-            if (level == null || level.hostItemSO == null || level.hostItemSO.prefab == null) return;
+            if (level == null || entry == null || entry.hostItemSO == null || entry.hostItemSO.prefab == null) return;
 
             // Regenerate through the single source of truth (ChameleonCamouflage.EmbedMechaInHostObject)
             // instead of duplicating its scale/pose/material math here — keeps the editor preview and the
             // runtime result from ever drifting apart.
-            GenerateScene3DPreview(level);
+            GenerateScene3DPreview(level, entry, mechaIndex);
             SceneView.RepaintAll();
+        }
+
+        private static void GenerateAllScene3DPreviews(LevelDataSO level)
+        {
+            if (level == null) return;
+            var entries = level.GetAllMechaEntries();
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (entries[i] != null && entries[i].hostItemSO != null)
+                {
+                    GenerateScene3DPreview(level, entries[i], i);
+                }
+            }
+        }
+
+        private void DrawMechaSizeInfoBox(MechaSpawnEntry mechaEntry)
+        {
+            if (mechaEntry == null || mechaEntry.hostItemSO == null)
+            {
+                EditorGUILayout.HelpBox("Lütfen bu mecha için geçerli bir Hedef Obje (ItemData) seçin.", MessageType.Info);
+                return;
+            }
+
+            ItemDataSO item = mechaEntry.hostItemSO;
+            GameObject prefab = item.prefab;
+
+            EditorGUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal(GUI.skin.box);
+
+            // 1. 2D Asset Preview Thumbnail (matching screenshot)
+            Texture2D thumb = prefab != null ? AssetPreview.GetAssetPreview(prefab) : null;
+            if (thumb != null)
+            {
+                GUILayout.Label(thumb, GUILayout.Width(64), GUILayout.Height(64));
+            }
+            else
+            {
+                GUILayout.Box("3D", GUILayout.Width(64), GUILayout.Height(64));
+            }
+
+            // 2. Mesh Dimensions & Geometrical Size (matching screenshot)
+            EditorGUILayout.BeginVertical();
+
+            GUIStyle titleStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 12,
+                normal = { textColor = new Color(0.9f, 0.9f, 0.9f) }
+            };
+            GUILayout.Label($"📐 {item.displayName} Boyut Bilgisi & Önizleme", titleStyle);
+
+            if (prefab != null)
+            {
+                Renderer[] renderers = prefab.GetComponentsInChildren<Renderer>();
+                if (renderers != null && renderers.Length > 0)
+                {
+                    Bounds b = renderers[0].bounds;
+                    for (int r = 1; r < renderers.Length; r++) b.Encapsulate(renderers[r].bounds);
+
+                    Vector3 size = b.size;
+                    float maxDim = Mathf.Max(size.x, Mathf.Max(size.y, size.z));
+
+                    GUILayout.Label($"Obje Mesh Boyutları (X, Y, Z): {size.x:F2}m x {size.y:F2}m x {size.z:F2}m", EditorStyles.miniLabel);
+                    GUILayout.Label($"Maksimum Obje Çapı: {maxDim:F2} birim", EditorStyles.miniLabel);
+
+                    GUIStyle greenStyle = new GUIStyle(EditorStyles.boldLabel)
+                    {
+                        fontSize = 11,
+                        normal = { textColor = new Color(0.2f, 0.95f, 0.4f) }
+                    };
+
+                    if (mechaEntry.mechaWorldSize > 0f)
+                    {
+                        GUILayout.Label($"📐 Sabit Mecha Boyutu: {mechaEntry.mechaWorldSize:F2} birim (Sabit Dünya Ölçeği)", greenStyle);
+                    }
+                    else
+                    {
+                        float calculatedSize = maxDim * mechaEntry.mechaScaleRatio;
+                        GUILayout.Label($"📐 Geometrik Mecha Boyutu: {calculatedSize:F2} birim (%{mechaEntry.mechaScaleRatio * 100f:F0} oranında)", greenStyle);
+                    }
+                }
+                else
+                {
+                    GUILayout.Label("Objede Renderer component'ı bulunamadı.", EditorStyles.miniLabel);
+                }
+            }
+            else
+            {
+                GUILayout.Label("ItemDataSO içerisinde Prefab atanmamış.", EditorStyles.miniLabel);
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
         }
 
         private static void CreateNewLevelAsset()

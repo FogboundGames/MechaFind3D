@@ -334,12 +334,25 @@ namespace MechaFind3D.PhysicsInteraction
 
             CustomerOrderManager orderManager = EnsureSingleOrderManager();
 
-            // Built here rather than left to the manager's own start-up: a component added by the line above
-            // has not had its Awake run at all in edit mode.
-            if (orderManager != null) orderManager.SetupCustomerOrders();
-            else Debug.LogWarning("🧾 CustomerOrderManager kurulamadı - sipariş kartları boş kalır.");
+            // In PLAY MODE, skip rerolling orders here - LevelManager.Start()'s LoadLevel() is the single
+            // authoritative place that does this, and by the time it runs, the level's real goal data is
+            // guaranteed loaded. EnsureCanvasStructure() runs from THIS component's own Awake(), and Unity
+            // does not guarantee Awake() order between different components - if this ran before
+            // LevelManager's Awake() had assigned LevelManager.Instance, CustomerOrderManager.BuildOrderQueue
+            // silently fell back to its own hardcoded sample items ("onion", "sausage", "watermelon" - note
+            // the fallback even misspells "sausage" as different from the level data's real ids like
+            // "onion_001", "sasuage_003"). Those fallback ids never match any real ItemDataSO.itemId, so
+            // FindDisplayPrefabForItem found nothing for them and every card fell back to a flat 2D icon on
+            // an unstyled shell - exactly the "white card, only the leftmost looks right" report. In EDIT
+            // MODE there is no LevelManager.Start() ever coming to fix this, so the immediate build is still
+            // needed there for the [ExecuteAlways] scene preview to show anything at all.
+            if (!Application.isPlaying)
+            {
+                if (orderManager != null) orderManager.SetupCustomerOrders();
+                else Debug.LogWarning("🧾 CustomerOrderManager kurulamadı - sipariş kartları boş kalır.");
 
-            RefreshTargetGoalsUI();
+                RefreshTargetGoalsUI();
+            }
         }
 
         /// <summary>
@@ -694,7 +707,10 @@ namespace MechaFind3D.PhysicsInteraction
         /// </summary>
         public void OnTrashButtonClicked()
         {
-            if (dockItems.Count == 0 || gameOverTriggered) return;
+            if (dockItems.Count == 0 || gameOverTriggered)
+            {
+                return;
+            }
 
             string leftoverType = dockItems[0]?.colorName;
             if (string.IsNullOrEmpty(leftoverType)) return;
@@ -982,6 +998,16 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
+            // Tints the outer card frame with the order's own item color (Emre: "her obje/meyveye özel
+            // renk", e.g. watermelon red, onion purple) - runs on every sync, not just first build, so a
+            // card that gets reused for a DIFFERENT item (same slot, new customer) re-tints instead of
+            // keeping whatever color the previous occupant left behind. order.itemColor was already being
+            // populated for every order (from ItemDataSO.targetColor, or the sample-fallback colors) but
+            // nothing ever read it until now - the card background was permanently whatever was saved in
+            // the scene/cloned template.
+            Image cardBgImg = cardObj.GetComponent<Image>();
+            if (cardBgImg != null) cardBgImg.color = order.itemColor;
+
             // Populates/refreshes the order's icon and remaining-count text without touching the card's
             // own images/colors, whether the card is hand-authored, cloned, or freshly built.
             Transform windowTr = cardObj.transform.Find("Inner_Window");
@@ -1266,20 +1292,39 @@ namespace MechaFind3D.PhysicsInteraction
         /// <summary>Updates every card's "still wanted" count, punching the ones that actually changed.</summary>
         private void RefreshOrderCardCounts(string changedItemId)
         {
-            if (topGoalContainer == null || CustomerOrderManager.Instance == null) return;
+            if (topGoalContainer == null || CustomerOrderManager.Instance == null)
+            {
+                return;
+            }
 
             foreach (CustomerOrder order in CustomerOrderManager.Instance.ActiveOrders)
             {
                 if (order == null || order.isCompleted) continue;
 
                 Transform card = FindOrderCard(order.orderId);
-                if (card == null) continue;
+                if (card == null)
+                {
+                    continue;
+                }
 
-                Transform textObj = card.Find("Text");
-                Text txt = textObj != null ? textObj.GetComponent<Text>() : null;
-                if (txt == null) continue;
+                // NOT card.Find("Text") - Find only searches DIRECT children, and the real card hierarchy
+                // is card/Footer_Bar/Text (confirmed in the live scene), one level deeper. Find() returned
+                // null every single call, so this silently never updated a card's number as items were
+                // collected - only SyncOrderCards' BuildOrderCard (which already correctly uses
+                // GetComponentInChildren<Text>() below) caught it back up, and only on a full sync at
+                // order completion. That is exactly Emre's "numbers only update on a merge" report.
+                Text txt = card.GetComponentInChildren<Text>();
+                if (txt == null)
+                {
+                    continue;
+                }
+                Transform textObj = txt.transform;
 
-                string next = $"{RemainingForOrder(order)}";
+                // Matches BuildOrderCard's own "0 -> ✓" formatting. Without this, the live tick briefly
+                // showed a bare "0" the moment a group finished collecting but before it had flown into
+                // the card (TryDeliverGroup fires later, in the collect animation's completion callback).
+                int remCount = RemainingForOrder(order);
+                string next = remCount > 0 ? $"{remCount}" : "✓";
                 bool changed = txt.text != next;
                 txt.text = next;
 
@@ -1492,7 +1537,8 @@ namespace MechaFind3D.PhysicsInteraction
 
         public bool TryCollectItemToDock(FindTargetObject item, Collider hitCollider)
         {
-            if (item == null || gameOverTriggered) return false;
+            if (item == null) return false;
+            if (gameOverTriggered) { return false; }
 
             bool isMecha = hitCollider != null
                 ? IsHitOnMechaCollider(item, hitCollider)
@@ -1506,13 +1552,20 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             // A host object carrying a hidden mecha cannot be collected until the mecha is tapped off it.
-            if (HasChildMecha(item)) return false;
+            if (HasChildMecha(item)) { return false; }
 
             int maxCapacity = slot3DTransforms.Count > 0 ? slot3DTransforms.Count : slotRects.Count;
-            if (dockItems.Count >= DockCapacity || dockItems.Count >= maxCapacity) return false;
+            if (dockItems.Count >= DockCapacity || dockItems.Count >= maxCapacity)
+            {
+                return false;
+            }
 
             item.isDocked = true;
-            item.SetYellowOutlineActive(true);
+            // The glow is now a touch/drag indicator owned by FingerPhysicsInteraction, not a
+            // "docked" indicator - it must never persist once an item leaves the pile. Docking always
+            // clears it defensively even though FingerPhysicsInteraction.OnTouchEnded already does the
+            // same, in case this item is docked via some other path that skips that touch-up handler.
+            item.SetYellowOutlineActive(false);
 
             Rigidbody rb = item.GetComponent<Rigidbody>();
             if (rb != null)
@@ -1589,11 +1642,23 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>
-        /// Freshly tapped items slot in sequential arrival order at the end of the dock.
-        /// They are NOT artificially re-ordered into the middle of the tray.
+        /// A freshly tapped item slots in right after the last item of its own kind, so same-type items
+        /// stay grouped together instead of scattering across the tray in raw arrival order. This is not
+        /// cosmetic: <see cref="FindContiguousGroupForOrder"/> only recognizes a strictly CONTIGUOUS run as
+        /// deliverable, so egg/cookie/egg would never be seen as "2 eggs" even once both had landed - the
+        /// order sits stuck forever with the cookie wedged between them, exactly what a stray non-grouping
+        /// insert here reproduces.
         /// </summary>
         private int GetInsertIndexForType(string itemId)
         {
+            for (int i = dockItems.Count - 1; i >= 0; i--)
+            {
+                if (dockItems[i] != null && dockItems[i].colorName != null &&
+                    dockItems[i].colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return i + 1;
+                }
+            }
             return dockItems.Count;
         }
 
@@ -1626,12 +1691,16 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void EvaluateDockAfterLanding(string itemId)
         {
+
             if (TryDeliverGroup(itemId)) return;
 
             // Only the LAST item to land decides the level is lost. Tapping fast puts several items in the
             // air at once, and the tray is already full while they fly - one of them may still be the piece
             // that completes an order, so judging on the first landing would lose a level that was won.
-            if (dockItems.Count >= DockCapacity && !AnyDockItemInFlight()) TriggerGameOver();
+            if (dockItems.Count >= DockCapacity && !AnyDockItemInFlight())
+            {
+                TriggerGameOver();
+            }
         }
 
         private bool AnyDockItemInFlight()
@@ -1714,13 +1783,22 @@ namespace MechaFind3D.PhysicsInteraction
         /// </summary>
         private bool TryDeliverGroup(string itemId)
         {
-            if (CustomerOrderManager.Instance == null) return false;
+            if (CustomerOrderManager.Instance == null)
+            {
+                return false;
+            }
 
             CustomerOrder order = CustomerOrderManager.Instance.FindOrderForItem(itemId);
-            if (order == null) return false;
+            if (order == null)
+            {
+                return false;
+            }
 
             List<DockItemData> group = FindContiguousGroupForOrder(itemId, order.requiredCount);
-            if (group == null || group.Count < order.requiredCount) return false;
+            if (group == null || group.Count < order.requiredCount)
+            {
+                return false;
+            }
 
             foreach (DockItemData data in group) dockItems.Remove(data);
             UpdateSlotVisuals();
@@ -2231,8 +2309,6 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
         }
-
-
 
         // ---------------------------------------------------------------------------------------------
         // Level lifecycle

@@ -13,6 +13,49 @@ namespace MechaFind3D.PhysicsInteraction
         public int requiredCount = 6;
     }
 
+    /// <summary>
+    /// One mecha's full spawn config: which model, which host object to hide in, and how it's posed there.
+    /// The level's original single set of mecha fields (still on LevelDataSO directly, for save-file
+    /// backward compatibility) describes mecha #1; every entry in <see cref="LevelDataSO.additionalMechas"/>
+    /// is mecha #2, #3, etc., each with its own independent config.
+    /// </summary>
+    [System.Serializable]
+    public class MechaSpawnEntry
+    {
+        [Tooltip("Which pivot point on the host object to place the mecha on.")]
+        public MechaPivotSelection targetPivot = MechaPivotSelection.PivotTop;
+
+        [Tooltip("Optional custom mecha model prefab for this mecha (defaults to Assets/Prefabs/meccha chameleon.glb if empty).")]
+        public GameObject customMechaPrefab;
+
+        [Tooltip("Direct asset reference for the host object this mecha should attach to (e.g. Cake, Apple).")]
+        public ItemDataSO hostItemSO;
+
+        [Tooltip("Keyword for target host object to attach mecha (e.g. 'cake', 'apple', 'burger'). Auto-set if hostItemSO is assigned.")]
+        public string mechaHostKeyword = "";
+
+        [Range(0.05f, 1.0f)]
+        [Tooltip("Host-relative scale (used only when Mecha World Size is 0).")]
+        public float mechaScaleRatio = 0.25f;
+
+        [Range(0f, 1f)]
+        [Tooltip("How much the mecha hugs/wraps around the host instead of lying flat on it. 0 = flat spread-eagle pose, 1 = arms and legs fully curled around the object (e.g. clinging to a soda can).")]
+        public float mechaWrapAmount = 0f;
+
+        [Tooltip("ABSOLUTE mecha size in world units. If > 0, the mecha is exactly this size regardless of host scale. Set to 0 to use Mecha Scale Ratio (host-relative) instead.")]
+        public float mechaWorldSize = 0.5f;
+
+        [Range(0.1f, 1.0f)]
+        [Tooltip("Opacity/Transparency of the mecha's white glass silhouette (0.22 = light, subtle white haze; the host object underneath stays clearly visible).")]
+        public float mechaOpacity = 0.22f;
+
+        [Tooltip("Local position offset of mecha on the host object surface.")]
+        public Vector3 mechaLocalOffset = Vector3.zero;
+
+        [Tooltip("Local rotation Euler angles of mecha on the host object surface (default: 90, 0, 0 for flat).")]
+        public Vector3 mechaRotationOffset = new Vector3(90f, 0f, 0f);
+    }
+
     public enum MechaPivotSelection
     {
         Auto,
@@ -90,12 +133,66 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Local rotation Euler angles of mecha on the host object surface (default: 90, 0, 0 for flat).")]
         public Vector3 mechaRotationOffset = new Vector3(90f, 0f, 0f);
 
+        [Tooltip("Extra mechas beyond the one configured above. Each hides in its own host object - MechaRagdollSpawner never lets two mechas share a host, so add one entry per extra mecha you want in the pile.")]
+        public List<MechaSpawnEntry> additionalMechas = new List<MechaSpawnEntry>();
+
+        /// <summary>
+        /// Every mecha this level spawns, as a flat list: the level's own single set of fields folded into
+        /// entry 0 (only when <see cref="enableCamouflageMecha"/> is on), followed by <see cref="additionalMechas"/>
+        /// in order. This is the one place that reconciles "one mecha, fields on the level itself" (how every
+        /// level was authored before multi-mecha support existed) with "N mechas, one entry each" - callers
+        /// should always go through this rather than reading the singular fields or additionalMechas directly.
+        /// </summary>
+        public List<MechaSpawnEntry> GetAllMechaEntries()
+        {
+            var result = new List<MechaSpawnEntry>();
+
+            if (enableCamouflageMecha)
+            {
+                result.Add(new MechaSpawnEntry
+                {
+                    targetPivot = targetPivot,
+                    customMechaPrefab = customMechaPrefab,
+                    hostItemSO = hostItemSO,
+                    mechaHostKeyword = mechaHostKeyword,
+                    mechaScaleRatio = mechaScaleRatio,
+                    mechaWrapAmount = mechaWrapAmount,
+                    mechaWorldSize = mechaWorldSize,
+                    mechaOpacity = mechaOpacity,
+                    mechaLocalOffset = mechaLocalOffset,
+                    mechaRotationOffset = mechaRotationOffset,
+                });
+            }
+
+            if (additionalMechas != null)
+            {
+                foreach (MechaSpawnEntry entry in additionalMechas)
+                {
+                    if (entry != null) result.Add(entry);
+                }
+            }
+
+            return result;
+        }
+
         private void OnValidate()
         {
             if (hostItemSO != null)
             {
                 mechaHostKeyword = hostItemSO.GetEffectiveItemId();
             }
+
+            if (additionalMechas != null)
+            {
+                foreach (MechaSpawnEntry entry in additionalMechas)
+                {
+                    if (entry != null && entry.hostItemSO != null)
+                    {
+                        entry.mechaHostKeyword = entry.hostItemSO.GetEffectiveItemId();
+                    }
+                }
+            }
+
             // Ensure goal counts are multiples of 3
             if (targetGoals != null)
             {
@@ -170,11 +267,17 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             // 3. Guarantee host object for Mecha camouflage if enabled
-            if (enableCamouflageMecha && hostItemSO != null)
+            if (enableCamouflageMecha)
             {
-                if (!spawnList.Contains(hostItemSO))
+                foreach (var mechaEntry in GetAllMechaEntries())
                 {
-                    spawnList.Add(hostItemSO);
+                    if (mechaEntry != null && mechaEntry.hostItemSO != null)
+                    {
+                        if (!spawnList.Contains(mechaEntry.hostItemSO))
+                        {
+                            spawnList.Add(mechaEntry.hostItemSO);
+                        }
+                    }
                 }
             }
 
