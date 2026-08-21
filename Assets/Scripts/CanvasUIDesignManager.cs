@@ -907,36 +907,128 @@ namespace MechaFind3D.PhysicsInteraction
             return null;
         }
 
+        private string NormalizeItemName(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return "";
+            string name = raw.ToLowerInvariant().Replace("(clone)", "").Trim();
+
+            string[] prefixes = { "sm_food_", "sm_item_", "sm_", "food_", "item_", "pf_", "prefab_", "levelobj_" };
+            foreach (var p in prefixes)
+            {
+                if (name.StartsWith(p))
+                {
+                    name = name.Substring(p.Length);
+                    break;
+                }
+            }
+
+            int underscoreIdx = name.LastIndexOf('_');
+            if (underscoreIdx > 0)
+            {
+                string suffix = name.Substring(underscoreIdx + 1);
+                if (int.TryParse(suffix, out _) || suffix.Length <= 2)
+                {
+                    name = name.Substring(0, underscoreIdx);
+                }
+            }
+
+            return name.Trim();
+        }
+
         /// <summary>Finds the level-goal entry or ItemDataSO asset for an item id, to reuse its 3D display prefab for the order-card icon.</summary>
         public GameObject FindDisplayPrefabForItem(string itemId)
         {
             if (string.IsNullOrEmpty(itemId)) return null;
 
+            string targetNorm = NormalizeItemName(itemId);
+
+            // 1. Check active MatchGoalManager level goals
             if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null)
             {
                 foreach (MatchGoal g in MatchGoalManager.Instance.levelGoals)
                 {
-                    if (g != null && g.colorName != null && g.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                    if (g != null && !string.IsNullOrEmpty(g.colorName))
                     {
-                        if (g.displayPrefab != null) return g.displayPrefab;
+                        string gNorm = NormalizeItemName(g.colorName);
+                        if (gNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
+                            gNorm.Contains(targetNorm) || targetNorm.Contains(gNorm))
+                        {
+                            if (g.displayPrefab != null) return g.displayPrefab;
+                        }
                     }
                 }
             }
 
+            // 2. Check ActiveLevelData target goals & filler items
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
             {
                 LevelDataSO levelData = LevelManager.Instance.ActiveLevelData;
-                if (levelData != null && levelData.targetGoals != null)
+                if (levelData != null)
                 {
-                    foreach (var goal in levelData.targetGoals)
+                    if (levelData.targetGoals != null)
                     {
-                        if (goal != null && goal.itemData != null)
+                        foreach (var goal in levelData.targetGoals)
                         {
-                            if (goal.itemData.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                            if (goal != null && goal.itemData != null)
                             {
-                                if (goal.itemData.prefab != null) return goal.itemData.prefab;
+                                string gId = goal.itemData.GetEffectiveItemId();
+                                string gNorm = NormalizeItemName(gId);
+                                if (gNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
+                                    gNorm.Contains(targetNorm) || targetNorm.Contains(gNorm))
+                                {
+                                    if (goal.itemData.prefab != null) return goal.itemData.prefab;
+                                }
                             }
                         }
+                    }
+
+                    if (levelData.fillerItems != null)
+                    {
+                        foreach (var filler in levelData.fillerItems)
+                        {
+                            if (filler != null)
+                            {
+                                string fId = filler.GetEffectiveItemId();
+                                string fNorm = NormalizeItemName(fId);
+                                if (fNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
+                                    fNorm.Contains(targetNorm) || targetNorm.Contains(fNorm))
+                                {
+                                    if (filler.prefab != null) return filler.prefab;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Check PhysicsObjectSpawner foodModels
+            PhysicsObjectSpawner spawner = Object.FindFirstObjectByType<PhysicsObjectSpawner>();
+            if (spawner != null && spawner.foodModels != null)
+            {
+                foreach (GameObject model in spawner.foodModels)
+                {
+                    if (model == null) continue;
+                    string mNorm = NormalizeItemName(model.name);
+                    if (mNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
+                        mNorm.Contains(targetNorm) || targetNorm.Contains(mNorm))
+                    {
+                        return model;
+                    }
+                }
+            }
+
+            // 4. Check live physics objects in scene pile
+            FindTargetObject[] sceneItems = Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None);
+            if (sceneItems != null)
+            {
+                foreach (var item in sceneItems)
+                {
+                    if (item == null || item.gameObject == null) continue;
+                    string sNorm = NormalizeItemName(item.colorName);
+                    if (sNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
+                        sNorm.Contains(targetNorm) || targetNorm.Contains(sNorm))
+                    {
+                        return item.gameObject;
                     }
                 }
             }
@@ -949,9 +1041,14 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     string path = UnityEditor.AssetDatabase.GUIDToAssetPath(g);
                     ItemDataSO itemSO = UnityEditor.AssetDatabase.LoadAssetAtPath<ItemDataSO>(path);
-                    if (itemSO != null && itemSO.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                    if (itemSO != null)
                     {
-                        if (itemSO.prefab != null) return itemSO.prefab;
+                        string itemNorm = NormalizeItemName(itemSO.GetEffectiveItemId());
+                        if (itemNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
+                            itemNorm.Contains(targetNorm) || targetNorm.Contains(itemNorm))
+                        {
+                            if (itemSO.prefab != null) return itemSO.prefab;
+                        }
                     }
                 }
             }
@@ -1006,7 +1103,10 @@ namespace MechaFind3D.PhysicsInteraction
             // nothing ever read it until now - the card background was permanently whatever was saved in
             // the scene/cloned template.
             Image cardBgImg = cardObj.GetComponent<Image>();
-            if (cardBgImg != null) cardBgImg.color = order.itemColor;
+            if (cardBgImg != null)
+            {
+                cardBgImg.color = new Color(0.91f, 0.22f, 0.30f, 1.0f);
+            }
 
             // Populates/refreshes the order's icon and remaining-count text without touching the card's
             // own images/colors, whether the card is hand-authored, cloned, or freshly built.
@@ -1027,9 +1127,6 @@ namespace MechaFind3D.PhysicsInteraction
             if (Application.isPlaying && !cardExisted)
             {
                 cardObj.transform.localScale = Vector3.zero;
-                // Not "GetComponent<CanvasGroup>() ?? AddComponent<CanvasGroup>()": ?? doesn't go through
-                // UnityEngine.Object's overloaded null-equality, so it can hold onto a component reference
-                // Unity itself considers gone and crash the next time it's touched.
                 CanvasGroup cg = cardObj.GetComponent<CanvasGroup>();
                 if (cg == null) cg = cardObj.AddComponent<CanvasGroup>();
                 cg.alpha = 0f;
@@ -1077,7 +1174,7 @@ namespace MechaFind3D.PhysicsInteraction
             le.flexibleHeight = 0f;
 
             Image cardBg = cardObj.AddComponent<Image>();
-            ApplySlicedSprite(cardBg, LoadUISprite("Buttons/Button Green"));
+            ApplySlicedSprite(cardBg, LoadUISprite("Buttons/Button Red") ?? LoadUISprite(UIAccentSquareButton));
             cardBg.color = new Color(0.91f, 0.22f, 0.30f, 1.0f);
 
             Outline cardOutline = cardObj.AddComponent<Outline>();
@@ -1096,8 +1193,8 @@ namespace MechaFind3D.PhysicsInteraction
             windowRect.offsetMax = Vector2.zero;
 
             Image windowBg = windowObj.AddComponent<Image>();
-            ApplySlicedSprite(windowBg, LoadUISprite("Buttons/Button Green"));
-            windowBg.color = new Color(1.0f, 1.0f, 1.0f, 1.0f);
+            ApplySlicedSprite(windowBg, LoadUISprite("Buttons/Button Red") ?? LoadUISprite(UIAccentSquareButton));
+            windowBg.color = new Color(0.94f, 0.95f, 0.96f, 1.0f);
 
             Outline windowOutline = windowObj.AddComponent<Outline>();
             windowOutline.effectColor = new Color(0.12f, 0.12f, 0.12f, 0.90f);

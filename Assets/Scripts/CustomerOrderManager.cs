@@ -127,48 +127,80 @@ namespace MechaFind3D.PhysicsInteraction
             var built = new List<CustomerOrder>();
             LevelDataSO levelData = LevelManager.Instance != null ? LevelManager.Instance.ActiveLevelData : null;
 
+            Dictionary<string, (Color color, Sprite icon, int count)> itemMap = new Dictionary<string, (Color, Sprite, int)>();
+
+            // 1. Primary Source: Exact LevelDataSO items spawned in the physics pile for this level
             if (levelData != null)
             {
                 List<ItemDataSO> spawnItems = levelData.BuildSpawnItemList();
                 if (spawnItems != null && spawnItems.Count > 0)
                 {
-                    Dictionary<ItemDataSO, int> itemCounts = new Dictionary<ItemDataSO, int>();
                     foreach (var item in spawnItems)
                     {
                         if (item == null) continue;
-                        if (itemCounts.ContainsKey(item)) itemCounts[item]++;
-                        else itemCounts[item] = 1;
-                    }
-
-                    foreach (var kvp in itemCounts)
-                    {
-                        ItemDataSO itemData = kvp.Key;
-                        int totalRequired = kvp.Value;
-                        SplitGoalIntoOrders(built, itemData.GetEffectiveItemId(), itemData.targetColor, itemData.icon, totalRequired);
+                        string id = item.GetEffectiveItemId();
+                        if (itemMap.ContainsKey(id))
+                        {
+                            var prev = itemMap[id];
+                            itemMap[id] = (prev.color, prev.icon, prev.count + 1);
+                        }
+                        else
+                        {
+                            itemMap[id] = (item.targetColor, item.icon, 1);
+                        }
                     }
                 }
             }
 
-            if (built.Count == 0)
+            // 2. Secondary Source: If no LevelDataSO items exist, check actual objects spawned in scene
+            if (itemMap.Count == 0)
             {
-                string[] sampleItems = { "watermelon", "pear", "sausage", "fish", "onion", "banana" };
-                Color[] sampleColors = { Color.red, Color.green, new Color(0.8f, 0.4f, 0.2f), Color.cyan, Color.magenta, Color.yellow };
+                FindTargetObject[] sceneItems = Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None);
+                if (sceneItems != null && sceneItems.Length > 0)
+                {
+                    foreach (var targetObj in sceneItems)
+                    {
+                        if (targetObj == null || targetObj.isDocked) continue;
+                        string id = targetObj.colorName;
+                        if (string.IsNullOrEmpty(id)) continue;
+                        if (itemMap.ContainsKey(id))
+                        {
+                            var prev = itemMap[id];
+                            itemMap[id] = (prev.color, prev.icon, prev.count + 1);
+                        }
+                        else
+                        {
+                            itemMap[id] = (targetObj.objectColor, null, 1);
+                        }
+                    }
+                }
+            }
+
+            // 3. Fallback: Default sample set only if no level or scene items exist
+            if (itemMap.Count == 0)
+            {
+                string[] sampleItems = { "watermelon", "pear", "sausage", "fish" };
+                Color[] sampleColors = { Color.red, Color.green, new Color(0.8f, 0.4f, 0.2f), Color.cyan };
                 for (int i = 0; i < sampleItems.Length; i++)
                 {
-                    SplitGoalIntoOrders(built, sampleItems[i], sampleColors[i], null, 6);
+                    itemMap[sampleItems[i]] = (sampleColors[i], null, 3);
                 }
             }
 
-            // Shuffled, because building goal by goal put every order for the first item type at the front -
-            // so all three cards on screen asked for the same thing and the tray never had to hold anything
-            // the player could not immediately deliver.
+            // 4. Split all items present in the level into exact triplet customer orders
+            foreach (var kvp in itemMap)
+            {
+                SplitGoalIntoOrders(built, kvp.Key, kvp.Value.color, kvp.Value.icon, kvp.Value.count);
+            }
+
+            // 5. Shuffle customer orders so variety is displayed across active slots
             for (int i = built.Count - 1; i > 0; i--)
             {
                 int j = Random.Range(0, i + 1);
                 (built[i], built[j]) = (built[j], built[i]);
             }
 
-            // Numbered after the shuffle so the customers read 1, 2, 3... down the queue.
+            // 6. Enqueue numbered orders
             foreach (CustomerOrder order in built)
             {
                 order.orderId = ++nextOrderId;

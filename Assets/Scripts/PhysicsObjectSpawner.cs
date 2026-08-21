@@ -40,7 +40,7 @@ namespace MechaFind3D.PhysicsInteraction
         [Header("Food Models (Match Factory items)")]
         [Tooltip("When on, the pile spawns these food models instead of primitive cubes/spheres. Match-3 identity becomes the food TYPE. Keep the set small (~6-10) so 3-of-a-kind matches happen.")]
         [SerializeField] private bool useFoodModels = true;
-        [SerializeField] private GameObject[] foodModels;
+        public GameObject[] foodModels;
         [Tooltip("Every food is scaled so its largest dimension is about this many world units, so wildly different source sizes (a berry vs a cake) become a consistent pile.")]
         [SerializeField] private float foodTargetSize = 0.22f;
 

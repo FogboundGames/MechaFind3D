@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
@@ -70,16 +71,16 @@ namespace MechaFind3D.PhysicsInteraction
             btn.onClick.AddListener(action);
         }
 
-        public void ShowWin()
+        public void ShowWin(int starsEarned = 3)
         {
             if (losePanel != null) losePanel.SetActive(false);
-            AnimateIn(winPanel);
+            AnimateIn(winPanel, starsEarned, true);
         }
 
         public void ShowLose()
         {
             if (winPanel != null) winPanel.SetActive(false);
-            AnimateIn(losePanel);
+            AnimateIn(losePanel, 0, false);
         }
 
         public void HideAll()
@@ -88,7 +89,28 @@ namespace MechaFind3D.PhysicsInteraction
             AnimateOut(losePanel);
         }
 
-        private void AnimateIn(GameObject panel)
+        private List<Transform> FindExistingStars(Transform popupT)
+        {
+            List<Transform> stars = new List<Transform>();
+            if (popupT == null) return stars;
+
+            foreach (Transform t in popupT.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == popupT) continue;
+                if (t.name.ToLowerInvariant().Contains("star"))
+                {
+                    if (t.childCount == 0 || t.GetComponent<Image>() != null)
+                    {
+                        if (!stars.Contains(t)) stars.Add(t);
+                    }
+                }
+            }
+
+            stars.Sort((a, b) => a.position.x.CompareTo(b.position.x));
+            return stars;
+        }
+
+        private void AnimateIn(GameObject panel, int starsEarned, bool isWin)
         {
             if (panel == null) return;
 
@@ -120,6 +142,64 @@ namespace MechaFind3D.PhysicsInteraction
             Sequence seq = DOTween.Sequence().SetUpdate(true);
             seq.Append(popupRect.DOAnchorPosY(0f, popupInDuration).SetEase(Ease.OutBack, 1.1f));
             seq.Join(popupRect.DOScale(Vector3.one, popupInDuration).SetEase(Ease.OutBack, 1.3f));
+
+            // Animate pre-existing UI stars in-place without creating any new UI objects
+            List<Transform> existingStars = FindExistingStars(popupT);
+            if (existingStars != null && existingStars.Count > 0)
+            {
+                for (int i = 0; i < existingStars.Count; i++)
+                {
+                    Transform starT = existingStars[i];
+                    if (starT == null) continue;
+
+                    starT.DOKill();
+                    Image starImg = starT.GetComponent<Image>();
+                    bool isEarned = isWin && (i < starsEarned);
+
+                    if (isEarned)
+                    {
+                        if (starImg != null)
+                        {
+                            starImg.enabled = true;
+                            starImg.color = new Color(1.0f, 0.88f, 0.10f, 1.0f);
+                        }
+                        starT.localScale = Vector3.zero;
+
+                        float starDelay = popupInDuration * 0.45f + i * 0.22f;
+                        int starIndex = i;
+
+                        seq.Insert(starDelay, starT.DOScale(Vector3.one, 0.32f).SetEase(Ease.OutBack, 2.2f));
+                        seq.InsertCallback(starDelay + 0.32f, () =>
+                        {
+                            if (starT != null)
+                            {
+                                starT.DOPunchScale(Vector3.one * 0.35f, 0.25f, 6, 0.6f).SetUpdate(true);
+                            }
+                            if (VFXManager.Instance != null && starT != null)
+                            {
+                                VFXManager.Instance.PlayStarPopVFX(starT.position, starIndex);
+                            }
+                        });
+                    }
+                    else
+                    {
+                        if (starImg != null)
+                        {
+                            starImg.enabled = true;
+                            starImg.color = new Color(0.30f, 0.30f, 0.35f, 0.30f);
+                        }
+                        starT.localScale = Vector3.zero;
+
+                        float starDelay = popupInDuration * 0.45f + i * 0.15f;
+                        seq.Insert(starDelay, starT.DOScale(Vector3.one * 0.75f, 0.22f).SetEase(Ease.OutQuad));
+                    }
+                }
+            }
+
+            if (!isWin)
+            {
+                seq.Append(popupRect.DOShakePosition(0.40f, new Vector3(16f, 0f, 0f), 12, 90f).SetUpdate(true));
+            }
 
             string[] buttonPaths = { "ActionButton", "HomeText" };
             for (int i = 0; i < buttonPaths.Length; i++)

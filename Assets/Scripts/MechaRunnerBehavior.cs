@@ -313,9 +313,12 @@ namespace MechaFind3D
             vanishSeq.AppendInterval(0.05f);
             vanishSeq.Append(transform.DOScale(Vector3.zero, 0.18f).SetEase(Ease.InBack));
 
-            // 4. Complete goal & destroy
             vanishSeq.OnComplete(() =>
             {
+                if (MatchGoalManager.Instance != null)
+                {
+                    MatchGoalManager.Instance.NotifyMechaCaught();
+                }
                 if (CanvasUIDesignManager.Instance != null)
                 {
                     CanvasUIDesignManager.Instance.OnMechaVanished();

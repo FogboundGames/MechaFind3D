@@ -44,19 +44,31 @@ namespace MechaFind3D.PhysicsInteraction
             Instance = this;
         }
 
+        public float initialTime { get; private set; }
+        public int totalMechasInLevel { get; private set; }
+        public int mechasCaught { get; private set; }
+        public int mechasEscaped { get; private set; }
+        public int EarnedStars { get; private set; }
+
         public void SetupLevelGoals()
         {
             levelGoals.Clear();
             isLevelComplete = false;
+            mechasCaught = 0;
+            mechasEscaped = 0;
+            EarnedStars = 0;
 
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
             {
                 currentTime = LevelManager.Instance.ActiveLevelData.timeLimit;
+                totalMechasInLevel = LevelManager.Instance.ActiveLevelData.GetAllMechaEntries().Count;
             }
             else
             {
                 currentTime = 120f;
+                totalMechasInLevel = 0;
             }
+            initialTime = currentTime;
             isTimerRunning = true;
 
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
@@ -160,7 +172,40 @@ namespace MechaFind3D.PhysicsInteraction
             return goalProgressed;
         }
 
-private void CheckLevelCompletion()
+        public void NotifyMechaCaught()
+        {
+            mechasCaught++;
+        }
+
+        public void NotifyMechaEscaped()
+        {
+            mechasEscaped++;
+        }
+
+        public int CalculateEarnedStars()
+        {
+            if (!isLevelComplete || currentTime <= 0f) return 0;
+
+            float timeRatio = initialTime > 0f ? (currentTime / initialTime) : 0f;
+            bool allMechasCaught = (totalMechasInLevel > 0) ? (mechasCaught >= totalMechasInLevel) : true;
+
+            // 3 Stars: Excellent speed (>35% time left) AND all mechas caught cleanly
+            if (timeRatio >= 0.35f && allMechasCaught)
+            {
+                return 3;
+            }
+
+            // 2 Stars: Good speed (>15% time left) or caught at least 1 mecha
+            if (timeRatio >= 0.15f || mechasCaught > 0)
+            {
+                return 2;
+            }
+
+            // 1 Star: Level completed before time ran out
+            return 1;
+        }
+
+        private void CheckLevelCompletion()
         {
             bool allComplete = true;
             foreach (MatchGoal goal in levelGoals)
@@ -176,9 +221,10 @@ private void CheckLevelCompletion()
             {
                 isTimerRunning = false;
                 isLevelComplete = true;
+                EarnedStars = CalculateEarnedStars();
                 if (WinLosePanelController.Instance != null)
                 {
-                    WinLosePanelController.Instance.ShowWin();
+                    WinLosePanelController.Instance.ShowWin(EarnedStars);
                 }
             }
         }

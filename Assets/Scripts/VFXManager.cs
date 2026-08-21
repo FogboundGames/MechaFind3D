@@ -174,5 +174,43 @@ namespace MechaFind3D.PhysicsInteraction
 
             ps.Play();
         }
+
+        /// <summary>
+        /// Spawns a gold star particle burst and celebratory floating text when a star pops onto the screen in WinPanel.
+        /// </summary>
+        public void PlayStarPopVFX(Vector3 worldPos, int starIndex)
+        {
+            GameObject pObj = new GameObject($"VFX_Star_Pop_{starIndex}");
+            pObj.transform.position = worldPos;
+
+            ParticleSystem ps = pObj.AddComponent<ParticleSystem>();
+            ParticleSystemRenderer psRend = pObj.GetComponent<ParticleSystemRenderer>();
+
+            var main = ps.main;
+            main.duration = 0.5f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.3f, 0.6f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(2.5f, 5.0f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.15f, 0.35f);
+            main.gravityModifier = 0.5f;
+            main.startColor = new Color(1.0f, 0.88f, 0.1f, 1.0f);
+            main.stopAction = ParticleSystemStopAction.Destroy;
+
+            var emission = ps.emission;
+            emission.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0f, 25) });
+
+            var shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.2f;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            Material particleMat = new Material(shader);
+            Color gold = new Color(1.0f, 0.88f, 0.1f, 1.0f);
+            if (particleMat.HasProperty("_BaseColor")) particleMat.SetColor("_BaseColor", gold);
+            if (particleMat.HasProperty("_Color")) particleMat.SetColor("_Color", gold);
+            psRend.sharedMaterial = particleMat;
+
+            ps.Play();
+        }
     }
 }
