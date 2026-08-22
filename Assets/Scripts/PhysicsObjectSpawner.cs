@@ -356,6 +356,56 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
+        /// <summary>
+        /// Reads LevelDataSO settings and applies BlackLockItem component to designated random items in the pile.
+        /// Excludes any Mecha characters or Mecha host items.
+        /// </summary>
+        public void ApplyBlackLocksForLevel()
+        {
+            if (LevelManager.Instance == null || LevelManager.Instance.ActiveLevelData == null) return;
+            LevelDataSO levelData = LevelManager.Instance.ActiveLevelData;
+
+            if (!levelData.enableBlackLockedObjects || levelData.blackObjectCount <= 0) return;
+
+            List<GameObject> candidates = new List<GameObject>();
+            foreach (GameObject obj in spawnedObjects)
+            {
+                if (obj == null) continue;
+                FindTargetObject targetComp = obj.GetComponent<FindTargetObject>();
+                if (targetComp == null || targetComp.isDocked) continue;
+
+                // Skip any object that has a Mecha child or is a Mecha itself
+                if (obj.GetComponentInChildren<MechaRunnerBehavior>(true) != null) continue;
+                if (obj.name.Contains("Mecha") || obj.name.Contains("meccha") || obj.name.Contains("ragdoll")) continue;
+                if (CanvasUIDesignManager.HasChildMecha(targetComp)) continue;
+
+                candidates.Add(obj);
+            }
+
+            if (candidates.Count == 0) return;
+
+            // Shuffle candidates to select random items to lock
+            for (int i = candidates.Count - 1; i > 0; i--)
+            {
+                int rnd = Random.Range(0, i + 1);
+                GameObject temp = candidates[i];
+                candidates[i] = candidates[rnd];
+                candidates[rnd] = temp;
+            }
+
+            int lockCountToApply = Mathf.Min(levelData.blackObjectCount, candidates.Count);
+            int unlockCount = Mathf.Max(1, levelData.blackObjectUnlockCount);
+
+            for (int i = 0; i < lockCountToApply; i++)
+            {
+                GameObject targetObj = candidates[i];
+                BlackLockItem lockComp = targetObj.GetComponent<BlackLockItem>();
+                if (lockComp == null) lockComp = targetObj.AddComponent<BlackLockItem>();
+
+                lockComp.InitializeLock(unlockCount);
+            }
+        }
+
         /// Food FBX ship without colliders. Add a single BoxCollider on the ROOT (so docking, which
         /// disables one collider, and tap-raycast both work) sized from the combined renderer bounds.
         /// Called while the object is at its imported transform, so bounds map cleanly to local space.

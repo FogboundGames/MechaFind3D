@@ -12,8 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9a864202d3e27464ba58b8fad0a86a44, type: 3}
   m_Name: Level_01
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
-  levelNumber: 1
+  levelNumber: 2
   levelTitle: Seviye 1
+  timeLimit: 120
   totalPileCount: 48
   foodTargetSize: 0.22
   targetGoals:
@@ -29,6 +30,9 @@ MonoBehaviour:
     requiredCount: 9
   fillerItems:
   - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
+  enableFrozenItems: 0
+  frozenItemCount: 3
+  defaultFreezeCount: 2
   enableCamouflageMecha: 1
   targetPivot: 0
   customMechaPrefab: {fileID: 919132149155446097, guid: 879efff7d1187894d90433ff940dfe40, type: 3}
@@ -40,3 +44,4 @@ MonoBehaviour:
   mechaOpacity: 0.15
   mechaLocalOffset: {x: 0, y: 0, z: 0}
   mechaRotationOffset: {x: 0, y: 0, z: 0}
+  additionalMechas: []

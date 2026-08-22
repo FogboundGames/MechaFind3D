@@ -269,6 +269,22 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             EditorGUILayout.PropertyField(so.FindProperty("foodTargetSize"), new GUIContent("Obje Hedef Ölçeği (Varsayılan 0.55):"));
 
             EditorGUILayout.Space(10);
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("🔒 Siyah Kilitli Obje Mekaniği (Black Lock)", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(so.FindProperty("enableBlackLockedObjects"), new GUIContent("Siyah Kilitli Objeler Olsun Mu?"));
+
+            if (so.FindProperty("enableBlackLockedObjects").boolValue)
+            {
+                EditorGUILayout.HelpBox(
+                    "Bu seviyede belirlenen sayıda obje simsiyah görünecek ve üzerlerinde sayaç text'i yer alacaktır. " +
+                    "Oyuncu diğer objeleri slota her koyduğunda sayaç 1 düşer. Sayaç 0 olduğunda obje orijinal rengine döner ve tıklanabilir hale gelir.",
+                    MessageType.Info);
+                EditorGUILayout.PropertyField(so.FindProperty("blackObjectCount"), new GUIContent("Kaç Obje Siyah Olsun?"));
+                EditorGUILayout.PropertyField(so.FindProperty("blackObjectUnlockCount"), new GUIContent("Açılma Sayacı (İlk Text Değeri)"));
+            }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space(10);
             GUILayout.Label("🤖 Bukalemun Mecha & Kamuflaj Ayarları", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(so.FindProperty("enableCamouflageMecha"), new GUIContent("Mecha Karakteri Olsun Mu?"));
 

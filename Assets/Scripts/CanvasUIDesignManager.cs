@@ -1637,10 +1637,10 @@ namespace MechaFind3D.PhysicsInteraction
             if (item == null) return false;
             if (gameOverTriggered) { return false; }
 
-            bool isMecha = hitCollider != null
-                ? IsHitOnMechaCollider(item, hitCollider)
-                : item.name.Contains("Mecha") || item.name.Contains("meccha")
-                  || (item.colorName != null && item.colorName.Equals("mecha", System.StringComparison.OrdinalIgnoreCase));
+            bool isMecha = (hitCollider != null && IsHitOnMechaCollider(item, hitCollider))
+                || item.name.Contains("Mecha") || item.name.Contains("meccha")
+                || (item.colorName != null && item.colorName.Equals("mecha", System.StringComparison.OrdinalIgnoreCase))
+                || HasChildMecha(item);
 
             if (isMecha)
             {
@@ -1651,8 +1651,13 @@ namespace MechaFind3D.PhysicsInteraction
             // A running mecha locks out collecting all other objects until it is caught!
             if (MechaRunnerBehavior.IsAnyMechaRunning()) { return false; }
 
-            // A host object carrying a hidden mecha cannot be collected until the mecha is tapped off it.
-            if (HasChildMecha(item)) { return false; }
+            // A pitch-black locked item cannot be collected until its counter reaches 0!
+            BlackLockItem blackLock = item.GetComponent<BlackLockItem>();
+            if (blackLock != null && blackLock.IsLocked)
+            {
+                blackLock.PlayLockedWiggle();
+                return false;
+            }
 
             int maxCapacity = slot3DTransforms.Count > 0 ? slot3DTransforms.Count : slotRects.Count;
             if (dockItems.Count >= DockCapacity || dockItems.Count >= maxCapacity)
@@ -1697,6 +1702,9 @@ namespace MechaFind3D.PhysicsInteraction
 
             UpdateSlotVisuals();
             RefreshOrderCardCounts(item.colorName);
+
+            // Notify all black locked items in scene that an item was placed into the dock!
+            BlackLockItem.NotifyItemDocked();
 
             string collectedType = item.colorName;
             AnimateItemIntoSlot(item.gameObject, insertIndex, () => EvaluateDockAfterLanding(collectedType));

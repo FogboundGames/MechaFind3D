@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9a864202d3e27464ba58b8fad0a86a44, type: 3}
   m_Name: Level_05
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
-  levelNumber: 5
+  levelNumber: 6
   levelTitle: Seviye 5
   timeLimit: 130
   totalPileCount: 36
@@ -31,6 +31,9 @@ MonoBehaviour:
   fillerItems:
   - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
   - {fileID: 11400000, guid: 4ab0cb04f86f8a84bbda74e8eb76773a, type: 2}
+  enableFrozenItems: 0
+  frozenItemCount: 3
+  defaultFreezeCount: 2
   enableCamouflageMecha: 1
   targetPivot: 1
   customMechaPrefab: {fileID: 0}

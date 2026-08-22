@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9a864202d3e27464ba58b8fad0a86a44, type: 3}
   m_Name: Level_03
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
-  levelNumber: 3
-  levelTitle: Seviye 3: İtalyan Mutfağı
+  levelNumber: 4
+  levelTitle: 
   timeLimit: 110
   totalPileCount: 33
   foodTargetSize: 1.2
@@ -30,6 +30,9 @@ MonoBehaviour:
     requiredCount: 6
   fillerItems:
   - {fileID: 11400000, guid: e1e91384208b2394394cb7f5c48929b1, type: 2}
+  enableFrozenItems: 0
+  frozenItemCount: 3
+  defaultFreezeCount: 2
   enableCamouflageMecha: 1
   targetPivot: 1
   customMechaPrefab: {fileID: 0}

@@ -146,6 +146,12 @@ namespace MechaFind3D.PhysicsInteraction
                 mechaSpawner.SpawnAllForLevel();
             }
 
+            // 5. Apply Black Lock mechanic ONLY AFTER Mecha characters have attached to their host items!
+            if (PhysicsObjectSpawner.Instance != null)
+            {
+                PhysicsObjectSpawner.Instance.ApplyBlackLocksForLevel();
+            }
+
             Debug.Log($"🎮 Seviye {currentLevelIndex + 1} Başarıyla Yüklendi! (Başlık: {ActiveLevelData.levelTitle})");
         }
 

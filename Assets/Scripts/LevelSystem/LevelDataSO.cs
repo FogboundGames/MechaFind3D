@@ -96,6 +96,16 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Additional prefabs to spawn in the pile to increase difficulty (won't be listed in goals).")]
         public List<ItemDataSO> fillerItems = new List<ItemDataSO>();
 
+        [Header("Black / Shadow Locked Objects Mechanic")]
+        [Tooltip("Should some items spawn pitch-black with a counter badge requiring N dock placements to unlock?")]
+        public bool enableBlackLockedObjects = false;
+
+        [Tooltip("How many items in the pile should be pitch-black locked.")]
+        public int blackObjectCount = 2;
+
+        [Tooltip("Initial text countdown number required on each black object to unlock it.")]
+        public int blackObjectUnlockCount = 3;
+
         [Header("Mecha Ragdoll & Disguise Config")]
         [Tooltip("Should a camouflaged mecha character drop into this level's pile?")]
         public bool enableCamouflageMecha = true;
