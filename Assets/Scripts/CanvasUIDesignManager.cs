@@ -2045,6 +2045,8 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void CompleteDeliveredOrder(CustomerOrder order, int deliveredCount)
         {
+            if (deliveredCount > 0) Handheld.Vibrate();
+
             if (MatchGoalManager.Instance != null && deliveredCount > 0)
             {
                 MatchGoalManager.Instance.RegisterMatchedItem(ObjectShapeType.Cube, order.itemId, deliveredCount);

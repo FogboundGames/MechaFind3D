@@ -143,6 +143,8 @@ namespace MechaFind3D.PhysicsInteraction
             seq.Append(popupRect.DOAnchorPosY(0f, popupInDuration).SetEase(Ease.OutBack, 1.1f));
             seq.Join(popupRect.DOScale(Vector3.one, popupInDuration).SetEase(Ease.OutBack, 1.3f));
 
+            seq.Insert(popupInDuration, popupRect.DOPunchRotation(new Vector3(0f, 0f, 4f), 0.5f, 8, 0.5f).SetUpdate(true));
+
             // Animate pre-existing UI stars in-place without creating any new UI objects
             List<Transform> existingStars = FindExistingStars(popupT);
             if (existingStars != null && existingStars.Count > 0)
@@ -196,9 +198,56 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            if (!isWin)
+            if (isWin)
             {
-                seq.Append(popupRect.DOShakePosition(0.40f, new Vector3(16f, 0f, 0f), 12, 90f).SetUpdate(true));
+                Handheld.Vibrate();
+                SpawnWinCelebration(Camera.main);
+
+                Transform titleT = popupT.Find("TitleText");
+                if (titleT == null)
+                {
+                    foreach (Transform t in popupT.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (t.name.ToLowerInvariant().Contains("title") || t.name.ToLowerInvariant().Contains("header"))
+                        {
+                            titleT = t;
+                            break;
+                        }
+                    }
+                }
+                if (titleT != null)
+                {
+                    titleT.localScale = Vector3.zero;
+                    seq.Insert(popupInDuration * 0.3f, titleT.DOScale(Vector3.one, 0.35f).SetEase(Ease.OutBack, 2.5f).SetUpdate(true));
+                    seq.InsertCallback(popupInDuration * 0.3f + 0.35f, () =>
+                    {
+                        if (titleT != null) titleT.DOPunchScale(Vector3.one * 0.2f, 0.3f, 8, 0.5f).SetUpdate(true);
+                    });
+                }
+            }
+            else
+            {
+                Handheld.Vibrate();
+
+                seq.Append(popupRect.DOShakePosition(0.55f, new Vector3(22f, 8f, 0f), 16, 90f).SetUpdate(true));
+
+                CanvasGroup popupCG = popupT.GetComponent<CanvasGroup>();
+                if (popupCG == null) popupCG = popupT.gameObject.AddComponent<CanvasGroup>();
+                seq.InsertCallback(0f, () =>
+                {
+                    Image bgImg = panel.GetComponent<Image>();
+                    if (bgImg != null)
+                    {
+                        Color origColor = bgImg.color;
+                        Color redFlash = new Color(0.8f, 0.1f, 0.08f, 0.55f);
+                        Sequence flashSeq = DOTween.Sequence().SetUpdate(true);
+                        for (int f = 0; f < 3; f++)
+                        {
+                            flashSeq.Append(bgImg.DOColor(redFlash, 0.12f).SetEase(Ease.OutQuad));
+                            flashSeq.Append(bgImg.DOColor(origColor, 0.18f).SetEase(Ease.InQuad));
+                        }
+                    }
+                });
             }
 
             string[] buttonPaths = { "ActionButton", "HomeText" };
@@ -221,6 +270,103 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             seq.Play();
+        }
+
+        private void SpawnWinCelebration(Camera cam)
+        {
+            if (cam == null) cam = Camera.main;
+            if (cam == null) return;
+
+            float[][] positions = {
+                new[] { 0.15f, 0.75f },
+                new[] { 0.85f, 0.70f },
+                new[] { 0.50f, 0.90f },
+                new[] { 0.25f, 0.40f },
+                new[] { 0.75f, 0.45f },
+                new[] { 0.50f, 0.55f },
+            };
+
+            for (int i = 0; i < positions.Length; i++)
+            {
+                float delay = i * 0.25f;
+                int idx = i;
+                float vx = positions[i][0];
+                float vy = positions[i][1];
+                Camera c = cam;
+                DOVirtual.DelayedCall(delay, () => SpawnFireworkBurst(c, idx, vx, vy)).SetUpdate(true);
+            }
+        }
+
+        private static ParticleSystem CreateParticleSystem(string name, Vector3 pos)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.position = pos;
+            ParticleSystem ps = go.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            return ps;
+        }
+
+        private static void SpawnFireworkBurst(Camera cam, int index, float vx, float vy)
+        {
+            if (cam == null) return;
+            vx += Random.Range(-0.05f, 0.05f);
+            vy += Random.Range(-0.05f, 0.05f);
+            Vector3 pos = cam.ViewportToWorldPoint(new Vector3(vx, vy, 4f));
+
+            ParticleSystem ps = CreateParticleSystem($"WinVFX_Firework_{index}", pos);
+            ParticleSystemRenderer psRend = ps.GetComponent<ParticleSystemRenderer>();
+
+            Color[] colors = {
+                new Color(1f, 0.2f, 0.3f), new Color(0.2f, 1f, 0.4f),
+                new Color(0.2f, 0.5f, 1f), new Color(1f, 0.85f, 0.1f),
+                new Color(1f, 0.4f, 0.85f)
+            };
+            Color c = colors[index % colors.Length];
+
+            var main = ps.main;
+            main.playOnAwake = false;
+            main.duration = 0.4f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.4f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(4f, 9f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.08f, 0.2f);
+            main.gravityModifier = 1.0f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.stopAction = ParticleSystemStopAction.Destroy;
+            main.startColor = new ParticleSystem.MinMaxGradient(c, Color.white);
+
+            var emission = ps.emission;
+            emission.rateOverTime = 0;
+            emission.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0f, 80) });
+
+            var shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.2f;
+
+            var sol = ps.sizeOverLifetime;
+            sol.enabled = true;
+            AnimationCurve sizeCurve = new AnimationCurve();
+            sizeCurve.AddKey(0f, 1f);
+            sizeCurve.AddKey(0.5f, 0.7f);
+            sizeCurve.AddKey(1f, 0f);
+            sol.size = new ParticleSystem.MinMaxCurve(1f, sizeCurve);
+
+            var col = ps.colorOverLifetime;
+            col.enabled = true;
+            Gradient grad = new Gradient();
+            grad.SetKeys(
+                new GradientColorKey[] { new GradientColorKey(c, 0f), new GradientColorKey(Color.white, 0.7f) },
+                new GradientAlphaKey[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) }
+            );
+            col.color = grad;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            Material mat = new Material(shader);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
+            psRend.sharedMaterial = mat;
+
+            ps.Play();
         }
 
         private void AnimateOut(GameObject panel)
