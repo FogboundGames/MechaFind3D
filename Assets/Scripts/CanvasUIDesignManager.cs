@@ -104,6 +104,11 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private Vector2 shuffleButtonSize = new Vector2(80f, 80f);
         [SerializeField] private float shuffleIconSize = 45f;
 
+        [Header("Undo Booster Button (Joker 1)")]
+        [SerializeField] private Vector2 undoButtonPosition = new Vector2(160f, 240f);
+        [SerializeField] private Vector2 undoButtonSize = new Vector2(80f, 80f);
+        [SerializeField] private float undoIconSize = 45f;
+
         [Header("Colours")]
         [Tooltip("Solid fill colour behind the whole scene.")]
         [SerializeField] private Color backgroundColor = new Color(0.06f, 0.09f, 0.24f);
@@ -337,6 +342,7 @@ namespace MechaFind3D.PhysicsInteraction
             BuildBottomDockPanel(canvasObj.transform);
             Setup3DDockSlots();
             BuildShuffleButton(canvasObj.transform);
+            BuildUndoBoosterButton(canvasObj.transform);
             RemoveTrashButton(canvasObj.transform);
             Canvas.ForceUpdateCanvases();
 
@@ -657,6 +663,166 @@ namespace MechaFind3D.PhysicsInteraction
             btn.targetGraphic = bg;
             btn.onClick.RemoveAllListeners();
             btn.onClick.AddListener(OnShuffleButtonClicked);
+        }
+
+        private void BuildUndoBoosterButton(Transform parent)
+        {
+            Transform existingBtn = parent.Find("Undo_Booster_Button");
+            GameObject btnObj;
+            if (existingBtn != null)
+            {
+                btnObj = existingBtn.gameObject;
+            }
+            else
+            {
+                btnObj = NewUIObject("Undo_Booster_Button", parent);
+
+                RectTransform btnRect = btnObj.GetComponent<RectTransform>();
+                btnRect.anchorMin = Vector2.zero;
+                btnRect.anchorMax = Vector2.zero;
+                btnRect.pivot = Vector2.zero;
+                btnRect.anchoredPosition = undoButtonPosition;
+                btnRect.sizeDelta = undoButtonSize;
+
+                Image btnBg = btnObj.AddComponent<Image>();
+                ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
+                btnBg.color = new Color(0.95f, 0.55f, 0.10f, 1.0f); // Vibrant amber booster button
+
+                GameObject btnIconObj = NewUIObject("Icon", btnObj.transform);
+
+                RectTransform btnIconRect = btnIconObj.GetComponent<RectTransform>();
+                btnIconRect.anchorMin = new Vector2(0.5f, 0.5f);
+                btnIconRect.anchorMax = new Vector2(0.5f, 0.5f);
+                btnIconRect.pivot = new Vector2(0.5f, 0.5f);
+                btnIconRect.anchoredPosition = Vector2.zero;
+                btnIconRect.sizeDelta = new Vector2(undoIconSize, undoIconSize);
+
+                Text iconText = btnIconObj.AddComponent<Text>();
+                iconText.text = "↩";
+                Font defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                if (defaultFont == null) defaultFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+                if (defaultFont == null) defaultFont = Font.CreateDynamicFontFromOSFont("Arial", 60);
+
+                iconText.font = defaultFont;
+                iconText.fontSize = 54;
+                iconText.fontStyle = FontStyle.Bold;
+                iconText.alignment = TextAnchor.MiddleCenter;
+                iconText.color = Color.white;
+            }
+
+            Image bg = btnObj.GetComponent<Image>() ?? btnObj.AddComponent<Image>();
+            bg.raycastTarget = true;
+
+            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
+            btn.targetGraphic = bg;
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(OnUndoButtonClicked);
+        }
+
+        /// <summary>
+        /// Joker 1: Pops the last collected item out of the dock slot and returns it safely to the play area boundary.
+        /// Restores colliders, shadows, physics, and its original 3D world scale.
+        /// </summary>
+        public void OnUndoButtonClicked()
+        {
+            Transform btnObj = transform.Find("Undo_Booster_Button");
+            if (btnObj == null && transform.parent != null) btnObj = transform.parent.Find("Undo_Booster_Button");
+
+            if (gameOverTriggered || dockItems == null || dockItems.Count == 0)
+            {
+                if (btnObj != null)
+                {
+                    btnObj.DOKill();
+                    btnObj.DOShakeRotation(0.3f, new Vector3(0, 0, 15f), 15, 90f);
+                }
+                return;
+            }
+
+            if (btnObj != null)
+            {
+                btnObj.DOKill();
+                btnObj.transform.localScale = Vector3.one;
+                btnObj.transform.DOPunchScale(Vector3.one * 0.2f, 0.25f, 5, 0.5f);
+            }
+
+            int lastIdx = dockItems.Count - 1;
+            DockItemData lastData = dockItems[lastIdx];
+            dockItems.RemoveAt(lastIdx);
+
+            if (lastData != null && lastData.targetObject != null)
+            {
+                FindTargetObject item = lastData.targetObject;
+                item.isDocked = false;
+                item.SetYellowOutlineActive(false);
+
+                // Re-enable colliders
+                foreach (Collider c in item.GetComponentsInChildren<Collider>(true))
+                {
+                    if (c != null) c.enabled = true;
+                }
+
+                // Re-enable shadows
+                foreach (Renderer r in item.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r == null) continue;
+                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+                    r.receiveShadows = true;
+                }
+
+                // Calculate safe target position inside boundary tray area
+                Vector3 targetPos;
+                if (PhysicsObjectSpawner.Instance != null)
+                {
+                    Vector3 spawnCenter = PhysicsObjectSpawner.Instance.transform.position;
+                    Vector2 areaSize = PhysicsObjectSpawner.Instance.SpawnAreaSize;
+                    float rx = Random.Range(-areaSize.x * 0.30f, areaSize.x * 0.30f);
+                    float rz = Random.Range(-areaSize.y * 0.30f, areaSize.y * 0.30f);
+                    float ry = Random.Range(PhysicsObjectSpawner.Instance.SpawnHeightMin + 0.1f, PhysicsObjectSpawner.Instance.SpawnHeightMax + 0.3f);
+                    targetPos = spawnCenter + new Vector3(rx, ry, rz);
+                }
+                else
+                {
+                    targetPos = (lastData.originalPosition != Vector3.zero) ? lastData.originalPosition : item.transform.position + Vector3.up * 0.5f;
+                }
+
+                Vector3 targetScale = (lastData.originalWorldScale != Vector3.zero) ? lastData.originalWorldScale : Vector3.one;
+
+                // Animate object from dock slot back into boundary scene area
+                item.transform.DOKill();
+                Rigidbody rb = item.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                    rb.isKinematic = true;
+                }
+
+                Sequence seq = DOTween.Sequence();
+                seq.Join(item.transform.DOMove(targetPos, 0.40f).SetEase(Ease.OutQuad));
+                seq.Join(item.transform.DOScale(targetScale, 0.40f).SetEase(Ease.OutQuad));
+                seq.Join(item.transform.DORotateQuaternion(Random.rotation, 0.40f).SetEase(Ease.OutQuad));
+                seq.OnComplete(() =>
+                {
+                    if (item != null && rb != null && !item.isDocked)
+                    {
+                        rb.isKinematic = false;
+                        rb.WakeUp();
+                    }
+                });
+
+                // Touch ripple feedback
+                if (VFXManager.Instance != null)
+                {
+                    VFXManager.Instance.PlayTouchRippleVFX(targetPos);
+                }
+
+                UpdateSlotVisuals();
+                RefreshOrderCardCounts(item.colorName);
+            }
+            else
+            {
+                UpdateSlotVisuals();
+            }
         }
 
         public void OnShuffleButtonClicked()
@@ -1773,7 +1939,10 @@ namespace MechaFind3D.PhysicsInteraction
                 targetObject = item,
                 shapeType = item.shapeType,
                 colorName = item.colorName,
-                objectColor = item.objectColor
+                objectColor = item.objectColor,
+                originalWorldScale = item.transform.localScale,
+                originalPosition = item.transform.position,
+                originalRotation = item.transform.rotation
             };
 
             int insertIndex = GetInsertIndexForType(item.colorName);

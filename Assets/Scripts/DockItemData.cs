@@ -9,6 +9,10 @@ namespace MechaFind3D.PhysicsInteraction
         public string colorName;
         public Color objectColor;
 
+        public Vector3 originalWorldScale = Vector3.one;
+        public Vector3 originalPosition;
+        public Quaternion originalRotation;
+
         public bool Matches(DockItemData other)
         {
             if (other == null) return false;

@@ -21,6 +21,10 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float spawnHeightMin = 0.05f;
         [SerializeField] private float spawnHeightMax = 0.15f;
 
+        public Vector2 SpawnAreaSize => spawnAreaSize;
+        public float SpawnHeightMin => spawnHeightMin;
+        public float SpawnHeightMax => spawnHeightMax;
+
         [Tooltip("Scale range for spawned objects.")]
         [SerializeField] private float minScale = 0.20f;
         [SerializeField] private float maxScale = 0.25f;
