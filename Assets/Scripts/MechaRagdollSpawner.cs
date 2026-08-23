@@ -231,6 +231,20 @@ namespace MechaFind3D.PhysicsInteraction
 
             ChameleonCamouflage.ApplyGlassMaterial(spawned, glassOpacity, hostColor);
 
+            if (entry != null && entry.isStickyMecha)
+            {
+                StickyMechaBehavior sticky = spawned.GetComponent<StickyMechaBehavior>();
+                if (sticky == null) sticky = spawned.AddComponent<StickyMechaBehavior>();
+                sticky.Initialize(entry);
+            }
+
+            if (entry != null && entry.isMagnetMecha)
+            {
+                MagnetMechaBehavior magnet = spawned.GetComponent<MagnetMechaBehavior>();
+                if (magnet == null) magnet = spawned.AddComponent<MagnetMechaBehavior>();
+                magnet.Initialize(entry);
+            }
+
             return spawned;
         }
 

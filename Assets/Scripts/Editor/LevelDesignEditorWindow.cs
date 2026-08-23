@@ -562,6 +562,24 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                     EditorGUILayout.PropertyField(so.FindProperty("mechaOpacity"), new GUIContent("Mecha Saydamlığı (0.55 = %55):"));
                     EditorGUILayout.PropertyField(so.FindProperty("mechaLocalOffset"), new GUIContent("Mecha Konum Öteleme (Offset):"));
                     EditorGUILayout.PropertyField(so.FindProperty("mechaRotationOffset"), new GUIContent("Mecha Dönüş Açısı (Euler):"));
+                    EditorGUILayout.Space(4);
+                    EditorGUILayout.PropertyField(so.FindProperty("isStickyMecha"), new GUIContent("Yapışkan Mecha:"));
+                    if (so.FindProperty("isStickyMecha").boolValue)
+                    {
+                        EditorGUI.indentLevel++;
+                        EditorGUILayout.PropertyField(so.FindProperty("stickyJumpInterval"), new GUIContent("Atlama Aralığı (sn):"));
+                        EditorGUILayout.PropertyField(so.FindProperty("stickyMaxJumps"), new GUIContent("Maks Atlama Sayısı:"));
+                        EditorGUI.indentLevel--;
+                    }
+                    EditorGUILayout.PropertyField(so.FindProperty("isMagnetMecha"), new GUIContent("Mıknatıs Mecha:"));
+                    if (so.FindProperty("isMagnetMecha").boolValue)
+                    {
+                        EditorGUI.indentLevel++;
+                        EditorGUILayout.PropertyField(so.FindProperty("magnetRadius"), new GUIContent("Çekim Yarıçapı:"));
+                        EditorGUILayout.PropertyField(so.FindProperty("magnetForce"), new GUIContent("Çekim Kuvveti:"));
+                        EditorGUILayout.PropertyField(so.FindProperty("magnetMaxObjects"), new GUIContent("Maks Çekilen Obje:"));
+                        EditorGUI.indentLevel--;
+                    }
                 }
                 else
                 {
@@ -581,6 +599,24 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaOpacity"), new GUIContent("Mecha Saydamlığı (0.55 = %55):"));
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaLocalOffset"), new GUIContent("Mecha Konum Öteleme (Offset):"));
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaRotationOffset"), new GUIContent("Mecha Dönüş Açısı (Euler):"));
+                        EditorGUILayout.Space(4);
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("isStickyMecha"), new GUIContent("Yapışkan Mecha:"));
+                        if (elem.FindPropertyRelative("isStickyMecha").boolValue)
+                        {
+                            EditorGUI.indentLevel++;
+                            EditorGUILayout.PropertyField(elem.FindPropertyRelative("stickyJumpInterval"), new GUIContent("Atlama Aralığı (sn):"));
+                            EditorGUILayout.PropertyField(elem.FindPropertyRelative("stickyMaxJumps"), new GUIContent("Maks Atlama Sayısı:"));
+                            EditorGUI.indentLevel--;
+                        }
+                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("isMagnetMecha"), new GUIContent("Mıknatıs Mecha:"));
+                        if (elem.FindPropertyRelative("isMagnetMecha").boolValue)
+                        {
+                            EditorGUI.indentLevel++;
+                            EditorGUILayout.PropertyField(elem.FindPropertyRelative("magnetRadius"), new GUIContent("Çekim Yarıçapı:"));
+                            EditorGUILayout.PropertyField(elem.FindPropertyRelative("magnetForce"), new GUIContent("Çekim Kuvveti:"));
+                            EditorGUILayout.PropertyField(elem.FindPropertyRelative("magnetMaxObjects"), new GUIContent("Maks Çekilen Obje:"));
+                            EditorGUI.indentLevel--;
+                        }
                     }
                 }
 

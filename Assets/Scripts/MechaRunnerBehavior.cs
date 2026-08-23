@@ -75,6 +75,12 @@ namespace MechaFind3D
             currentState = MechaState.RunningInArea;
             if (!activeRunners.Contains(this)) activeRunners.Add(this);
 
+            StickyMechaBehavior sticky = GetComponent<StickyMechaBehavior>();
+            if (sticky != null) sticky.Stop();
+
+            MagnetMechaBehavior magnet = GetComponent<MagnetMechaBehavior>();
+            if (magnet != null) magnet.Stop();
+
             // 1. Unparent from host object so host object is freed and can now be collected
             transform.SetParent(null, true);
 

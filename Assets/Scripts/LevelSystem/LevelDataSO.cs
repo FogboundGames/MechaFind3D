@@ -61,6 +61,29 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Tooltip("Kemik bazlı rotasyon ayarları. Her entry bir kemiğin adını ve ek rotasyonunu tanımlar.")]
         public List<MechaBoneOverride> boneOverrides = new List<MechaBoneOverride>();
+
+        [Header("Yapışkan Mecha")]
+        [Tooltip("Yapışkan mecha: belirli sürede bulunamazsa pile'daki başka bir objeye atlayarak yapışır.")]
+        public bool isStickyMecha = false;
+
+        [Tooltip("Atlama aralığı (saniye). Bu süre içinde bulunamazsa başka objeye atlar.")]
+        public float stickyJumpInterval = 15f;
+
+        [Tooltip("Maksimum atlama sayısı. Bu kadar atladıktan sonra yerinde kalır.")]
+        public int stickyMaxJumps = 2;
+
+        [Header("Mıknatıs Mecha")]
+        [Tooltip("Mıknatıs mecha: etrafındaki objeleri üstüne çekerek kendini gizler.")]
+        public bool isMagnetMecha = false;
+
+        [Tooltip("Çekim yarıçapı (dünya birimi). Bu mesafedeki objeler mecha'ya doğru çekilir.")]
+        public float magnetRadius = 1.5f;
+
+        [Tooltip("Çekim kuvveti. Yüksek = daha hızlı çeker.")]
+        public float magnetForce = 8f;
+
+        [Tooltip("Aynı anda en fazla kaç obje çekilsin.")]
+        public int magnetMaxObjects = 4;
     }
 
     public enum MechaPivotSelection
@@ -153,6 +176,24 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Kemik bazlı rotasyon ayarları (birincil mecha için).")]
         public List<MechaBoneOverride> boneOverrides = new List<MechaBoneOverride>();
 
+        [Header("Yapışkan Mecha (Birincil)")]
+        [Tooltip("Yapışkan mecha: belirli sürede bulunamazsa pile'daki başka bir objeye atlayarak yapışır.")]
+        public bool isStickyMecha = false;
+        [Tooltip("Atlama aralığı (saniye).")]
+        public float stickyJumpInterval = 15f;
+        [Tooltip("Maksimum atlama sayısı.")]
+        public int stickyMaxJumps = 2;
+
+        [Header("Mıknatıs Mecha (Birincil)")]
+        [Tooltip("Mıknatıs mecha: etrafındaki objeleri üstüne çekerek kendini gizler.")]
+        public bool isMagnetMecha = false;
+        [Tooltip("Çekim yarıçapı (dünya birimi).")]
+        public float magnetRadius = 1.5f;
+        [Tooltip("Çekim kuvveti.")]
+        public float magnetForce = 8f;
+        [Tooltip("Aynı anda en fazla kaç obje çekilsin.")]
+        public int magnetMaxObjects = 4;
+
         [Tooltip("Extra mechas beyond the one configured above. Each hides in its own host object - MechaRagdollSpawner never lets two mechas share a host, so add one entry per extra mecha you want in the pile.")]
         public List<MechaSpawnEntry> additionalMechas = new List<MechaSpawnEntry>();
 
@@ -182,6 +223,13 @@ namespace MechaFind3D.PhysicsInteraction
                     mechaLocalOffset = mechaLocalOffset,
                     mechaRotationOffset = mechaRotationOffset,
                     boneOverrides = boneOverrides,
+                    isStickyMecha = isStickyMecha,
+                    stickyJumpInterval = stickyJumpInterval,
+                    stickyMaxJumps = stickyMaxJumps,
+                    isMagnetMecha = isMagnetMecha,
+                    magnetRadius = magnetRadius,
+                    magnetForce = magnetForce,
+                    magnetMaxObjects = magnetMaxObjects,
                 });
             }
 
