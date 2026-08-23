@@ -7,9 +7,9 @@ namespace MechaFind3D.PhysicsInteraction
 {
     /// <summary>
     /// Component that renders an object pitch black with a clean, backgroundless bold text counter directly on the object.
-    /// As long as lockCounter > 0, the object cannot be selected/collected into dock slots.
-    /// Every time any other regular item is placed into a dock slot, lockCounter decreases.
-    /// When lockCounter reaches 0, the item unlocks, its original materials are restored,
+    /// As lockCounter decreases, the pitch-black tint progressively erodes/fades, revealing the object's own color and texture.
+    /// Small black particles break away on each count reduction.
+    /// When lockCounter reaches 0, the item unlocks, its original materials are fully restored,
     /// the text disappears, and it becomes fully interactable.
     /// </summary>
     public class BlackLockItem : MonoBehaviour
@@ -18,15 +18,19 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("Lock Status")]
         [SerializeField] private int lockCounter = 3;
+        [SerializeField] private int maxLockCounter = 3;
         [SerializeField] private bool isLocked = true;
 
         private FindTargetObject targetObject;
         private readonly Dictionary<Renderer, Material[]> originalMaterials = new Dictionary<Renderer, Material[]>();
-        private static Material sharedPitchBlackMaterial;
 
         private GameObject badgeCanvasObject;
         private Text badgeText;
         private Canvas badgeCanvas;
+
+        private float currentErodeProgress = 0.0f; // 0.0 = Pitch Black, 1.0 = Full Original Color
+        private Tween erodeTween;
+        private MaterialPropertyBlock mpb;
 
         public bool IsLocked => isLocked && lockCounter > 0;
         public int LockCounter => lockCounter;
@@ -40,8 +44,9 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (isLocked && lockCounter > 0)
             {
+                if (maxLockCounter <= 0) maxLockCounter = Mathf.Max(1, lockCounter);
                 if (originalMaterials.Count == 0) SaveOriginalMaterials();
-                ApplyPitchBlackMaterial();
+                ApplyBlacknessTint(currentErodeProgress);
                 if (badgeCanvasObject == null) CreateWorldBadgeUI();
             }
         }
@@ -65,6 +70,8 @@ namespace MechaFind3D.PhysicsInteraction
         private void OnDestroy()
         {
             activeLockedItems.Remove(this);
+            erodeTween?.Kill();
+            ClearMaterialPropertyBlocks();
             if (badgeCanvasObject != null)
             {
                 if (Application.isPlaying) Destroy(badgeCanvasObject);
@@ -92,11 +99,13 @@ namespace MechaFind3D.PhysicsInteraction
         /// </summary>
         public void InitializeLock(int initialCount)
         {
-            lockCounter = initialCount;
+            lockCounter = Mathf.Max(1, initialCount);
+            maxLockCounter = lockCounter;
             isLocked = true;
+            currentErodeProgress = 0.0f;
 
             SaveOriginalMaterials();
-            ApplyPitchBlackMaterial();
+            ApplyBlacknessTint(currentErodeProgress);
             CreateWorldBadgeUI();
 
             if (!activeLockedItems.Contains(this))
@@ -134,48 +143,31 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
-        private static Material GetOrCreatePitchBlackMaterial()
+        private void ApplyBlacknessTint(float progress)
         {
-            if (sharedPitchBlackMaterial != null) return sharedPitchBlackMaterial;
+            if (mpb == null) mpb = new MaterialPropertyBlock();
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit")
-                         ?? Shader.Find("Standard")
-                         ?? Shader.Find("Unlit/Color");
+            Color tintColor = Color.Lerp(Color.black, Color.white, progress);
 
-            sharedPitchBlackMaterial = new Material(shader)
-            {
-                name = "PitchBlack_Lock_Material"
-            };
-
-            Color pitchBlack = Color.black;
-            if (sharedPitchBlackMaterial.HasProperty("_BaseColor")) sharedPitchBlackMaterial.SetColor("_BaseColor", pitchBlack);
-            if (sharedPitchBlackMaterial.HasProperty("_Color")) sharedPitchBlackMaterial.SetColor("_Color", pitchBlack);
-            if (sharedPitchBlackMaterial.HasProperty("_Smoothness")) sharedPitchBlackMaterial.SetFloat("_Smoothness", 0.35f);
-            if (sharedPitchBlackMaterial.HasProperty("_Metallic")) sharedPitchBlackMaterial.SetFloat("_Metallic", 0.1f);
-            if (sharedPitchBlackMaterial.HasProperty("_Glossiness")) sharedPitchBlackMaterial.SetFloat("_Glossiness", 0.35f);
-
-            return sharedPitchBlackMaterial;
-        }
-
-        private void ApplyPitchBlackMaterial()
-        {
-            Material blackMat = GetOrCreatePitchBlackMaterial();
             foreach (var kvp in originalMaterials)
             {
                 Renderer rend = kvp.Key;
                 if (rend == null || IsMechaRenderer(rend)) continue;
+                if (badgeCanvasObject != null && rend.transform.IsChildOf(badgeCanvasObject.transform)) continue;
 
-                int matCount = kvp.Value.Length;
-                Material[] blackMats = new Material[matCount];
-                for (int i = 0; i < matCount; i++)
+                if (rend.sharedMaterials != kvp.Value)
                 {
-                    blackMats[i] = blackMat;
+                    rend.sharedMaterials = kvp.Value;
                 }
-                rend.sharedMaterials = blackMats;
+
+                rend.GetPropertyBlock(mpb);
+                mpb.SetColor("_BaseColor", tintColor);
+                mpb.SetColor("_Color", tintColor);
+                rend.SetPropertyBlock(mpb);
             }
         }
 
-        private void RestoreOriginalMaterials()
+        private void ClearMaterialPropertyBlocks()
         {
             foreach (var kvp in originalMaterials)
             {
@@ -183,15 +175,16 @@ namespace MechaFind3D.PhysicsInteraction
                 if (rend != null && !IsMechaRenderer(rend))
                 {
                     rend.sharedMaterials = kvp.Value;
+                    rend.SetPropertyBlock(null);
                 }
             }
         }
 
-        private Vector3 GetObjectCenterAndRadius(out float maxExtent)
+        private Vector3 GetObjectCenterAndRadius(out float maxExtent, out Bounds combinedBounds)
         {
             Renderer[] renderers = GetComponentsInChildren<Renderer>();
             bool hasBounds = false;
-            Bounds bounds = new Bounds(transform.position, Vector3.zero);
+            combinedBounds = new Bounds(transform.position, Vector3.zero);
             foreach (Renderer r in renderers)
             {
                 if (r == null || !r.enabled || IsMechaRenderer(r)) continue;
@@ -199,16 +192,16 @@ namespace MechaFind3D.PhysicsInteraction
 
                 if (!hasBounds)
                 {
-                    bounds = r.bounds;
+                    combinedBounds = r.bounds;
                     hasBounds = true;
                 }
                 else
                 {
-                    bounds.Encapsulate(r.bounds);
+                    combinedBounds.Encapsulate(r.bounds);
                 }
             }
-            maxExtent = hasBounds ? Mathf.Max(bounds.extents.x, bounds.extents.y, bounds.extents.z) : 0.25f;
-            return hasBounds ? bounds.center : transform.position;
+            maxExtent = hasBounds ? Mathf.Max(combinedBounds.extents.x, combinedBounds.extents.y, combinedBounds.extents.z) : 0.25f;
+            return hasBounds ? combinedBounds.center : transform.position;
         }
 
         private void CreateWorldBadgeUI()
@@ -222,7 +215,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             badgeCanvasObject = new GameObject("BlackLock_Text_UI");
             badgeCanvasObject.transform.SetParent(transform);
-            badgeCanvasObject.transform.position = GetObjectCenterAndRadius(out _);
+            badgeCanvasObject.transform.position = GetObjectCenterAndRadius(out _, out _);
             badgeCanvasObject.transform.localScale = Vector3.one * 0.012f; // Bold world space text scale
 
             badgeCanvas = badgeCanvasObject.AddComponent<Canvas>();
@@ -269,7 +262,7 @@ namespace MechaFind3D.PhysicsInteraction
                     if (cam == null) cam = FindFirstObjectByType<Camera>();
                     if (cam != null)
                     {
-                        Vector3 centerPos = GetObjectCenterAndRadius(out float maxExtent);
+                        Vector3 centerPos = GetObjectCenterAndRadius(out float maxExtent, out _);
                         Vector3 camDir = (cam.transform.position - centerPos).normalized;
 
                         // Position text cleanly outside the front face of 3D mesh towards camera
@@ -287,17 +280,28 @@ namespace MechaFind3D.PhysicsInteraction
 
             lockCounter--;
 
+            float targetProgress = 1.0f - Mathf.Clamp01((float)lockCounter / Mathf.Max(1, maxLockCounter));
+
+            // Smoothly animate blackness tint reduction to reveal object's own colors
+            erodeTween?.Kill();
+            erodeTween = DOTween.To(() => currentErodeProgress, x => currentErodeProgress = x, targetProgress, 0.35f)
+                .SetEase(Ease.OutCubic)
+                .OnUpdate(() => ApplyBlacknessTint(currentErodeProgress));
+
             if (badgeText != null)
             {
                 badgeText.text = lockCounter.ToString();
+                badgeText.transform.DOKill();
+                badgeText.transform.localScale = Vector3.one;
+                badgeText.transform.DOPunchScale(Vector3.one * 0.45f, 0.35f, 6, 0.5f);
             }
 
-            if (badgeCanvasObject != null)
-            {
-                badgeCanvasObject.transform.DOKill();
-                badgeCanvasObject.transform.localScale = Vector3.one * 0.012f;
-                badgeCanvasObject.transform.DOPunchScale(Vector3.one * 0.005f, 0.35f, 5, 0.5f);
-            }
+            // Punch scale animation on item when layer of blackness breaks
+            transform.DOKill();
+            transform.DOPunchScale(Vector3.one * 0.12f, 0.35f, 5, 0.5f);
+
+            // Spawn small black particle dust breaking away from the object
+            PlayBlackParticleDissolveVFX(false);
 
             if (lockCounter <= 0)
             {
@@ -310,10 +314,16 @@ namespace MechaFind3D.PhysicsInteraction
             isLocked = false;
             activeLockedItems.Remove(this);
 
-            RestoreOriginalMaterials();
+            erodeTween?.Kill();
+            currentErodeProgress = 1.0f;
+            ClearMaterialPropertyBlocks();
+
+            // Spawn a burst of small black particle flakes as the blackness completely dissolves
+            PlayBlackParticleDissolveVFX(true);
 
             if (badgeCanvasObject != null)
             {
+                badgeCanvasObject.transform.DOKill();
                 badgeCanvasObject.transform.DOScale(Vector3.zero, 0.25f).OnComplete(() =>
                 {
                     if (badgeCanvasObject != null) Destroy(badgeCanvasObject);
@@ -345,5 +355,69 @@ namespace MechaFind3D.PhysicsInteraction
             transform.DOKill();
             transform.DOShakeRotation(0.35f, new Vector3(0, 0, 15f), 15, 90f);
         }
+
+        /// <summary>
+        /// Spawns tiny black particle dust flakes breaking off the object surface and dissolving into thin air.
+        /// </summary>
+        private void PlayBlackParticleDissolveVFX(bool isFinalUnlock)
+        {
+            Vector3 centerPos = GetObjectCenterAndRadius(out _, out Bounds bounds);
+
+            GameObject pObj = new GameObject("VFX_BlackLock_Dissolve");
+            pObj.transform.position = centerPos;
+
+            ParticleSystem ps = pObj.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            ParticleSystemRenderer psRend = pObj.GetComponent<ParticleSystemRenderer>();
+
+            var main = ps.main;
+            main.duration = 0.5f;
+            main.loop = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.35f, 0.70f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.8f, 2.2f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.09f); // Tiny dark flakes
+            main.gravityModifier = -0.15f; // Float gently upwards as they dissolve
+            main.startColor = new ParticleSystem.MinMaxGradient(
+                new Color(0.05f, 0.05f, 0.05f, 0.9f),
+                new Color(0.18f, 0.18f, 0.18f, 0.75f)
+            );
+            main.stopAction = ParticleSystemStopAction.Destroy;
+
+            var emission = ps.emission;
+            emission.rateOverTime = 0;
+            int burstCount = isFinalUnlock ? 65 : 35;
+            emission.SetBursts(new ParticleSystem.Burst[] { new ParticleSystem.Burst(0f, burstCount) });
+
+            var shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            Vector3 boxScale = bounds.extents * 2f;
+            if (boxScale.magnitude < 0.2f) boxScale = Vector3.one * 0.3f;
+            shape.scale = boxScale;
+
+            var sol = ps.sizeOverLifetime;
+            sol.enabled = true;
+            AnimationCurve sizeCurve = new AnimationCurve();
+            sizeCurve.AddKey(0.0f, 1.0f);
+            sizeCurve.AddKey(0.6f, 0.7f);
+            sizeCurve.AddKey(1.0f, 0.0f);
+            sol.size = new ParticleSystem.MinMaxCurve(1.0f, sizeCurve);
+
+            var col = ps.colorOverLifetime;
+            col.enabled = true;
+            Gradient grad = new Gradient();
+            grad.SetKeys(
+                new GradientColorKey[] { new GradientColorKey(Color.black, 0.0f), new GradientColorKey(new Color(0.1f, 0.1f, 0.1f), 1.0f) },
+                new GradientAlphaKey[] { new GradientAlphaKey(0.85f, 0.0f), new GradientAlphaKey(0.0f, 1.0f) }
+            );
+            col.color = grad;
+
+            // Sprites/Default is guaranteed to render safely in all render pipelines without quad bugs
+            Shader spriteShader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color");
+            Material particleMat = new Material(spriteShader);
+            psRend.sharedMaterial = particleMat;
+
+            ps.Play();
+        }
     }
 }
+
