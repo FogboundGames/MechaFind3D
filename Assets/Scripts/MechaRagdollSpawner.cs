@@ -91,7 +91,8 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     if (obj.transform.parent == null)
                     {
-                        Destroy(obj);
+                        if (Application.isPlaying) Destroy(obj);
+                        else DestroyImmediate(obj);
                     }
                 }
             }

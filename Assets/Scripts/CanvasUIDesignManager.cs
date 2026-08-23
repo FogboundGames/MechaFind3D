@@ -197,6 +197,14 @@ namespace MechaFind3D.PhysicsInteraction
             else DestroyImmediate(obj);
         }
 
+        private static void MarkTransientIfEditMode(GameObject go)
+        {
+            if (Application.isPlaying || go == null) return;
+            go.hideFlags = HideFlags.DontSave;
+            foreach (Transform child in go.transform)
+                MarkTransientIfEditMode(child.gameObject);
+        }
+
         private void Awake()
         {
             Instance = this;
@@ -381,6 +389,7 @@ namespace MechaFind3D.PhysicsInteraction
             if (kept != null) return kept;
 
             GameObject mgrObj = new GameObject("Customer_Order_Manager");
+            MarkTransientIfEditMode(mgrObj);
             return mgrObj.AddComponent<CustomerOrderManager>();
         }
 
@@ -787,6 +796,25 @@ namespace MechaFind3D.PhysicsInteraction
         // Order cards
         // ---------------------------------------------------------------------------------------------
 
+        /// <summary>Destroys every order card so the next refresh builds them from scratch.</summary>
+        public void ClearAllOrderCards()
+        {
+            if (topGoalContainer == null) return;
+            var toRemove = new List<Transform>();
+            foreach (Transform child in topGoalContainer)
+            {
+                if (child.name.StartsWith(OrderCardPrefix) || child.name.StartsWith(RetiredCardPrefix))
+                    toRemove.Add(child);
+            }
+            foreach (Transform child in toRemove)
+            {
+                KillCardTweens(child);
+                child.SetParent(null, false);
+                if (Application.isPlaying) Destroy(child.gameObject);
+                else DestroyImmediate(child.gameObject);
+            }
+        }
+
         /// <summary>Tears every order card down and rebuilds the row from scratch - used on level load.</summary>
         public void RefreshTargetGoalsUI()
         {
@@ -802,11 +830,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (topGoalContainer == null) return;
 
-            // SyncOrderCards() already removes only cards whose order is no longer live and skips
-            // rebuilding cards that already match a live order (see FindOrderCard below). This used to be
-            // preceded by an unconditional "destroy every card, then rebuild" pass, which meant every
-            // refresh (including the very first one in Start()) wiped out any card appearance set up by
-            // hand in the scene and replaced it with the hardcoded default styling from BuildOrderCard.
+            ClearAllOrderCards();
             SyncOrderCards();
         }
 
@@ -823,17 +847,11 @@ namespace MechaFind3D.PhysicsInteraction
                 if (order != null && !order.isCompleted) live.Add(order.orderId);
             }
 
-            // Removes cards whose order is no longer live, and any duplicate that already shares an orderId
-            // with an earlier sibling. Duplicates can happen because SetupCustomerOrders() re-rolls which
-            // item occupies each slot every time it runs (and it runs more than once during startup) while
-            // orderId itself is always renumbered 1..N the same way - a build before card identity was
-            // matched by orderId (see BuildOrderCard) could leave more than one card per slot sitting in the
-            // scene, including ones already saved into it from [ExecuteAlways] running in the Editor.
             var seenOrderIds = new HashSet<int>();
             var toRemove = new List<Transform>();
             foreach (Transform child in topGoalContainer)
             {
-                if (!child.name.StartsWith(OrderCardPrefix)) continue; // retiring cards own their own removal
+                if (!child.name.StartsWith(OrderCardPrefix)) continue;
                 int orderId = GetCardOrderId(child);
                 bool duplicate = !seenOrderIds.Add(orderId);
                 if (duplicate || !live.Contains(orderId)) toRemove.Add(child);
@@ -1107,21 +1125,26 @@ namespace MechaFind3D.PhysicsInteraction
             }
             else
             {
-                // Clone whatever card is already sitting in the container (hand-authored in the scene, or a
-                // previous runtime-built one) so a brand-new customer's card matches the established look
-                // instead of the hardcoded fallback shell below. Only falls back to that shell when the
-                // container is completely empty (e.g. a fresh scene with zero cards authored yet).
                 Transform template = FindOrderCardTemplate();
                 if (template != null)
                 {
                     cardObj = Instantiate(template.gameObject, topGoalContainer, false);
                     cardObj.name = cardName;
+                    MarkTransientIfEditMode(cardObj);
                 }
                 else
                 {
                     cardObj = BuildDefaultOrderCardShell(cardName);
                 }
             }
+
+            // The spawn animation (below) drives localScale from zero to one. A card cloned from
+            // a template that is mid-animation inherits that zero scale, which collapses
+            // Renderer.bounds to a zero-size point and makes InverseTransformPoint return NaN —
+            // so BuildOrderCardIcon's 3D model ends up at NaN position and is invisible.
+            // Resetting to one here ensures bounds math is valid; the spawn animation re-zeroes
+            // it right after, so there is no visual glitch.
+            cardObj.transform.localScale = Vector3.one;
 
             // Tints the outer card frame with the order's own item color (Emre: "her obje/meyveye özel
             // renk", e.g. watermelon red, onion purple) - runs on every sync, not just first build, so a
@@ -1188,6 +1211,7 @@ namespace MechaFind3D.PhysicsInteraction
         private GameObject BuildDefaultOrderCardShell(string cardName)
         {
             GameObject cardObj = NewUIObject(cardName, topGoalContainer);
+            MarkTransientIfEditMode(cardObj);
             RectTransform cardRect = cardObj.GetComponent<RectTransform>();
 
             Vector2 cardSize = new Vector2(140f, 155f);
@@ -1221,8 +1245,7 @@ namespace MechaFind3D.PhysicsInteraction
             windowRect.offsetMax = Vector2.zero;
 
             Image windowBg = windowObj.AddComponent<Image>();
-            ApplySlicedSprite(windowBg, LoadUISprite("Buttons/Button Red") ?? LoadUISprite(UIAccentSquareButton));
-            windowBg.color = new Color(0.94f, 0.95f, 0.96f, 1.0f);
+            windowBg.color = Color.white;
 
             Outline windowOutline = windowObj.AddComponent<Outline>();
             windowOutline.effectColor = new Color(0.12f, 0.12f, 0.12f, 0.90f);
@@ -1286,6 +1309,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (displayPrefab == null)
             {
+                Debug.LogWarning($"[OrderCard] '{order.itemId}' için 3D prefab bulunamadı — kart ikonsuz kalacak.");
                 Image iconImg = iconObj.GetComponent<Image>() ?? iconObj.AddComponent<Image>();
                 iconImg.enabled = true;
                 Sprite foodIcon = order.itemIcon != null ? order.itemIcon
@@ -1329,6 +1353,7 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             GameObject modelWrapper = new GameObject("3D_Icon_Wrapper");
+            MarkTransientIfEditMode(modelWrapper);
             modelWrapper.transform.SetParent(iconObj.transform, false);
             modelWrapper.transform.localPosition = new Vector3(0f, 0f, goalCard3DModelLocalPosition.z);
             modelWrapper.transform.localRotation = modelRotation;
@@ -1336,6 +1361,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             GameObject modelObj = Instantiate(displayPrefab, modelWrapper.transform);
             modelObj.name = "3D_Icon_Model";
+            MarkTransientIfEditMode(modelObj);
             modelObj.transform.localPosition = Vector3.zero;
             modelObj.transform.localRotation = Quaternion.identity;
             modelObj.transform.localScale = Vector3.one;
@@ -2341,9 +2367,10 @@ namespace MechaFind3D.PhysicsInteraction
                 if (t == null) continue;
 
                 Renderer rend = t.GetComponent<Renderer>();
-                if (rend != null && rend.material != null)
+                if (rend != null)
                 {
-                    Material mat = rend.material;
+                    Material mat = Application.isPlaying ? rend.material : rend.sharedMaterial;
+                    if (mat == null) continue;
                     bool isFilled = i < dockItems.Count;
 
                     if (isFilled)

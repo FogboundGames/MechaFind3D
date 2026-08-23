@@ -19,7 +19,9 @@ MonoBehaviour:
   foodTargetSize: 1.2
   targetGoals:
   - itemData: {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
-    requiredCount: 6
+    requiredCount: 3
+  - itemData: {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
+    requiredCount: 3
   fillerItems: []
   enableBlackLockedObjects: 1
   blackObjectCount: 2

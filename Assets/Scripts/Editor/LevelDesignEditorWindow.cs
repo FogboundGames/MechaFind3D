@@ -98,7 +98,9 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             System.Array.Sort(levels, (a, b) => a.levelNumber.CompareTo(b.levelNumber));
 
             LevelManager manager = Object.FindFirstObjectByType<LevelManager>();
-            int currentIndex = manager != null ? manager.currentLevelIndex : -1;
+            int currentIndex = Application.isPlaying && manager != null
+                ? manager.currentLevelIndex
+                : PlayerPrefs.GetInt("SavedCurrentLevelIndex", manager != null ? manager.currentLevelIndex : 0);
 
             for (int i = 0; i < levels.Length; i++)
             {
@@ -480,6 +482,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 ShowNotification(new GUIContent($"✅ Seviye {level.levelNumber} Başarıyla Kaydedildi ve Sahnede Güncellendi!"));
             }
             GUI.backgroundColor = pBgBottom;
+            EditorGUILayout.EndVertical();
 
             if (so.ApplyModifiedProperties())
             {

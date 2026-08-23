@@ -122,19 +122,25 @@ namespace MechaFind3D.PhysicsInteraction
                 MatchGoalManager.Instance.SetupLevelGoals();
             }
 
-            // 2b. Re-roll customer orders for this level - the header row's cards are driven by these,
-            // not directly by MatchGoalManager, so without this it would keep showing the previous
-            // level's customers.
+            // 2b. Wipe old order cards before re-rolling so stale cards from the previous level
+            // (whose orderIds would collide with the fresh 1..N sequence) don't get reused with
+            // a corrupted icon/count state.
+            if (CanvasUIDesignManager.Instance != null)
+            {
+                CanvasUIDesignManager.Instance.ClearAllOrderCards();
+            }
+
             if (CustomerOrderManager.Instance != null)
             {
                 CustomerOrderManager.Instance.SetupCustomerOrders();
             }
 
-            // 3. Refresh HUD UI cards and title
+            // 3. Clear dock items and overlay panels BEFORE refreshing cards, so
+            //    RemainingForOrder sees an empty dock and shows the full required count.
             if (CanvasUIDesignManager.Instance != null)
             {
-                CanvasUIDesignManager.Instance.RefreshTargetGoalsUI();
                 CanvasUIDesignManager.Instance.HideAllOverlayPanels();
+                CanvasUIDesignManager.Instance.RefreshTargetGoalsUI();
             }
 
             // 4. Spawn every camouflaged Mecha this level configures (LevelDataSO.GetAllMechaEntries()) -
