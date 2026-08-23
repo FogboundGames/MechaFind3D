@@ -30,28 +30,50 @@ MonoBehaviour:
     requiredCount: 6
   fillerItems:
   - {fileID: 11400000, guid: e1e91384208b2394394cb7f5c48929b1, type: 2}
-  enableFrozenItems: 0
-  frozenItemCount: 3
-  defaultFreezeCount: 2
+  enableBlackLockedObjects: 0
+  blackObjectCount: 2
+  blackObjectUnlockCount: 3
   enableCamouflageMecha: 1
   targetPivot: 1
-  customMechaPrefab: {fileID: 0}
+  customMechaPrefab: {fileID: 919132149155446097, guid: 879efff7d1187894d90433ff940dfe40, type: 3}
   hostItemSO: {fileID: 11400000, guid: ab68c81495a82e741b64e21a1a548533, type: 2}
   mechaHostKeyword: mushroom_002
   mechaScaleRatio: 0.25
   mechaWrapAmount: 0
-  mechaWorldSize: 0.5
+  mechaWorldSize: 1
   mechaOpacity: 0.22
   mechaLocalOffset: {x: 0, y: 0, z: 0}
   mechaRotationOffset: {x: 90, y: 0, z: 0}
+  boneOverrides:
+  - boneKeyword: forearm_L
+    rotationOffset: {x: -50.5, y: -0, z: 0}
+  - boneKeyword: thigh_L
+    rotationOffset: {x: -0, y: 0, z: 37.8}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 0, z: -37.8}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -50, y: -0, z: 0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -50, y: 0, z: 0}
+  - boneKeyword: spine_006
+    rotationOffset: {x: 25.3, y: 0, z: -0}
   additionalMechas:
   - targetPivot: 1
-    customMechaPrefab: {fileID: 0}
+    customMechaPrefab: {fileID: 919132149155446097, guid: 879efff7d1187894d90433ff940dfe40, type: 3}
     hostItemSO: {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
     mechaHostKeyword: avocado_001
     mechaScaleRatio: 0.25
     mechaWrapAmount: 0
-    mechaWorldSize: 0.5
+    mechaWorldSize: 1
     mechaOpacity: 0.22
-    mechaLocalOffset: {x: 0, y: 0, z: 0}
+    mechaLocalOffset: {x: 0, y: 0.75, z: 0.25}
     mechaRotationOffset: {x: 90, y: 0, z: 0}
+    boneOverrides:
+    - boneKeyword: thigh_R
+      rotationOffset: {x: -44.2, y: 21.3, z: -29.2}
+    - boneKeyword: thigh_L
+      rotationOffset: {x: -45.8, y: -28.4, z: 37}
+    - boneKeyword: forearm_R
+      rotationOffset: {x: -38, y: 0, z: -0}
+    - boneKeyword: forearm_L
+      rotationOffset: {x: -38, y: 0, z: 0}

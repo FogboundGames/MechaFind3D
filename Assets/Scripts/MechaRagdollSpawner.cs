@@ -274,7 +274,8 @@ namespace MechaFind3D.PhysicsInteraction
                 if (hostObj != null)
                 {
                     hostsClaimedThisPass.Add(hostObj);
-                    ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset, absWorldSize, pivotPref, wrapAmount);
+                    var boneOvr = entry != null ? entry.boneOverrides : null;
+                    ChameleonCamouflage.EmbedMechaInHostObject(mecha, hostObj.gameObject, targetScaleRatio, targetOpacity, posOffset, rotOffset, absWorldSize, pivotPref, wrapAmount, boneOvr);
                     return;
                 }
             }

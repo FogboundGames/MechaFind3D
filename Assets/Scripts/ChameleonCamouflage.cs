@@ -135,8 +135,8 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 if (r == null) continue;
 
-                // Skip host item renderers if mecha is parented under a FindTargetObject host item!
-                FindTargetObject fto = r.GetComponent<FindTargetObject>() ?? r.GetComponentInParent<FindTargetObject>();
+                // Skip mascot/child host item renderers if any
+                FindTargetObject fto = r.GetComponent<FindTargetObject>();
                 if (fto != null && fto.gameObject != mecha) continue;
 
                 int slotCount = Mathf.Max(1, r.sharedMaterials.Length);
@@ -191,8 +191,8 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 if (r == null) continue;
 
-                // Skip host item renderers if mecha is parented under a FindTargetObject host item!
-                FindTargetObject fto = r.GetComponent<FindTargetObject>() ?? r.GetComponentInParent<FindTargetObject>();
+                // Skip mascot/child host item renderers if any
+                FindTargetObject fto = r.GetComponent<FindTargetObject>();
                 if (fto != null && fto.gameObject != mecha) continue;
 
                 int slotCount = Mathf.Max(1, r.sharedMaterials.Length);
@@ -206,7 +206,7 @@ namespace MechaFind3D.PhysicsInteraction
         /// Embeds/Attaches the mecha INTO a host item (e.g. a Cake 🍰), positioning its upper body/limbs
         /// emerging from the top of the host object, repainted in the host item's exact texture/materials!
         /// </summary>
-        public static void EmbedMechaInHostObject(GameObject mecha, GameObject hostObject, float scaleRatio = 0.85f, float opacity = 0.22f, Vector3 positionOffset = default, Vector3 rotationOffset = default, float absoluteWorldSize = 0f, MechaPivotSelection pivotPreference = MechaPivotSelection.Auto, float wrapAmount = 0f)
+        public static void EmbedMechaInHostObject(GameObject mecha, GameObject hostObject, float scaleRatio = 0.85f, float opacity = 0.22f, Vector3 positionOffset = default, Vector3 rotationOffset = default, float absoluteWorldSize = 0f, MechaPivotSelection pivotPreference = MechaPivotSelection.Auto, float wrapAmount = 0f, List<MechaBoneOverride> boneOverrides = null)
         {
             if (mecha == null || hostObject == null) return;
 
@@ -361,6 +361,7 @@ namespace MechaFind3D.PhysicsInteraction
             // Curl the limbs around the host. Done before the centring/extent work below so those see the
             // final silhouette.
             ApplyWrapPose(mecha.transform, wrapAmount);
+            ApplyBoneOverrides(mecha.transform, boneOverrides);
             Physics.SyncTransforms();
 
             // The model's origin sits at its FEET, not in the middle of the body, so dropping the transform
@@ -509,6 +510,52 @@ namespace MechaFind3D.PhysicsInteraction
                 else if (n.Contains("shin"))
                 {
                     t.Rotate(around, side * legCurl * 0.8f * amount, Space.World);
+                }
+            }
+        }
+
+        public static bool IsBoneMatch(string transformName, string keyword)
+        {
+            if (string.IsNullOrEmpty(transformName) || string.IsNullOrEmpty(keyword)) return false;
+
+            string normTrans = transformName.ToLowerInvariant().Replace('.', '_').Replace('-', '_');
+            string normKey = keyword.ToLowerInvariant().Replace('.', '_').Replace('-', '_');
+
+            if (normTrans.Contains(normKey)) return true;
+
+            if (normKey.EndsWith("_l") || normKey.EndsWith("_r"))
+            {
+                string side = normKey.Substring(normKey.Length - 1);
+                string baseKey = normKey.Substring(0, normKey.Length - 2);
+
+                if (normTrans.Contains(baseKey))
+                {
+                    if (normTrans.EndsWith("_" + side) || normTrans.Contains("_" + side + "_") ||
+                        normTrans.EndsWith("." + side) || normTrans.Contains("." + side + "."))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        public static void ApplyBoneOverrides(Transform mechaRoot, List<MechaBoneOverride> overrides)
+        {
+            if (mechaRoot == null || overrides == null || overrides.Count == 0) return;
+
+            foreach (Transform bone in mechaRoot.GetComponentsInChildren<Transform>())
+            {
+                string boneName = bone.name.ToLowerInvariant();
+                foreach (MechaBoneOverride ovr in overrides)
+                {
+                    if (ovr == null || string.IsNullOrEmpty(ovr.boneKeyword)) continue;
+                    if (ovr.rotationOffset == Vector3.zero) continue;
+                    if (IsBoneMatch(bone.name, ovr.boneKeyword))
+                    {
+                        bone.localRotation *= Quaternion.Euler(ovr.rotationOffset);
+                    }
                 }
             }
         }

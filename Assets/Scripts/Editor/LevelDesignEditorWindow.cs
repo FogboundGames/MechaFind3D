@@ -596,6 +596,16 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
                 EditorGUILayout.Space(6);
 
+                // Bone Override UI
+                DrawBoneOverrideSection(so, level, mechaIdx);
+
+                EditorGUILayout.Space(6);
+
+                // Pose Preset UI
+                DrawPosePresetSection(so, level, mechaIdx);
+
+                EditorGUILayout.Space(6);
+
                 // 3D Scene View Preview Button
                 Color btnBg = GUI.backgroundColor;
                 GUI.backgroundColor = new Color(0.2f, 0.8f, 1.0f);
@@ -979,8 +989,13 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 entry.mechaRotationOffset,
                 entry.mechaWorldSize,
                 entry.targetPivot,
-                entry.mechaWrapAmount
+                entry.mechaWrapAmount,
+                entry.boneOverrides
             );
+
+            MechaBonePreviewTag tag = hostInstance.GetComponent<MechaBonePreviewTag>();
+            if (tag == null) tag = hostInstance.AddComponent<MechaBonePreviewTag>();
+            tag.Initialize(level, mechaIndex, mechaInst);
 
             Selection.activeGameObject = hostInstance;
             if (SceneView.lastActiveSceneView != null)
@@ -988,6 +1003,25 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 SceneView.lastActiveSceneView.FrameSelected();
             }
             Debug.Log($"👁️ Mecha #{mechaIndex + 1} 3D Canlı Önizlemesi Sahnede (Scene View) Odaklandı! (Mecha: {mechaInst.name})");
+        }
+
+        public static void RepaintWindow()
+        {
+            if (HasOpenInstances<LevelDesignEditorWindow>())
+            {
+                var window = GetWindow<LevelDesignEditorWindow>("Level Design Manager", false);
+                if (window != null) window.Repaint();
+            }
+        }
+
+        public static LevelDataSO GetSelectedLevelData()
+        {
+            if (HasOpenInstances<LevelDesignEditorWindow>())
+            {
+                var window = GetWindow<LevelDesignEditorWindow>("Level Design Manager", false);
+                if (window != null) return window.selectedLevel;
+            }
+            return null;
         }
 
         private static void LiveUpdateScene3DPreview(LevelDataSO level, MechaSpawnEntry entry, int mechaIndex)
@@ -1012,6 +1046,243 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                     GenerateScene3DPreview(level, entries[i], i);
                 }
             }
+        }
+
+        public static readonly string[] BonePresets = new string[]
+        {
+            "upper_arm_L", "upper_arm_R",
+            "forearm_L", "forearm_R",
+            "hand_L", "hand_R",
+            "shoulder_L", "shoulder_R",
+            "thigh_L", "thigh_R",
+            "shin_L", "shin_R",
+            "foot_L", "foot_R",
+            "spine", "spine_001", "spine_002", "spine_003", "spine_004", "spine_005", "spine_006",
+            "pelvis_L", "pelvis_R",
+            "toe_L", "toe_R",
+        };
+
+        private void DrawBoneOverrideSection(SerializedObject so, LevelDataSO level, int mechaIdx)
+        {
+            SerializedProperty bonesProp;
+            if (mechaIdx == 0)
+            {
+                bonesProp = so.FindProperty("boneOverrides");
+            }
+            else
+            {
+                SerializedProperty mechasProp = so.FindProperty("additionalMechas");
+                int addIdx = mechaIdx - 1;
+                if (addIdx >= mechasProp.arraySize) return;
+                bonesProp = mechasProp.GetArrayElementAtIndex(addIdx).FindPropertyRelative("boneOverrides");
+            }
+
+            if (bonesProp == null) return;
+
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("🦴 Kemik Bazlı Poz Ayarları", EditorStyles.boldLabel);
+
+            int removeIdx = -1;
+            for (int i = 0; i < bonesProp.arraySize; i++)
+            {
+                SerializedProperty elem = bonesProp.GetArrayElementAtIndex(i);
+                SerializedProperty kwProp = elem.FindPropertyRelative("boneKeyword");
+                SerializedProperty rotProp = elem.FindPropertyRelative("rotationOffset");
+
+                EditorGUILayout.BeginHorizontal();
+
+                int currentPresetIdx = System.Array.IndexOf(BonePresets, kwProp.stringValue);
+                int selected = EditorGUILayout.Popup(currentPresetIdx >= 0 ? currentPresetIdx : 0, BonePresets, GUILayout.Width(130));
+                if (selected != currentPresetIdx)
+                {
+                    kwProp.stringValue = BonePresets[selected];
+                }
+
+                EditorGUILayout.PropertyField(rotProp, GUIContent.none);
+
+                Color prevBg = GUI.backgroundColor;
+                GUI.backgroundColor = new Color(1f, 0.3f, 0.3f);
+                if (GUILayout.Button("✕", GUILayout.Width(22), GUILayout.Height(18)))
+                {
+                    removeIdx = i;
+                }
+                GUI.backgroundColor = prevBg;
+
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (removeIdx >= 0) bonesProp.DeleteArrayElementAtIndex(removeIdx);
+
+            EditorGUILayout.BeginHorizontal();
+            Color addBg = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.3f, 0.85f, 1f);
+            if (GUILayout.Button("➕ Kemik Ekle", GUILayout.Height(24)))
+            {
+                bonesProp.arraySize++;
+                var newElem = bonesProp.GetArrayElementAtIndex(bonesProp.arraySize - 1);
+                newElem.FindPropertyRelative("boneKeyword").stringValue = "upper_arm_L";
+                newElem.FindPropertyRelative("rotationOffset").vector3Value = Vector3.zero;
+            }
+
+            if (bonesProp.arraySize > 0)
+            {
+                GUI.backgroundColor = new Color(1f, 0.6f, 0.2f);
+                if (GUILayout.Button("🗑️ Tümünü Temizle", GUILayout.Width(130), GUILayout.Height(24)))
+                {
+                    bonesProp.ClearArray();
+                }
+            }
+            GUI.backgroundColor = addBg;
+            EditorGUILayout.EndHorizontal();
+
+            if (bonesProp.serializedObject.ApplyModifiedProperties())
+            {
+                EditorUtility.SetDirty(level);
+                var entries = level.GetAllMechaEntries();
+                if (mechaIdx < entries.Count)
+                {
+                    LiveUpdateScene3DPreview(level, entries[mechaIdx], mechaIdx);
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawPosePresetSection(SerializedObject so, LevelDataSO level, int mechaIdx)
+        {
+            var entries = level.GetAllMechaEntries();
+            if (mechaIdx >= entries.Count) return;
+            MechaSpawnEntry mechaEntry = entries[mechaIdx];
+            if (mechaEntry == null) return;
+
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label("📦 MECHA POZ ŞABLONLARI (PRESETS)", EditorStyles.boldLabel);
+            EditorGUILayout.EndHorizontal();
+
+            // Find all MechaPosePresetSO assets in project
+            MechaPosePresetSO[] allPresets = FindAllAssets<MechaPosePresetSO>();
+            ItemDataSO currentHost = mechaEntry.hostItemSO;
+
+            List<MechaPosePresetSO> matchingPresets = new List<MechaPosePresetSO>();
+
+            if (allPresets != null)
+            {
+                foreach (var p in allPresets)
+                {
+                    if (p == null) continue;
+
+                    // Strictly filter: show only presets matching current host item or general presets
+                    if (p.targetHostItem == null || (currentHost != null && p.targetHostItem == currentHost))
+                    {
+                        matchingPresets.Add(p);
+                    }
+                }
+            }
+
+            string hostName = currentHost != null ? currentHost.displayName : "Objesiz";
+
+            if (matchingPresets.Count > 0)
+            {
+                EditorGUILayout.HelpBox($"💡 '{hostName}' için kayıtlı {matchingPresets.Count} poz şablonu:", MessageType.Info);
+                foreach (var preset in matchingPresets)
+                {
+                    DrawPresetRow(preset, so, level, mechaIdx, mechaEntry);
+                }
+            }
+            else
+            {
+                EditorGUILayout.HelpBox($"'{hostName}' objesi için henüz poz şablonu oluşturulmamış. Aşağıdaki butonla kaydedebilirsiniz.", MessageType.None);
+            }
+
+            EditorGUILayout.Space(6);
+
+            Color oldBg = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.2f, 0.85f, 0.4f);
+            if (GUILayout.Button($"💾 Mevcut Pozu Şablon Olarak Kaydet ({hostName})", GUILayout.Height(26)))
+            {
+                SaveCurrentPoseAsPreset(mechaEntry, currentHost);
+            }
+            GUI.backgroundColor = oldBg;
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawPresetRow(MechaPosePresetSO preset, SerializedObject so, LevelDataSO level, int mechaIdx, MechaSpawnEntry mechaEntry)
+        {
+            if (preset == null) return;
+
+            EditorGUILayout.BeginHorizontal(GUI.skin.box);
+
+            string hostTag = preset.targetHostItem != null ? $"[{preset.targetHostItem.displayName}] " : "[Genel] ";
+            GUILayout.Label($"{hostTag}{preset.presetName}", EditorStyles.boldLabel, GUILayout.ExpandWidth(true));
+
+            Color oldBg = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.2f, 0.75f, 1f);
+            if (GUILayout.Button("📋 Uygula", GUILayout.Width(75), GUILayout.Height(20)))
+            {
+                Undo.RecordObject(level, "Apply Mecha Pose Preset");
+                preset.ApplyTo(mechaEntry);
+                so.Update();
+                EditorUtility.SetDirty(level);
+                var updatedEntries = level.GetAllMechaEntries();
+                if (mechaIdx < updatedEntries.Count)
+                {
+                    LiveUpdateScene3DPreview(level, updatedEntries[mechaIdx], mechaIdx);
+                }
+                ShowNotification(new GUIContent($"📋 '{preset.presetName}' Poz Şablonu Uygulandı!"));
+            }
+
+            GUI.backgroundColor = new Color(1f, 0.35f, 0.35f);
+            if (GUILayout.Button("🗑️", GUILayout.Width(25), GUILayout.Height(20)))
+            {
+                if (EditorUtility.DisplayDialog("Şablonu Sil", $"'{preset.presetName}' şablonunu projeden silmek istediğinize emin misiniz?", "Evet, Sil", "İptal"))
+                {
+                    string path = AssetDatabase.GetAssetPath(preset);
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        AssetDatabase.DeleteAsset(path);
+                        AssetDatabase.Refresh();
+                    }
+                }
+            }
+            GUI.backgroundColor = oldBg;
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        public static void SaveCurrentPoseAsPreset(MechaSpawnEntry entry, ItemDataSO hostItem)
+        {
+            if (entry == null) return;
+
+            string defaultName = hostItem != null ? $"{hostItem.displayName}_Poz_1" : "Yeni_Mecha_Pozu";
+            string folderPath = "Assets/ScriptableObjects/MechaPosePresets";
+
+            if (!System.IO.Directory.Exists(folderPath))
+            {
+                System.IO.Directory.CreateDirectory(folderPath);
+                AssetDatabase.Refresh();
+            }
+
+            string path = EditorUtility.SaveFilePanelInProject(
+                "Mecha Poz Şablonu Kaydet",
+                defaultName,
+                "asset",
+                "Lütfen şablon için bir dosya adı belirleyin.",
+                folderPath
+            );
+
+            if (string.IsNullOrEmpty(path)) return;
+
+            MechaPosePresetSO preset = ScriptableObject.CreateInstance<MechaPosePresetSO>();
+            preset.presetName = System.IO.Path.GetFileNameWithoutExtension(path);
+            preset.CopyFrom(entry, hostItem);
+
+            AssetDatabase.CreateAsset(preset, path);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            Debug.Log($"💾 Yeni Mecha Poz Şablonu Oluşturuldu: {path}");
         }
 
         private void DrawMechaSizeInfoBox(MechaSpawnEntry mechaEntry)

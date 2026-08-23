@@ -2270,6 +2270,11 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     return slotRot * Quaternion.Euler(0f, 0f, 0f);
                 }
+                if (n.Contains("egg") && !n.Contains("eggplant"))
+                {
+                    // Flip egg 180 degrees so the yolk / cut face points UP towards the camera/player instead of upside down into slot
+                    return slotRot * Quaternion.Euler(180f, 15f, 0f);
+                }
             }
 
             return slotRot * Quaternion.Euler(0f, 15f, 0f);

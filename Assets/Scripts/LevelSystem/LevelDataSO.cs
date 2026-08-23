@@ -13,12 +13,16 @@ namespace MechaFind3D.PhysicsInteraction
         public int requiredCount = 6;
     }
 
-    /// <summary>
-    /// One mecha's full spawn config: which model, which host object to hide in, and how it's posed there.
-    /// The level's original single set of mecha fields (still on LevelDataSO directly, for save-file
-    /// backward compatibility) describes mecha #1; every entry in <see cref="LevelDataSO.additionalMechas"/>
-    /// is mecha #2, #3, etc., each with its own independent config.
-    /// </summary>
+    [System.Serializable]
+    public class MechaBoneOverride
+    {
+        [Tooltip("Kemik adı anahtar kelimesi (ör. upper_arm_L, forearm_R, thigh_L, spine_003). Kemik adı bu metni içeriyorsa eşleşir.")]
+        public string boneKeyword = "";
+
+        [Tooltip("Bu kemiğe uygulanacak ek rotasyon (Euler açıları).")]
+        public Vector3 rotationOffset = Vector3.zero;
+    }
+
     [System.Serializable]
     public class MechaSpawnEntry
     {
@@ -54,6 +58,9 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Tooltip("Local rotation Euler angles of mecha on the host object surface (default: 90, 0, 0 for flat).")]
         public Vector3 mechaRotationOffset = new Vector3(90f, 0f, 0f);
+
+        [Tooltip("Kemik bazlı rotasyon ayarları. Her entry bir kemiğin adını ve ek rotasyonunu tanımlar.")]
+        public List<MechaBoneOverride> boneOverrides = new List<MechaBoneOverride>();
     }
 
     public enum MechaPivotSelection
@@ -143,6 +150,9 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Local rotation Euler angles of mecha on the host object surface (default: 90, 0, 0 for flat).")]
         public Vector3 mechaRotationOffset = new Vector3(90f, 0f, 0f);
 
+        [Tooltip("Kemik bazlı rotasyon ayarları (birincil mecha için).")]
+        public List<MechaBoneOverride> boneOverrides = new List<MechaBoneOverride>();
+
         [Tooltip("Extra mechas beyond the one configured above. Each hides in its own host object - MechaRagdollSpawner never lets two mechas share a host, so add one entry per extra mecha you want in the pile.")]
         public List<MechaSpawnEntry> additionalMechas = new List<MechaSpawnEntry>();
 
@@ -171,6 +181,7 @@ namespace MechaFind3D.PhysicsInteraction
                     mechaOpacity = mechaOpacity,
                     mechaLocalOffset = mechaLocalOffset,
                     mechaRotationOffset = mechaRotationOffset,
+                    boneOverrides = boneOverrides,
                 });
             }
 
