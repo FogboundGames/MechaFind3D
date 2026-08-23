@@ -319,6 +319,32 @@ namespace MechaFind3D.PhysicsInteraction
                         }
                     }
                 }
+                else if (currentTime <= 20f)
+                {
+                    cachedTimerText.text = string.Format("⏱️ {0:00}:{1:00}", minutes, seconds);
+                    float pingPong = Mathf.PingPong(Time.time * 6f, 1f);
+                    cachedTimerText.color = Color.Lerp(Color.white, new Color(1.0f, 0.85f, 0.20f), pingPong);
+
+                    if (cachedTimerBadgeImage != null)
+                    {
+                        cachedTimerBadgeImage.color = Color.Lerp(defaultBadgeColor, new Color(0.90f, 0.30f, 0.15f, 0.98f), pingPong);
+                    }
+
+                    if (isFastDrainAnimating)
+                    {
+                        isFastDrainAnimating = false;
+                        if (cachedTimerBadgeRect != null)
+                        {
+                            cachedTimerBadgeRect.DOKill();
+                            cachedTimerBadgeRect.localScale = Vector3.one;
+                        }
+                        if (cachedTimerTextRect != null)
+                        {
+                            cachedTimerTextRect.DOKill();
+                            cachedTimerTextRect.localScale = Vector3.one;
+                        }
+                    }
+                }
                 else
                 {
                     cachedTimerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);

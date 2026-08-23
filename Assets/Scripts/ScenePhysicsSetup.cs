@@ -25,7 +25,7 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float boundaryLineWidth = 0.06f;
 
         [Header("Match Factory Floor Tray Dimensions")]
-        [SerializeField] private Vector3 containerSize = new Vector3(8.5f, 0.1f, 8.5f);
+        [SerializeField] private Vector3 containerSize = new Vector3(32f, 0.1f, 32f);
 
         private void Start()
         {
@@ -99,24 +99,94 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void SetupLighting()
         {
-            Light[] lights = Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
-            foreach (Light l in lights)
+            // 1. Main Key Sunlight (Warm studio key light with soft shadows)
+            Light mainLight = GameObject.Find("Main Directional Light")?.GetComponent<Light>();
+            if (mainLight == null)
             {
-                if (l != null) l.shadows = LightShadows.None;
+                Light[] lights = Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
+                if (lights != null && lights.Length > 0) mainLight = lights[0];
             }
 
-            Light dirLight = Object.FindFirstObjectByType<Light>();
-            if (dirLight == null)
+            if (mainLight == null)
             {
-                GameObject lightObj = new GameObject("Directional Light");
-                dirLight = lightObj.AddComponent<Light>();
-                dirLight.type = LightType.Directional;
+                GameObject lightObj = new GameObject("Main Directional Light");
+                mainLight = lightObj.AddComponent<Light>();
+                mainLight.type = LightType.Directional;
             }
 
-            dirLight.transform.rotation = Quaternion.Euler(55f, -25f, 0f);
-            dirLight.color = new Color(1f, 0.97f, 0.92f);
-            dirLight.intensity = 1.4f;
-            dirLight.shadows = LightShadows.None;
+            mainLight.name = "Main Directional Light";
+            mainLight.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            mainLight.color = new Color(1.0f, 0.96f, 0.88f); // Warm Champagne Sunlight
+            mainLight.intensity = 1.35f;
+            mainLight.shadows = LightShadows.Soft; // Enable Soft Shadows!
+            mainLight.shadowStrength = 0.65f;
+            mainLight.shadowBias = 0.05f;
+            mainLight.shadowNormalBias = 0.4f;
+
+            // 2. Rim / Fill Backlight (Cool cyan backlight for crisp 3D object separation)
+            Light rimLight = GameObject.Find("Rim Backlight")?.GetComponent<Light>();
+            if (rimLight == null)
+            {
+                GameObject rimObj = new GameObject("Rim Backlight");
+                rimLight = rimObj.AddComponent<Light>();
+                rimLight.type = LightType.Directional;
+            }
+
+            rimLight.name = "Rim Backlight";
+            rimLight.transform.rotation = Quaternion.Euler(25f, 150f, 0f);
+            rimLight.color = new Color(0.60f, 0.85f, 1.0f); // Cool Cyan Rim
+            rimLight.intensity = 0.55f;
+            rimLight.shadows = LightShadows.None;
+
+            // 3. Environment Ambient Lighting (Trilight Skybox Ambient)
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.85f, 0.90f, 0.98f);
+            RenderSettings.ambientEquatorColor = new Color(0.65f, 0.72f, 0.85f);
+            RenderSettings.ambientGroundColor = new Color(0.40f, 0.45f, 0.55f);
+            RenderSettings.ambientIntensity = 1.1f;
+
+            SetupPostProcessingVolume();
+        }
+
+        private void SetupPostProcessingVolume()
+        {
+            // Setup URP Post Processing Volume
+            GameObject volumeObj = GameObject.Find("Global_PostProcess_Volume");
+            if (volumeObj == null)
+            {
+                volumeObj = new GameObject("Global_PostProcess_Volume");
+            }
+
+            var volume = volumeObj.GetComponent<UnityEngine.Rendering.Volume>();
+            if (volume == null) volume = volumeObj.AddComponent<UnityEngine.Rendering.Volume>();
+
+            volume.isGlobal = true;
+            volume.priority = 1f;
+
+            if (volume.profile == null)
+            {
+                var profile = ScriptableObject.CreateInstance<UnityEngine.Rendering.VolumeProfile>();
+                profile.name = "Global_PostProcess_Profile";
+
+                // Add Bloom
+                var bloom = profile.Add<UnityEngine.Rendering.Universal.Bloom>(true);
+                bloom.threshold.Override(0.85f);
+                bloom.intensity.Override(0.35f);
+                bloom.scatter.Override(0.7f);
+
+                // Add Color Adjustments
+                var colorAdj = profile.Add<UnityEngine.Rendering.Universal.ColorAdjustments>(true);
+                colorAdj.postExposure.Override(0.15f);
+                colorAdj.contrast.Override(12f);
+                colorAdj.saturation.Override(18f);
+
+                // Add Vignette
+                var vignette = profile.Add<UnityEngine.Rendering.Universal.Vignette>(true);
+                vignette.intensity.Override(0.22f);
+                vignette.smoothness.Override(0.4f);
+
+                volume.profile = profile;
+            }
         }
 
         private GameObject CreateContainerTrayFloor()
@@ -131,19 +201,30 @@ namespace MechaFind3D.PhysicsInteraction
 #endif
             }
 
+            containerSize = new Vector3(32f, 0.1f, 32f);
+
             GameObject floorObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
             floorObj.name = "Container_Tray_Floor";
             floorObj.transform.SetParent(transform);
             floorObj.transform.position = new Vector3(0f, -containerSize.y * 0.5f, 0f);
             floorObj.transform.localScale = containerSize;
 
-            // The floor stays invisible - CanvasUIDesignManager.EnsureBackgroundCanvas draws the
-            // actual background (image or fallback color) via a dedicated screen-space camera/canvas
-            // instead, so this cube only needs to exist for its BoxCollider.
+            // Stylized shadow-receiving tray floor
             Renderer rend = floorObj.GetComponent<Renderer>();
-            if (rend != null) DestroyImmediate(rend);
+            if (rend == null) rend = floorObj.AddComponent<MeshRenderer>();
             MeshFilter mf = floorObj.GetComponent<MeshFilter>();
-            if (mf != null) DestroyImmediate(mf);
+            if (mf == null) mf = floorObj.AddComponent<MeshFilter>();
+
+            Shader floorShader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            Material floorMat = new Material(floorShader) { name = "TrayShadowReceiverMat" };
+            Color trayColor = new Color(0.12f, 0.16f, 0.24f, 0.95f); // Deep pastel navy tray
+            if (floorMat.HasProperty("_BaseColor")) floorMat.SetColor("_BaseColor", trayColor);
+            if (floorMat.HasProperty("_Color")) floorMat.SetColor("_Color", trayColor);
+            if (floorMat.HasProperty("_Smoothness")) floorMat.SetFloat("_Smoothness", 0.45f);
+
+            rend.sharedMaterial = floorMat;
+            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            rend.receiveShadows = true; // RECEIVE SOFT SHADOWS!
 
             BoxCollider boxCol = floorObj.GetComponent<BoxCollider>();
             if (boxCol != null)
@@ -158,9 +239,7 @@ namespace MechaFind3D.PhysicsInteraction
                 };
             }
 
-            // Drop any textured background quad left over from an older build - the background is a flat
-            // navy fill from CanvasUIDesignManager.EnsureBackgroundCanvas now, not an image plane in the
-            // 3D scene, so this quad would otherwise keep showing behind everything.
+            // Drop any old visual background quad
             Transform existingVisual = floorObj.transform.Find("Visual_Background");
             if (existingVisual != null)
             {

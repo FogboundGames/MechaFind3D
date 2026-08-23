@@ -1504,12 +1504,14 @@ namespace MechaFind3D.PhysicsInteraction
                 if (!changed) continue;
                 if (!order.itemId.Equals(changedItemId, System.StringComparison.OrdinalIgnoreCase)) continue;
 
-                txt.DOKill();
+                txt.DOKill(true);
                 txt.DOColor(new Color(1f, 0.92f, 0.25f), 0.12f).OnComplete(() => txt.DOColor(Color.white, 0.3f));
-                textObj.DOKill();
+                textObj.DOKill(true);
+                textObj.localScale = Vector3.one;
                 textObj.DOPunchScale(Vector3.one * goalTickTextPunchStrength, goalTickTextPunchDuration, 7, 0.9f);
 
-                card.DOKill();
+                card.DOKill(true);
+                card.localScale = Vector3.one;
                 card.DOPunchScale(Vector3.one * goalTickCardPunchStrength, goalTickCardPunchDuration, 8, 0.8f);
             }
         }
@@ -1519,7 +1521,8 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (card == null) return;
 
-            card.DOKill();
+            card.DOKill(true);
+            card.localScale = Vector3.one;
             card.DOPunchScale(Vector3.one * (goalTickCardPunchStrength * 1.6f), goalTickCardPunchDuration, 10, 0.9f);
 
             Image cardBg = card.GetComponent<Image>();

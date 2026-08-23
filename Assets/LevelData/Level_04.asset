@@ -43,8 +43,23 @@ MonoBehaviour:
   mechaWrapAmount: 0
   mechaWorldSize: 0.5
   mechaOpacity: 0.22
-  mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 90, y: 0, z: 0}
+  mechaLocalOffset: {x: 0.01867983, y: 0.03671166, z: 0}
+  mechaRotationOffset: {x: 90, y: 0, z: 90}
+  boneOverrides:
+  - boneKeyword: forearm_L
+    rotationOffset: {x: -50.5, y: -0, z: 0}
+  - boneKeyword: thigh_L
+    rotationOffset: {x: -0, y: 0, z: 37.8}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 0, z: -37.8}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -50, y: -0, z: 0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -50, y: 0, z: 0}
+  - boneKeyword: spine_006
+    rotationOffset: {x: 25.3, y: 0, z: -0}
+  - boneKeyword: forearm_R
+    rotationOffset: {x: -50, y: 0, z: 0}
   additionalMechas:
   - targetPivot: 1
     customMechaPrefab: {fileID: 0}
