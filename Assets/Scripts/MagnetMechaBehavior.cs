@@ -21,12 +21,28 @@ namespace MechaFind3D.PhysicsInteraction
         private float scanTimer;
         private const float ScanInterval = 0.5f;
 
+        private float originalHostMass = 1f;
+
         public void Initialize(MechaSpawnEntry entry)
         {
             radius = entry.magnetRadius;
             force = entry.magnetForce;
             maxObjects = entry.magnetMaxObjects;
             isActive = true;
+        }
+
+        private void Start()
+        {
+            // Host objeyi ağırlaştır — çekilen objelerin tepki kuvvetiyle fırlamasını önler
+            if (transform.parent != null)
+            {
+                Rigidbody hostRb = transform.parent.GetComponent<Rigidbody>();
+                if (hostRb != null)
+                {
+                    originalHostMass = hostRb.mass;
+                    hostRb.mass = originalHostMass * 5f;
+                }
+            }
         }
 
         private void FixedUpdate()
@@ -63,6 +79,25 @@ namespace MechaFind3D.PhysicsInteraction
                 FindTargetObject fto = attractedBodies[i].GetComponent<FindTargetObject>();
                 if (fto != null && fto.isDocked)
                 {
+                    attractedBodies[i].linearDamping = 0.5f;
+                    attractedBodies.RemoveAt(i);
+                    continue;
+                }
+
+                float distCheck = Vector3.Distance(center, attractedBodies[i].position);
+                if (distCheck > radius * 1.5f)
+                {
+                    attractedBodies[i].linearDamping = 0.5f;
+                    attractedBodies.RemoveAt(i);
+                    continue;
+                }
+
+                // Obje merkezden uzaklaşıyorsa (oyuncu sürüklüyorsa) bırak
+                Vector3 toCenter = (center - attractedBodies[i].position).normalized;
+                float awaySpeed = -Vector3.Dot(attractedBodies[i].linearVelocity, toCenter);
+                if (awaySpeed > 1.5f)
+                {
+                    attractedBodies[i].linearDamping = 0.5f;
                     attractedBodies.RemoveAt(i);
                     continue;
                 }
@@ -139,8 +174,27 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void ReleaseAll()
         {
+            Vector3 center = transform.parent != null ? transform.parent.position : transform.position;
+
+            foreach (Rigidbody rb in attractedBodies)
+            {
+                if (rb == null) continue;
+                rb.linearDamping = 0.5f;
+                Vector3 away = (rb.position - center).normalized;
+                if (away.sqrMagnitude < 0.01f)
+                    away = new Vector3(Random.Range(-1f, 1f), 0.5f, Random.Range(-1f, 1f)).normalized;
+                rb.AddForce((away + Vector3.up * 0.5f) * force * 1.5f, ForceMode.Impulse);
+            }
+
             attractedBodies.Clear();
             isActive = false;
+
+            // Host mass'ini normale döndür
+            if (transform.parent != null)
+            {
+                Rigidbody hostRb = transform.parent.GetComponent<Rigidbody>();
+                if (hostRb != null) hostRb.mass = originalHostMass;
+            }
         }
 
         public void Stop()

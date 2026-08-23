@@ -46,10 +46,10 @@ MonoBehaviour:
     rotationOffset: {x: -38, y: 0, z: -0}
   - boneKeyword: forearm_L
     rotationOffset: {x: -38, y: 0, z: 0}
-  isStickyMecha: 0
+  isStickyMecha: 1
   stickyJumpInterval: 5
   stickyMaxJumps: 2
-  isMagnetMecha: 1
+  isMagnetMecha: 0
   magnetRadius: 1.5
   magnetForce: 8
   magnetMaxObjects: 4
