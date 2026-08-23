@@ -942,24 +942,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             string targetNorm = NormalizeItemName(itemId);
 
-            // 1. Check active MatchGoalManager level goals
-            if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null)
-            {
-                foreach (MatchGoal g in MatchGoalManager.Instance.levelGoals)
-                {
-                    if (g != null && !string.IsNullOrEmpty(g.colorName))
-                    {
-                        string gNorm = NormalizeItemName(g.colorName);
-                        if (gNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
-                            gNorm.Contains(targetNorm) || targetNorm.Contains(gNorm))
-                        {
-                            if (g.displayPrefab != null) return g.displayPrefab;
-                        }
-                    }
-                }
-            }
-
-            // 2. Check ActiveLevelData target goals & filler items
+            // 1. Check ActiveLevelData target goals & filler items
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
             {
                 LevelDataSO levelData = LevelManager.Instance.ActiveLevelData;
@@ -972,9 +955,7 @@ namespace MechaFind3D.PhysicsInteraction
                             if (goal != null && goal.itemData != null)
                             {
                                 string gId = goal.itemData.GetEffectiveItemId();
-                                string gNorm = NormalizeItemName(gId);
-                                if (gNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
-                                    gNorm.Contains(targetNorm) || targetNorm.Contains(gNorm))
+                                if (gId.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
                                 {
                                     if (goal.itemData.prefab != null) return goal.itemData.prefab;
                                 }
@@ -989,9 +970,7 @@ namespace MechaFind3D.PhysicsInteraction
                             if (filler != null)
                             {
                                 string fId = filler.GetEffectiveItemId();
-                                string fNorm = NormalizeItemName(fId);
-                                if (fNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
-                                    fNorm.Contains(targetNorm) || targetNorm.Contains(fNorm))
+                                if (fId.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
                                 {
                                     if (filler.prefab != null) return filler.prefab;
                                 }
@@ -1001,8 +980,94 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
+            // 2. Check active MatchGoalManager level goals
+            if (MatchGoalManager.Instance != null && MatchGoalManager.Instance.levelGoals != null)
+            {
+                foreach (MatchGoal g in MatchGoalManager.Instance.levelGoals)
+                {
+                    if (g != null && !string.IsNullOrEmpty(g.colorName))
+                    {
+                        if (g.colorName.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (g.displayPrefab != null) return g.displayPrefab;
+                        }
+                    }
+                }
+            }
+
             // 3. Check PhysicsObjectSpawner foodModels
             PhysicsObjectSpawner spawner = Object.FindFirstObjectByType<PhysicsObjectSpawner>();
+            if (spawner != null && spawner.foodModels != null)
+            {
+                foreach (GameObject model in spawner.foodModels)
+                {
+                    if (model == null) continue;
+                    if (model.name.Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        return model;
+                    }
+                }
+            }
+
+            // 4. Check all ItemDataSO assets in project / Resources by exact itemId
+#if UNITY_EDITOR
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:ItemDataSO");
+            if (guids != null)
+            {
+                foreach (string g in guids)
+                {
+                    string path = UnityEditor.AssetDatabase.GUIDToAssetPath(g);
+                    ItemDataSO itemSO = UnityEditor.AssetDatabase.LoadAssetAtPath<ItemDataSO>(path);
+                    if (itemSO != null)
+                    {
+                        if (itemSO.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (itemSO.prefab != null) return itemSO.prefab;
+                        }
+                    }
+                }
+            }
+#endif
+            ItemDataSO[] loadedItems = Resources.LoadAll<ItemDataSO>("");
+            if (loadedItems != null)
+            {
+                foreach (var itemSO in loadedItems)
+                {
+                    if (itemSO != null)
+                    {
+                        if (itemSO.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (itemSO.prefab != null) return itemSO.prefab;
+                        }
+                    }
+                }
+            }
+
+            // 5. Normalized fallback matching for LevelData target goals & filler items
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                LevelDataSO levelData = LevelManager.Instance.ActiveLevelData;
+                if (levelData != null)
+                {
+                    if (levelData.targetGoals != null)
+                    {
+                        foreach (var goal in levelData.targetGoals)
+                        {
+                            if (goal != null && goal.itemData != null)
+                            {
+                                string gNorm = NormalizeItemName(goal.itemData.GetEffectiveItemId());
+                                if (gNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
+                                    gNorm.Contains(targetNorm) || targetNorm.Contains(gNorm))
+                                {
+                                    if (goal.itemData.prefab != null) return goal.itemData.prefab;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 6. Check PhysicsObjectSpawner foodModels by normalized name
             if (spawner != null && spawner.foodModels != null)
             {
                 foreach (GameObject model in spawner.foodModels)
@@ -1016,43 +1081,6 @@ namespace MechaFind3D.PhysicsInteraction
                     }
                 }
             }
-
-            // 4. Check live physics objects in scene pile
-            FindTargetObject[] sceneItems = Object.FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None);
-            if (sceneItems != null)
-            {
-                foreach (var item in sceneItems)
-                {
-                    if (item == null || item.gameObject == null) continue;
-                    string sNorm = NormalizeItemName(item.colorName);
-                    if (sNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
-                        sNorm.Contains(targetNorm) || targetNorm.Contains(sNorm))
-                    {
-                        return item.gameObject;
-                    }
-                }
-            }
-
-#if UNITY_EDITOR
-            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:ItemDataSO");
-            if (guids != null)
-            {
-                foreach (string g in guids)
-                {
-                    string path = UnityEditor.AssetDatabase.GUIDToAssetPath(g);
-                    ItemDataSO itemSO = UnityEditor.AssetDatabase.LoadAssetAtPath<ItemDataSO>(path);
-                    if (itemSO != null)
-                    {
-                        string itemNorm = NormalizeItemName(itemSO.GetEffectiveItemId());
-                        if (itemNorm.Equals(targetNorm, System.StringComparison.OrdinalIgnoreCase) ||
-                            itemNorm.Contains(targetNorm) || targetNorm.Contains(itemNorm))
-                        {
-                            if (itemSO.prefab != null) return itemSO.prefab;
-                        }
-                    }
-                }
-            }
-#endif
 
             return null;
         }
@@ -1312,9 +1340,31 @@ namespace MechaFind3D.PhysicsInteraction
             modelObj.transform.localRotation = Quaternion.identity;
             modelObj.transform.localScale = Vector3.one;
 
-            foreach (var c in modelObj.GetComponentsInChildren<Collider>(true)) SafeDestroy(c);
-            foreach (var c in modelObj.GetComponentsInChildren<Rigidbody>(true)) SafeDestroy(c);
-            foreach (var c in modelObj.GetComponentsInChildren<MonoBehaviour>(true)) SafeDestroy(c);
+            // Strip ALL physics, colliders, mono-behaviours, black locks, and UI canvas elements from UI 3D icon model immediately
+            foreach (var c in modelObj.GetComponentsInChildren<Collider>(true)) DestroyImmediate(c);
+            foreach (var r in modelObj.GetComponentsInChildren<Rigidbody>(true)) DestroyImmediate(r);
+            foreach (var m in modelObj.GetComponentsInChildren<MonoBehaviour>(true)) DestroyImmediate(m);
+            foreach (var c in modelObj.GetComponentsInChildren<Canvas>(true)) DestroyImmediate(c.gameObject);
+
+            // Restore clean materials if renderers have pitch black material override
+            Renderer[] iconRenderers = modelObj.GetComponentsInChildren<Renderer>(true);
+            foreach (Renderer r in iconRenderers)
+            {
+                if (r == null) continue;
+                if (r.sharedMaterial != null && r.sharedMaterial.name.Contains("PitchBlack"))
+                {
+                    // Find original clean prefab to restore materials
+                    GameObject origPrefab = FindDisplayPrefabForItem(order.itemId);
+                    if (origPrefab != null && origPrefab != displayPrefab)
+                    {
+                        Renderer[] origRends = origPrefab.GetComponentsInChildren<Renderer>(true);
+                        if (origRends != null && origRends.Length > 0 && origRends[0].sharedMaterials != null)
+                        {
+                            r.sharedMaterials = origRends[0].sharedMaterials;
+                        }
+                    }
+                }
+            }
 
             int uiLayer = LayerMask.NameToLayer("UI");
             foreach (Transform t in modelWrapper.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = uiLayer;
@@ -1713,28 +1763,35 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void HandleMechaTap(FindTargetObject item, Collider hitCollider)
         {
+            if (item == null) return;
+
             MechaRunnerBehavior runner = item.GetComponentInChildren<MechaRunnerBehavior>();
-            if (runner == null && hitCollider != null) runner = hitCollider.GetComponentInParent<MechaRunnerBehavior>();
+            if (runner == null && hitCollider != null)
+            {
+                runner = hitCollider.GetComponentInParent<MechaRunnerBehavior>();
+            }
 
             if (runner == null)
             {
-                Transform mechaRoot = item.transform;
-                if (hitCollider != null)
+                Transform mechaChild = null;
+                foreach (Transform child in item.transform)
                 {
-                    Transform t = hitCollider.transform;
-                    while (t != null && t != item.transform)
+                    if (child == null) continue;
+                    string n = child.name.ToLowerInvariant();
+                    if (n.Contains("mecha") || n.Contains("meccha") || n.Contains("ragdoll") || n.Contains("chameleon") || child.GetComponentInChildren<SkinnedMeshRenderer>() != null)
                     {
-                        string n = t.name.ToLowerInvariant();
-                        if (n.Contains("mecha") || n.Contains("meccha") || n.Contains("ragdoll"))
-                        {
-                            mechaRoot = t;
-                            break;
-                        }
-                        t = t.parent;
+                        mechaChild = child;
+                        break;
                     }
                 }
-                runner = mechaRoot.gameObject.AddComponent<MechaRunnerBehavior>();
+
+                if (mechaChild != null)
+                {
+                    runner = mechaChild.GetComponent<MechaRunnerBehavior>() ?? mechaChild.gameObject.AddComponent<MechaRunnerBehavior>();
+                }
             }
+
+            if (runner == null) return;
 
             if (runner.currentState == MechaRunnerBehavior.MechaState.CamouflagedOnHost)
             {

@@ -176,14 +176,32 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // 3. Fallback: Default sample set only if no level or scene items exist
+            // 3. Fallback: Check PhysicsObjectSpawner food models or ItemDataSO assets so all cards have valid 3D prefabs
             if (itemMap.Count == 0)
             {
-                string[] sampleItems = { "watermelon", "pear", "sausage", "fish" };
-                Color[] sampleColors = { Color.red, Color.green, new Color(0.8f, 0.4f, 0.2f), Color.cyan };
-                for (int i = 0; i < sampleItems.Length; i++)
+                PhysicsObjectSpawner spawner = Object.FindFirstObjectByType<PhysicsObjectSpawner>();
+                if (spawner != null && spawner.foodModels != null && spawner.foodModels.Length > 0)
                 {
-                    itemMap[sampleItems[i]] = (sampleColors[i], null, 3);
+                    foreach (var model in spawner.foodModels)
+                    {
+                        if (model == null) continue;
+                        string id = model.name.ToLowerInvariant();
+                        if (!itemMap.ContainsKey(id))
+                        {
+                            itemMap[id] = (Color.white, null, 3);
+                        }
+                    }
+                }
+            }
+
+            // 4. Emergency fallback if no items found anywhere: use valid watermelon/apple/pear items from project
+            if (itemMap.Count == 0)
+            {
+                string[] validProjectItems = { "watermelon_001", "watermelon_002", "watermelon_003", "apple_001", "pear_001" };
+                Color[] validColors = { Color.red, Color.red, Color.red, Color.red, Color.green };
+                for (int i = 0; i < validProjectItems.Length; i++)
+                {
+                    itemMap[validProjectItems[i]] = (validColors[i], null, 3);
                 }
             }
 

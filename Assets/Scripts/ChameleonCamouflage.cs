@@ -134,6 +134,11 @@ namespace MechaFind3D.PhysicsInteraction
             foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
             {
                 if (r == null) continue;
+
+                // Skip host item renderers if mecha is parented under a FindTargetObject host item!
+                FindTargetObject fto = r.GetComponent<FindTargetObject>() ?? r.GetComponentInParent<FindTargetObject>();
+                if (fto != null && fto.gameObject != mecha) continue;
+
                 int slotCount = Mathf.Max(1, r.sharedMaterials.Length);
                 Material[] newMats = new Material[slotCount];
                 for (int m = 0; m < slotCount; m++)
@@ -184,6 +189,12 @@ namespace MechaFind3D.PhysicsInteraction
 
             foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
             {
+                if (r == null) continue;
+
+                // Skip host item renderers if mecha is parented under a FindTargetObject host item!
+                FindTargetObject fto = r.GetComponent<FindTargetObject>() ?? r.GetComponentInParent<FindTargetObject>();
+                if (fto != null && fto.gameObject != mecha) continue;
+
                 int slotCount = Mathf.Max(1, r.sharedMaterials.Length);
                 Material[] newMats = new Material[slotCount];
                 for (int m = 0; m < slotCount; m++) newMats[m] = cachedWhiteMat;

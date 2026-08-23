@@ -194,6 +194,11 @@ namespace MechaFind3D.PhysicsInteraction
             GameObject spawned = Instantiate(modelToSpawn, spawnPosition, Quaternion.Euler(spawnTiltEuler));
             spawned.name = $"MechaRagdoll_{modelToSpawn.name}";
 
+            if (spawned.GetComponent<MechaRunnerBehavior>() == null)
+            {
+                spawned.AddComponent<MechaRunnerBehavior>();
+            }
+
             // Enforce compact mini size on raw mecha model by default (never a 2-meter giant!)
             spawned.transform.localScale = Vector3.one * 0.20f;
 
