@@ -4739,7 +4739,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: e327667576b6b129496d3117e75024e5, type: 2}
   - {fileID: 11400000, guid: 44444444444444444444444444440004, type: 2}
   - {fileID: 11400000, guid: 55555555555555555555555555550005, type: 2}
-  currentLevelIndex: 1
+  currentLevelIndex: 0
   debugLevelOverride: {fileID: 0}
 --- !u!1 &1301255016
 GameObject:

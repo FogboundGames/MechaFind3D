@@ -111,6 +111,9 @@ namespace MechaFind3D
             startPos.y = 0.05f;
             Vector3 origScale = transform.localScale;
 
+            SpawnShockBurst(startPos + Vector3.up * 0.3f);
+            ShakeCamera(0.15f, 0.06f);
+
             Sequence appearSeq = DOTween.Sequence();
 
             // Pop up slightly with scale jump and upright orientation
@@ -126,6 +129,7 @@ namespace MechaFind3D
             appearSeq.OnComplete(() =>
             {
                 SetupAndPlayRunningAnimation();
+                StartDustTrail();
                 PickNextWaypoint();
             });
         }
@@ -286,6 +290,113 @@ namespace MechaFind3D
                 });
         }
 
+        private static void SpawnShockBurst(Vector3 pos)
+        {
+            GameObject go = new GameObject("MechaShockText");
+            go.transform.position = pos;
+
+            TextMesh tm = go.AddComponent<TextMesh>();
+            tm.text = "!?";
+            tm.fontSize = 64;
+            tm.characterSize = 0.08f;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.alignment = TextAlignment.Center;
+            tm.color = new Color(1f, 0.2f, 0.15f);
+            tm.fontStyle = FontStyle.Bold;
+
+            MeshRenderer mr = go.GetComponent<MeshRenderer>();
+            if (mr != null) mr.sortingOrder = 100;
+
+            go.transform.localScale = Vector3.zero;
+
+            Camera cam = Camera.main;
+            if (cam != null)
+                go.transform.rotation = cam.transform.rotation;
+
+            Sequence seq = DOTween.Sequence();
+            seq.Append(go.transform.DOScale(Vector3.one * 1.3f, 0.15f).SetEase(Ease.OutBack, 3f));
+            seq.Join(go.transform.DOMoveY(pos.y + 0.4f, 0.15f).SetEase(Ease.OutQuad));
+            seq.AppendInterval(0.4f);
+            seq.Append(go.transform.DOMoveY(pos.y + 0.7f, 0.35f).SetEase(Ease.InQuad));
+            seq.Join(go.transform.DOScale(Vector3.zero, 0.35f).SetEase(Ease.InBack));
+            seq.OnComplete(() => Destroy(go));
+        }
+
+        private static void ShakeCamera(float duration, float strength)
+        {
+            Camera cam = Camera.main;
+            if (cam == null) return;
+            cam.transform.DOShakePosition(duration, strength, 12, 90f, false, true).SetUpdate(false);
+        }
+
+        private ParticleSystem dustTrailPS;
+
+        private void StartDustTrail()
+        {
+            if (dustTrailPS != null) return;
+
+            GameObject go = new GameObject("MechaDustTrail");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(0f, 0.02f, -0.05f);
+
+            dustTrailPS = go.AddComponent<ParticleSystem>();
+            dustTrailPS.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            var main = dustTrailPS.main;
+            main.playOnAwake = false;
+            main.loop = true;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.3f, 0.6f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.2f, 0.5f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.08f);
+            main.gravityModifier = -0.1f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.startColor = new ParticleSystem.MinMaxGradient(
+                new Color(0.75f, 0.7f, 0.6f, 0.6f),
+                new Color(0.9f, 0.85f, 0.75f, 0.4f)
+            );
+
+            var emission = dustTrailPS.emission;
+            emission.rateOverTime = 15;
+
+            var shape = dustTrailPS.shape;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.03f;
+
+            var sol = dustTrailPS.sizeOverLifetime;
+            sol.enabled = true;
+            AnimationCurve curve = new AnimationCurve();
+            curve.AddKey(0f, 0.5f);
+            curve.AddKey(0.5f, 1f);
+            curve.AddKey(1f, 0f);
+            sol.size = new ParticleSystem.MinMaxCurve(1f, curve);
+
+            var col = dustTrailPS.colorOverLifetime;
+            col.enabled = true;
+            Gradient grad = new Gradient();
+            grad.SetKeys(
+                new[] { new GradientColorKey(new Color(0.8f, 0.75f, 0.65f), 0f), new GradientColorKey(new Color(0.9f, 0.88f, 0.8f), 1f) },
+                new[] { new GradientAlphaKey(0.5f, 0f), new GradientAlphaKey(0f, 1f) }
+            );
+            col.color = grad;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            Material mat = new Material(shader);
+            Color dc = new Color(0.8f, 0.75f, 0.65f, 0.5f);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", dc);
+            if (mat.HasProperty("_Color")) mat.SetColor("_Color", dc);
+            go.GetComponent<ParticleSystemRenderer>().sharedMaterial = mat;
+
+            dustTrailPS.Play();
+        }
+
+        private void StopDustTrail()
+        {
+            if (dustTrailPS == null) return;
+            dustTrailPS.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            Destroy(dustTrailPS.gameObject, 1f);
+            dustTrailPS = null;
+        }
+
         /// <summary>
         /// 2nd Tap: Plays DOTween squish-and-shrink vanish exit animation, completes goal, and destroys mecha.
         /// </summary>
@@ -297,6 +408,7 @@ namespace MechaFind3D
 
             MechaOutlineReveal outlineReveal = GetComponent<MechaOutlineReveal>();
             if (outlineReveal != null) outlineReveal.HideOutline();
+            StopDustTrail();
 
             if (moveTween != null && moveTween.IsActive()) moveTween.Kill();
             if (rotateTween != null && rotateTween.IsActive()) rotateTween.Kill();
