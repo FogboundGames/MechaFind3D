@@ -30,9 +30,9 @@ MonoBehaviour:
     requiredCount: 9
   fillerItems:
   - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
-  enableFrozenItems: 0
-  frozenItemCount: 3
-  defaultFreezeCount: 2
+  enableBlackLockedObjects: 0
+  blackObjectCount: 2
+  blackObjectUnlockCount: 3
   enableCamouflageMecha: 1
   targetPivot: 0
   customMechaPrefab: {fileID: 919132149155446097, guid: 879efff7d1187894d90433ff940dfe40, type: 3}
@@ -42,6 +42,36 @@ MonoBehaviour:
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 0, y: 0, z: 0}
+  mechaLocalOffset: {x: -0.00013848017, y: -0.16076626, z: 0.002854369}
+  mechaRotationOffset: {x: -90.2, y: 0.2, z: 0.3}
+  boneOverrides:
+  - boneKeyword: thigh_L
+    rotationOffset: {x: -17.2, y: -15.1, z: 42.3}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: -17, y: -15, z: -42}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -57.8, y: 0, z: 0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -55.3, y: 0, z: -0}
+  - boneKeyword: upper_arm_R
+    rotationOffset: {x: -45, y: 0, z: 0}
+  - boneKeyword: upper_arm_L
+    rotationOffset: {x: -45, y: 0, z: 0}
+  - boneKeyword: spine_003
+    rotationOffset: {x: 17, y: -0, z: -0}
+  - boneKeyword: spine_002
+    rotationOffset: {x: 20.2, y: -0, z: -0}
+  - boneKeyword: spine_001
+    rotationOffset: {x: 2.7, y: -0, z: 0}
+  - boneKeyword: spine_005
+    rotationOffset: {x: -26.3, y: -0, z: 0}
+  - boneKeyword: spine_004
+    rotationOffset: {x: -18.3, y: 0, z: -0}
+  isStickyMecha: 0
+  stickyJumpInterval: 15
+  stickyMaxJumps: 2
+  isMagnetMecha: 0
+  magnetRadius: 1.5
+  magnetForce: 8
+  magnetMaxObjects: 4
   additionalMechas: []

@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
+  m_Name: sosis1
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
+  presetName: sosis1
+  targetHostItem: {fileID: 11400000, guid: 42c04b3d918c0f94c80ee1aed6df68b9, type: 2}
+  mechaScaleRatio: 0.5
+  mechaWrapAmount: 0.106
+  mechaWorldSize: 1
+  mechaOpacity: 0.15
+  mechaLocalOffset: {x: 0, y: 0, z: 0}
+  mechaRotationOffset: {x: 0, y: 0, z: 0}
+  boneOverrides:
+  - boneKeyword: thigh_L
+    rotationOffset: {x: 0, y: 0, z: 40}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 0, z: -40}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -58, y: -0, z: 0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -58, y: 0, z: 0}
+  - boneKeyword: forearm_L
+    rotationOffset: {x: -58, y: -0, z: 0}
+  - boneKeyword: forearm_R
+    rotationOffset: {x: -58, y: 0, z: 0}
+  - boneKeyword: upper_arm_R
+    rotationOffset: {x: -13, y: 0, z: 0}
+  - boneKeyword: upper_arm_L
+    rotationOffset: {x: -13, y: 0, z: 0}

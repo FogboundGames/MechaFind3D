@@ -58,6 +58,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                         entry.mechaLocalOffset = newOffset;
                         entry.mechaRotationOffset = newRot;
                         entry.mechaWrapAmount = newWrap;
+                        if (tagComponent.mechaIndex == 0) tagComponent.levelData.WritePrimaryEntryBack();
                         EditorUtility.SetDirty(tagComponent.levelData);
 
                         if (tagComponent.mechaInstance != null)
@@ -301,6 +302,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
                                 Undo.RecordObject(tagComponent.levelData, "Move Mecha Root Position");
                                 entry.mechaLocalOffset += deltaLocal;
+                                if (tagComponent.mechaIndex == 0) tagComponent.levelData.WritePrimaryEntryBack();
                                 EditorUtility.SetDirty(tagComponent.levelData);
 
                                 tagComponent.mechaInstance.transform.position = newWorldPos;
@@ -316,6 +318,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                                 Quaternion deltaRot = newRot * Quaternion.Inverse(currentRot);
                                 Undo.RecordObject(tagComponent.levelData, "Rotate Mecha Root Orientation");
                                 entry.mechaRotationOffset = NormalizeEulerAngles(entry.mechaRotationOffset + deltaRot.eulerAngles);
+                                if (tagComponent.mechaIndex == 0) tagComponent.levelData.WritePrimaryEntryBack();
                                 EditorUtility.SetDirty(tagComponent.levelData);
 
                                 tagComponent.mechaInstance.transform.rotation = newRot;

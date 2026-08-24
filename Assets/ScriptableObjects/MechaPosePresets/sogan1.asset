@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
+  m_Name: sogan1
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
+  presetName: sogan1
+  targetHostItem: {fileID: 11400000, guid: 035c14ba91471994ea6c8aa409c2e0dc, type: 2}
+  mechaScaleRatio: 0.5
+  mechaWrapAmount: 0.106
+  mechaWorldSize: 1
+  mechaOpacity: 0.15
+  mechaLocalOffset: {x: -0.00013848017, y: -0.16076626, z: 0.002854369}
+  mechaRotationOffset: {x: -90.2, y: 0.2, z: 0.3}
+  boneOverrides:
+  - boneKeyword: thigh_L
+    rotationOffset: {x: -17.2, y: -15.1, z: 42.3}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: -17, y: -15, z: -42}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -57.8, y: 0, z: 0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -55.3, y: 0, z: -0}
+  - boneKeyword: upper_arm_R
+    rotationOffset: {x: -45, y: 0, z: 0}
+  - boneKeyword: upper_arm_L
+    rotationOffset: {x: -45, y: 0, z: 0}
+  - boneKeyword: spine_003
+    rotationOffset: {x: 17, y: -0, z: -0}
+  - boneKeyword: spine_002
+    rotationOffset: {x: 20.2, y: -0, z: -0}
+  - boneKeyword: spine_001
+    rotationOffset: {x: 2.7, y: -0, z: 0}
+  - boneKeyword: spine_005
+    rotationOffset: {x: -26.3, y: -0, z: 0}
+  - boneKeyword: spine_004
+    rotationOffset: {x: -18.3, y: 0, z: -0}

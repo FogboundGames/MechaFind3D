@@ -204,33 +204,62 @@ namespace MechaFind3D.PhysicsInteraction
         /// level was authored before multi-mecha support existed) with "N mechas, one entry each" - callers
         /// should always go through this rather than reading the singular fields or additionalMechas directly.
         /// </summary>
+        [System.NonSerialized] private MechaSpawnEntry _primaryEntry;
+
+        private void SyncPrimaryEntry()
+        {
+            if (_primaryEntry == null) _primaryEntry = new MechaSpawnEntry();
+            _primaryEntry.targetPivot = targetPivot;
+            _primaryEntry.customMechaPrefab = customMechaPrefab;
+            _primaryEntry.hostItemSO = hostItemSO;
+            _primaryEntry.mechaHostKeyword = mechaHostKeyword;
+            _primaryEntry.mechaScaleRatio = mechaScaleRatio;
+            _primaryEntry.mechaWrapAmount = mechaWrapAmount;
+            _primaryEntry.mechaWorldSize = mechaWorldSize;
+            _primaryEntry.mechaOpacity = mechaOpacity;
+            _primaryEntry.mechaLocalOffset = mechaLocalOffset;
+            _primaryEntry.mechaRotationOffset = mechaRotationOffset;
+            _primaryEntry.boneOverrides = boneOverrides;
+            _primaryEntry.isStickyMecha = isStickyMecha;
+            _primaryEntry.stickyJumpInterval = stickyJumpInterval;
+            _primaryEntry.stickyMaxJumps = stickyMaxJumps;
+            _primaryEntry.isMagnetMecha = isMagnetMecha;
+            _primaryEntry.magnetRadius = magnetRadius;
+            _primaryEntry.magnetForce = magnetForce;
+            _primaryEntry.magnetMaxObjects = magnetMaxObjects;
+        }
+
+        public void WritePrimaryEntryBack()
+        {
+            if (_primaryEntry == null) return;
+            targetPivot = _primaryEntry.targetPivot;
+            customMechaPrefab = _primaryEntry.customMechaPrefab;
+            hostItemSO = _primaryEntry.hostItemSO;
+            mechaHostKeyword = _primaryEntry.mechaHostKeyword;
+            mechaScaleRatio = _primaryEntry.mechaScaleRatio;
+            mechaWrapAmount = _primaryEntry.mechaWrapAmount;
+            mechaWorldSize = _primaryEntry.mechaWorldSize;
+            mechaOpacity = _primaryEntry.mechaOpacity;
+            mechaLocalOffset = _primaryEntry.mechaLocalOffset;
+            mechaRotationOffset = _primaryEntry.mechaRotationOffset;
+            boneOverrides = _primaryEntry.boneOverrides;
+            isStickyMecha = _primaryEntry.isStickyMecha;
+            stickyJumpInterval = _primaryEntry.stickyJumpInterval;
+            stickyMaxJumps = _primaryEntry.stickyMaxJumps;
+            isMagnetMecha = _primaryEntry.isMagnetMecha;
+            magnetRadius = _primaryEntry.magnetRadius;
+            magnetForce = _primaryEntry.magnetForce;
+            magnetMaxObjects = _primaryEntry.magnetMaxObjects;
+        }
+
         public List<MechaSpawnEntry> GetAllMechaEntries()
         {
             var result = new List<MechaSpawnEntry>();
 
             if (enableCamouflageMecha)
             {
-                result.Add(new MechaSpawnEntry
-                {
-                    targetPivot = targetPivot,
-                    customMechaPrefab = customMechaPrefab,
-                    hostItemSO = hostItemSO,
-                    mechaHostKeyword = mechaHostKeyword,
-                    mechaScaleRatio = mechaScaleRatio,
-                    mechaWrapAmount = mechaWrapAmount,
-                    mechaWorldSize = mechaWorldSize,
-                    mechaOpacity = mechaOpacity,
-                    mechaLocalOffset = mechaLocalOffset,
-                    mechaRotationOffset = mechaRotationOffset,
-                    boneOverrides = boneOverrides,
-                    isStickyMecha = isStickyMecha,
-                    stickyJumpInterval = stickyJumpInterval,
-                    stickyMaxJumps = stickyMaxJumps,
-                    isMagnetMecha = isMagnetMecha,
-                    magnetRadius = magnetRadius,
-                    magnetForce = magnetForce,
-                    magnetMaxObjects = magnetMaxObjects,
-                });
+                SyncPrimaryEntry();
+                result.Add(_primaryEntry);
             }
 
             if (additionalMechas != null)
