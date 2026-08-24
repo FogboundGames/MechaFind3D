@@ -109,6 +109,13 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private Vector2 undoButtonSize = new Vector2(80f, 80f);
         [SerializeField] private float undoIconSize = 45f;
 
+        [Header("Mecha Reveal Booster Button (Joker 2)")]
+        [SerializeField] private Vector2 revealButtonPosition = new Vector2(160f, 340f);
+        [SerializeField] private Vector2 revealButtonSize = new Vector2(80f, 80f);
+        [SerializeField] private float revealIconSize = 45f;
+        [SerializeField] private Color revealOutlineColor = new Color(0f, 1f, 0.85f, 1f);
+        private bool revealOnCooldown = false;
+
         [Header("Colours")]
         [Tooltip("Solid fill colour behind the whole scene.")]
         [SerializeField] private Color backgroundColor = new Color(0.06f, 0.09f, 0.24f);
@@ -343,6 +350,7 @@ namespace MechaFind3D.PhysicsInteraction
             Setup3DDockSlots();
             BuildShuffleButton(canvasObj.transform);
             BuildUndoBoosterButton(canvasObj.transform);
+            BuildRevealBoosterButton(canvasObj.transform);
             RemoveTrashButton(canvasObj.transform);
             Canvas.ForceUpdateCanvases();
 
@@ -717,6 +725,110 @@ namespace MechaFind3D.PhysicsInteraction
             btn.targetGraphic = bg;
             btn.onClick.RemoveAllListeners();
             btn.onClick.AddListener(OnUndoButtonClicked);
+        }
+
+        private void BuildRevealBoosterButton(Transform parent)
+        {
+            Transform existingBtn = parent.Find("Reveal_Booster_Button");
+            GameObject btnObj;
+            if (existingBtn != null)
+            {
+                btnObj = existingBtn.gameObject;
+            }
+            else
+            {
+                btnObj = NewUIObject("Reveal_Booster_Button", parent);
+
+                RectTransform btnRect = btnObj.GetComponent<RectTransform>();
+                btnRect.anchorMin = Vector2.zero;
+                btnRect.anchorMax = Vector2.zero;
+                btnRect.pivot = Vector2.zero;
+                btnRect.anchoredPosition = revealButtonPosition;
+                btnRect.sizeDelta = revealButtonSize;
+
+                Image btnBg = btnObj.AddComponent<Image>();
+                ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
+                btnBg.color = new Color(0.10f, 0.80f, 0.85f, 1.0f);
+
+                GameObject btnIconObj = NewUIObject("Icon", btnObj.transform);
+
+                RectTransform btnIconRect = btnIconObj.GetComponent<RectTransform>();
+                btnIconRect.anchorMin = new Vector2(0.5f, 0.5f);
+                btnIconRect.anchorMax = new Vector2(0.5f, 0.5f);
+                btnIconRect.pivot = new Vector2(0.5f, 0.5f);
+                btnIconRect.anchoredPosition = Vector2.zero;
+                btnIconRect.sizeDelta = new Vector2(revealIconSize, revealIconSize);
+
+                Text iconText = btnIconObj.AddComponent<Text>();
+                iconText.text = "👁";
+                Font defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                if (defaultFont == null) defaultFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
+                if (defaultFont == null) defaultFont = Font.CreateDynamicFontFromOSFont("Arial", 60);
+
+                iconText.font = defaultFont;
+                iconText.fontSize = 48;
+                iconText.fontStyle = FontStyle.Bold;
+                iconText.alignment = TextAnchor.MiddleCenter;
+                iconText.color = Color.white;
+            }
+
+            Image bg = btnObj.GetComponent<Image>() ?? btnObj.AddComponent<Image>();
+            bg.raycastTarget = true;
+
+            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
+            btn.targetGraphic = bg;
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(OnRevealButtonClicked);
+        }
+
+        public void OnRevealButtonClicked()
+        {
+            Transform btnObj = transform.Find("Reveal_Booster_Button");
+            if (btnObj == null && transform.parent != null) btnObj = transform.parent.Find("Reveal_Booster_Button");
+
+            if (revealOnCooldown || gameOverTriggered)
+            {
+                if (btnObj != null)
+                {
+                    btnObj.DOKill();
+                    btnObj.DOShakeRotation(0.3f, new Vector3(0, 0, 15f), 15, 90f);
+                }
+                return;
+            }
+
+            if (btnObj != null)
+            {
+                btnObj.DOKill();
+                btnObj.transform.localScale = Vector3.one;
+                btnObj.transform.DOPunchScale(Vector3.one * 0.2f, 0.25f, 5, 0.5f);
+            }
+
+            MechaRunnerBehavior[] mechas = FindObjectsByType<MechaRunnerBehavior>(FindObjectsSortMode.None);
+            if (mechas == null || mechas.Length == 0) return;
+
+            revealOnCooldown = true;
+
+            foreach (MechaRunnerBehavior mecha in mechas)
+            {
+                if (mecha == null || mecha.gameObject == null) continue;
+                if (mecha.currentState == MechaRunnerBehavior.MechaState.Vanishing) continue;
+
+                MechaOutlineReveal reveal = mecha.GetComponent<MechaOutlineReveal>();
+                if (reveal == null) reveal = mecha.gameObject.AddComponent<MechaOutlineReveal>();
+                reveal.ShowOutline(revealOutlineColor);
+            }
+
+            Handheld.Vibrate();
+
+            if (btnObj != null)
+            {
+                Image btnBg = btnObj.GetComponent<Image>();
+                if (btnBg != null)
+                {
+                    Color dimColor = new Color(0.4f, 0.4f, 0.4f, 0.6f);
+                    btnBg.DOColor(dimColor, 0.3f).SetUpdate(true);
+                }
+            }
         }
 
         /// <summary>

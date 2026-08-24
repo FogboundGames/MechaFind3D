@@ -134,6 +134,7 @@ namespace MechaFind3D.PhysicsInteraction
             foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
             {
                 if (r == null) continue;
+                if (r.gameObject.name.StartsWith("MechaOutline_")) continue;
 
                 // Skip mascot/child host item renderers if any
                 FindTargetObject fto = r.GetComponent<FindTargetObject>();
@@ -190,6 +191,7 @@ namespace MechaFind3D.PhysicsInteraction
             foreach (Renderer r in mecha.GetComponentsInChildren<Renderer>(true))
             {
                 if (r == null) continue;
+                if (r.gameObject.name.StartsWith("MechaOutline_")) continue;
 
                 // Skip mascot/child host item renderers if any
                 FindTargetObject fto = r.GetComponent<FindTargetObject>();

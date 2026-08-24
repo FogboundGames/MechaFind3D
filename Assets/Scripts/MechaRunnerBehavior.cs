@@ -295,6 +295,9 @@ namespace MechaFind3D
             currentState = MechaState.Vanishing;
             activeRunners.Remove(this);
 
+            MechaOutlineReveal outlineReveal = GetComponent<MechaOutlineReveal>();
+            if (outlineReveal != null) outlineReveal.HideOutline();
+
             if (moveTween != null && moveTween.IsActive()) moveTween.Kill();
             if (rotateTween != null && rotateTween.IsActive()) rotateTween.Kill();
 

@@ -42,21 +42,9 @@ MonoBehaviour:
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: -0.00013848017, y: -0.16076626, z: 0.002854369}
-  mechaRotationOffset: {x: -90.2, y: 0.2, z: 0.3}
+  mechaLocalOffset: {x: -0.001113325, y: 0.009477821, z: -0.021048501}
+  mechaRotationOffset: {x: 0, y: 0.2, z: 0.3}
   boneOverrides:
-  - boneKeyword: thigh_L
-    rotationOffset: {x: -17.2, y: -15.1, z: 42.3}
-  - boneKeyword: thigh_R
-    rotationOffset: {x: -17, y: -15, z: -42}
-  - boneKeyword: shin_L
-    rotationOffset: {x: -57.8, y: 0, z: 0}
-  - boneKeyword: shin_R
-    rotationOffset: {x: -55.3, y: 0, z: -0}
-  - boneKeyword: upper_arm_R
-    rotationOffset: {x: -45, y: 0, z: 0}
-  - boneKeyword: upper_arm_L
-    rotationOffset: {x: -45, y: 0, z: 0}
   - boneKeyword: spine_003
     rotationOffset: {x: 17, y: -0, z: -0}
   - boneKeyword: spine_002

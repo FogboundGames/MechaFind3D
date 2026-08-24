@@ -25,6 +25,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         {
             if (tagComponent == null) return;
 
+            try
+            {
             EditorGUILayout.Space(5);
             EditorGUILayout.BeginVertical(GUI.skin.box);
             
@@ -172,6 +174,11 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             }
 
             EditorGUILayout.EndVertical();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogException(e);
+            }
         }
 
         private void DrawBoneCategoryGrid(string categoryName, string[] boneKeywords, Color btnColor)

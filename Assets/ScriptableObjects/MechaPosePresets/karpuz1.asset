@@ -18,6 +18,16 @@ MonoBehaviour:
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 0, y: 0, z: 0}
-  boneOverrides: []
+  mechaLocalOffset: {x: -0.001113325, y: 0.009477821, z: -0.021048501}
+  mechaRotationOffset: {x: 0, y: 0.2, z: 0.3}
+  boneOverrides:
+  - boneKeyword: spine_003
+    rotationOffset: {x: 17, y: -0, z: -0}
+  - boneKeyword: spine_002
+    rotationOffset: {x: 20.2, y: -0, z: -0}
+  - boneKeyword: spine_001
+    rotationOffset: {x: 2.7, y: -0, z: 0}
+  - boneKeyword: spine_005
+    rotationOffset: {x: -26.3, y: -0, z: 0}
+  - boneKeyword: spine_004
+    rotationOffset: {x: -18.3, y: 0, z: -0}

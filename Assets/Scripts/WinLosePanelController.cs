@@ -74,13 +74,27 @@ namespace MechaFind3D.PhysicsInteraction
         public void ShowWin(int starsEarned = 3)
         {
             if (losePanel != null) losePanel.SetActive(false);
+            HideTimerUI();
             AnimateIn(winPanel, starsEarned, true);
         }
 
         public void ShowLose()
         {
             if (winPanel != null) winPanel.SetActive(false);
+            HideTimerUI();
             AnimateIn(losePanel, 0, false);
+        }
+
+        private void HideTimerUI()
+        {
+            if (CanvasUIDesignManager.Instance == null) return;
+            Transform canvas = CanvasUIDesignManager.Instance.transform;
+            Transform header = canvas.Find("Header_Goal_Panel");
+            if (header == null) return;
+            Transform timerBadge = header.Find("timer_badge");
+            Transform timerText = header.Find("timer_text");
+            if (timerBadge != null) timerBadge.gameObject.SetActive(false);
+            if (timerText != null) timerText.gameObject.SetActive(false);
         }
 
         public void HideAll()
