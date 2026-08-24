@@ -212,6 +212,14 @@ namespace MechaFind3D.PhysicsInteraction
                 RagdollBuilder.Build(spawned, ragdollSettings);
             }
 
+            StickyMechaBehavior stickyComp = null;
+            if (entry != null && entry.isStickyMecha)
+            {
+                stickyComp = spawned.GetComponent<StickyMechaBehavior>();
+                if (stickyComp == null) stickyComp = spawned.AddComponent<StickyMechaBehavior>();
+                stickyComp.CaptureBindPose();
+            }
+
             if (camouflage)
             {
                 ApplyCamouflageToMecha(spawned, entry);
@@ -231,11 +239,9 @@ namespace MechaFind3D.PhysicsInteraction
 
             ChameleonCamouflage.ApplyGlassMaterial(spawned, glassOpacity, hostColor);
 
-            if (entry != null && entry.isStickyMecha)
+            if (stickyComp != null)
             {
-                StickyMechaBehavior sticky = spawned.GetComponent<StickyMechaBehavior>();
-                if (sticky == null) sticky = spawned.AddComponent<StickyMechaBehavior>();
-                sticky.Initialize(entry);
+                stickyComp.Initialize(entry);
             }
 
             if (entry != null && entry.isMagnetMecha)

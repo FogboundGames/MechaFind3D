@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using DG.Tweening;
 
@@ -186,14 +187,37 @@ namespace MechaFind3D.PhysicsInteraction
                 return;
             }
 
-            float scaleRatio = spawnEntry != null ? spawnEntry.mechaScaleRatio : 0.25f;
-            float opacity = spawnEntry != null ? spawnEntry.mechaOpacity : 0.22f;
-            float worldSize = spawnEntry != null ? spawnEntry.mechaWorldSize : 0.5f;
-            float wrapAmount = spawnEntry != null ? spawnEntry.mechaWrapAmount : 0f;
-            Vector3 posOffset = spawnEntry != null ? spawnEntry.mechaLocalOffset : Vector3.zero;
-            Vector3 rotOffset = spawnEntry != null ? spawnEntry.mechaRotationOffset : Vector3.zero;
-            MechaPivotSelection pivot = spawnEntry != null ? spawnEntry.targetPivot : MechaPivotSelection.Auto;
-            var boneOvr = spawnEntry != null ? spawnEntry.boneOverrides : null;
+            ResetBoneRotations();
+
+            MechaPosePresetSO chosenPreset = FindRandomPresetForHost(target);
+
+            float scaleRatio, opacity, worldSize, wrapAmount;
+            Vector3 posOffset, rotOffset;
+            MechaPivotSelection pivot;
+            System.Collections.Generic.List<MechaBoneOverride> boneOvr;
+
+            if (chosenPreset != null)
+            {
+                scaleRatio = chosenPreset.mechaScaleRatio;
+                opacity = chosenPreset.mechaOpacity;
+                worldSize = chosenPreset.mechaWorldSize;
+                wrapAmount = chosenPreset.mechaWrapAmount;
+                posOffset = chosenPreset.mechaLocalOffset;
+                rotOffset = chosenPreset.mechaRotationOffset;
+                pivot = MechaPivotSelection.Auto;
+                boneOvr = chosenPreset.boneOverrides;
+            }
+            else
+            {
+                scaleRatio = spawnEntry != null ? spawnEntry.mechaScaleRatio : 0.25f;
+                opacity = spawnEntry != null ? spawnEntry.mechaOpacity : 0.22f;
+                worldSize = spawnEntry != null ? spawnEntry.mechaWorldSize : 0.5f;
+                wrapAmount = spawnEntry != null ? spawnEntry.mechaWrapAmount : 0f;
+                posOffset = spawnEntry != null ? spawnEntry.mechaLocalOffset : Vector3.zero;
+                rotOffset = spawnEntry != null ? spawnEntry.mechaRotationOffset : Vector3.zero;
+                pivot = spawnEntry != null ? spawnEntry.targetPivot : MechaPivotSelection.Auto;
+                boneOvr = spawnEntry != null ? spawnEntry.boneOverrides : null;
+            }
 
             ChameleonCamouflage.EmbedMechaInHostObject(
                 gameObject, target.gameObject,
@@ -215,6 +239,85 @@ namespace MechaFind3D.PhysicsInteraction
             jumpCount++;
             isRunning = false;
             pendingHost = null;
+        }
+
+        private Dictionary<string, Quaternion> bindPoseMap;
+
+        public void CaptureBindPose()
+        {
+            if (bindPoseMap != null) return;
+            bindPoseMap = new Dictionary<string, Quaternion>();
+            foreach (Transform bone in GetComponentsInChildren<Transform>(true))
+            {
+                if (bone == transform) continue;
+                bindPoseMap[bone.name] = bone.localRotation;
+            }
+        }
+
+        private void ResetBoneRotations()
+        {
+            Animator animator = GetComponentInChildren<Animator>(true);
+            if (animator != null)
+            {
+                animator.runtimeAnimatorController = null;
+                animator.enabled = false;
+            }
+
+            if (bindPoseMap == null) return;
+            foreach (Transform bone in GetComponentsInChildren<Transform>(true))
+            {
+                if (bone == transform) continue;
+                if (bindPoseMap.TryGetValue(bone.name, out Quaternion bindRot))
+                    bone.localRotation = bindRot;
+            }
+        }
+
+        private static MechaPosePresetSO[] cachedPresets;
+
+        private MechaPosePresetSO FindRandomPresetForHost(FindTargetObject target)
+        {
+            if (cachedPresets == null)
+            {
+#if UNITY_EDITOR
+                string[] guids = UnityEditor.AssetDatabase.FindAssets("t:MechaPosePresetSO");
+                cachedPresets = new MechaPosePresetSO[guids.Length];
+                for (int i = 0; i < guids.Length; i++)
+                {
+                    string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[i]);
+                    cachedPresets[i] = UnityEditor.AssetDatabase.LoadAssetAtPath<MechaPosePresetSO>(path);
+                }
+#else
+                cachedPresets = Resources.LoadAll<MechaPosePresetSO>("");
+#endif
+            }
+
+            if (cachedPresets == null || cachedPresets.Length == 0) return null;
+
+            string hostName = target.gameObject.name.ToLowerInvariant()
+                .Replace("(clone)", "").Trim();
+            string hostColorName = target.colorName != null
+                ? target.colorName.ToLowerInvariant() : "";
+
+            System.Collections.Generic.List<MechaPosePresetSO> matches =
+                new System.Collections.Generic.List<MechaPosePresetSO>();
+
+            foreach (var preset in cachedPresets)
+            {
+                if (preset == null || preset.targetHostItem == null) continue;
+
+                string presetItemName = preset.targetHostItem.name.ToLowerInvariant();
+                string presetItemId = preset.targetHostItem.GetEffectiveItemId().ToLowerInvariant();
+
+                if (hostName.Contains(presetItemName) || hostName.Contains(presetItemId)
+                    || presetItemName.Contains(hostName)
+                    || (!string.IsNullOrEmpty(hostColorName) && (hostColorName.Contains(presetItemId) || presetItemId.Contains(hostColorName))))
+                {
+                    matches.Add(preset);
+                }
+            }
+
+            if (matches.Count == 0) return null;
+            return matches[Random.Range(0, matches.Count)];
         }
 
         public void Stop()
