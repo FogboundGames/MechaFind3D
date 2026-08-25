@@ -196,19 +196,6 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                     Object.DestroyImmediate(animation);
                 }
 
-                if (instance.GetComponent<PackagingBoxFlaps>() == null)
-                {
-                    instance.AddComponent<PackagingBoxFlaps>();
-                }
-
-                // The bakery box ships four recolourable material zones; its palette component is what
-                // makes them switchable from the Inspector instead of by editing materials. Added only
-                // when the model actually has those parts, so the old cardboard box is left alone.
-                if (instance.transform.Find("Ribbon_Bow") != null && instance.GetComponent<BakeryBoxPalette>() == null)
-                {
-                    instance.AddComponent<BakeryBoxPalette>();
-                }
-
                 PrefabUtility.SaveAsPrefabAsset(instance, PrefabPath);
             }
             finally

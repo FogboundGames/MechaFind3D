@@ -23,6 +23,15 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Optional 2D UI icon sprite for level goal displays.")]
         public Sprite icon;
 
+        [Header("Dock & Card Orientation")]
+        [Tooltip("If enabled, overrides the default dock slot rotation for this item.")]
+        public bool overrideDockRotation;
+        public Vector3 dockRotationEuler;
+
+        [Tooltip("If enabled, overrides the default order-card 3D icon rotation.")]
+        public bool overrideCardRotation;
+        public Vector3 cardRotationEuler;
+
         private void OnValidate()
         {
             if (string.IsNullOrEmpty(itemId) && prefab != null)

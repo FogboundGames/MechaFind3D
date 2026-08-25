@@ -56,8 +56,12 @@ namespace MechaFind3D.PhysicsInteraction
                 if (LevelManager.Instance != null) LevelManager.Instance.RestartCurrentLevel();
             });
             WireButton(loseT, "PopupPanel/HomeText", HideAll);
+        }
 
-            HideAll();
+        private void Start()
+        {
+            if (winPanel != null) winPanel.SetActive(false);
+            if (losePanel != null) losePanel.SetActive(false);
         }
 
         private static void WireButton(Transform root, string path, UnityEngine.Events.UnityAction action)
@@ -87,10 +91,14 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void HideTimerUI()
         {
-            if (CanvasUIDesignManager.Instance == null) return;
-            Transform canvas = CanvasUIDesignManager.Instance.transform;
-            Transform header = canvas.Find("Header_Goal_Panel");
-            if (header == null) return;
+            Transform header = transform.Find("Header_Goal_Panel");
+            if (header == null)
+            {
+                if (CanvasUIDesignManager.Instance == null) return;
+                Transform canvasTr = CanvasUIDesignManager.Instance.transform.Find("MatchFactory_Canvas");
+                if (canvasTr != null) header = canvasTr.Find("Header_Goal_Panel");
+                if (header == null) return;
+            }
             Transform timerBadge = header.Find("timer_badge");
             Transform timerText = header.Find("timer_text");
             if (timerBadge != null) timerBadge.gameObject.SetActive(false);
@@ -101,6 +109,23 @@ namespace MechaFind3D.PhysicsInteraction
         {
             AnimateOut(winPanel);
             AnimateOut(losePanel);
+            ShowTimerUI();
+        }
+
+        private void ShowTimerUI()
+        {
+            Transform header = transform.Find("Header_Goal_Panel");
+            if (header == null)
+            {
+                if (CanvasUIDesignManager.Instance == null) return;
+                Transform canvasTr = CanvasUIDesignManager.Instance.transform.Find("MatchFactory_Canvas");
+                if (canvasTr != null) header = canvasTr.Find("Header_Goal_Panel");
+                if (header == null) return;
+            }
+            Transform timerBadge = header.Find("timer_badge");
+            Transform timerText = header.Find("timer_text");
+            if (timerBadge != null) timerBadge.gameObject.SetActive(true);
+            if (timerText != null) timerText.gameObject.SetActive(true);
         }
 
         private List<Transform> FindExistingStars(Transform popupT)
@@ -214,7 +239,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (isWin)
             {
-                Handheld.Vibrate();
+                HapticHelper.Vibrate();
                 SpawnWinCelebration(Camera.main);
 
                 Transform titleT = popupT.Find("TitleText");
@@ -241,7 +266,7 @@ namespace MechaFind3D.PhysicsInteraction
             }
             else
             {
-                Handheld.Vibrate();
+                HapticHelper.Vibrate();
 
                 seq.Append(popupRect.DOShakePosition(0.55f, new Vector3(22f, 8f, 0f), 16, 90f).SetUpdate(true));
 

@@ -436,7 +436,7 @@ namespace MechaFind3D
 
             vanishSeq.OnComplete(() =>
             {
-                Handheld.Vibrate();
+                HapticHelper.Vibrate();
                 if (MatchGoalManager.Instance != null)
                 {
                     MatchGoalManager.Instance.NotifyMechaCaught();

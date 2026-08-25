@@ -22,7 +22,6 @@ namespace MechaFind3D.PhysicsInteraction
     /// group flies up and slams into that order's card, completing it. Anything nobody ordered just sits in
     /// the tray - fill all five slots without completing an order and the level is lost.
     /// </summary>
-    [ExecuteAlways]
     public class CanvasUIDesignManager : MonoBehaviour
     {
         public static CanvasUIDesignManager Instance { get; private set; }
@@ -45,21 +44,16 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private int titleFontSize = 28;
         [SerializeField] private int goalContainerSpacing = 24;
 
-        [Header("Order Cards")]
-        [SerializeField] private Vector2 goalCardSize = new Vector2(180f, 155f);
-        [Tooltip("Where the rule down an order card sits, as a fraction of its width. Left of it: the item and how many are still wanted. Right of it: the customer the order belongs to.")]
-        [Range(0.3f, 0.9f)]
-        [SerializeField] private float goalCardDividerX = 0.60f;
-        [SerializeField] private float goalCardDividerWidth = 4f;
-        [SerializeField] private Color goalCardDividerColor = new Color(1f, 1f, 1f, 0.65f);
-        [Tooltip("Portrait for the customer half of an order card. Left empty, a plain placeholder panel is drawn so the zone is still visible.")]
-        [SerializeField] private Sprite customerPortraitSprite;
-        [SerializeField] private float goalCardIconSize = 65f;
-        [SerializeField] private int goalCardFontSize = 32;
-        [SerializeField] private float goalCard3DModelScale = 450f;
-        [SerializeField] private float goalCard3DModelTargetSize = 150f;
+        [Header("Order Card 3D Icon")]
+        [SerializeField] private float goalCard3DModelTargetSize = 100f;
         [SerializeField] private Vector3 goalCard3DModelLocalPosition = new Vector3(0f, 0f, -25f);
-        [SerializeField] private float goalCard3DModelTiltX = 15f;
+        [SerializeField] private Vector3 goalCard3DModelRotation = new Vector3(15f, -25f, 0f);
+
+        [Header("Order Card 3D Bob Animation")]
+        [SerializeField] private float goalCardBobAmplitude = 4f;
+        [SerializeField] private float goalCardBobDuration = 1.8f;
+        [SerializeField] private float goalCardRotateAmplitude = 12f;
+        [SerializeField] private float goalCardRotateDuration = 3.2f;
 
         [Header("Order Card Animations")]
         [SerializeField] private float goalSpawnStaggerDelay = 0.07f;
@@ -87,6 +81,7 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private Color dockPanelColor = new Color(0f, 0f, 0f, 0f);
         [SerializeField] private Color dockSlotEmptyColor = new Color(0.38f, 0.78f, 0.12f, 0.95f);
         [SerializeField] private Color dockSlotFilledColor = new Color(0.52f, 0.94f, 0.20f, 1.0f);
+        [SerializeField] private Vector3 dockItemDefaultRotation = new Vector3(0f, 15f, 0f);
 
         [Header("Item Collection Flight")]
         [SerializeField] private float collectFlightDuration = 0.38f;
@@ -142,11 +137,13 @@ namespace MechaFind3D.PhysicsInteraction
 
         private const string RetiredCardPrefix = "Retiring_";
         private const string OrderCardPrefix = "GoalCard_";
+        private const string TemplateCardName = "GoalCard_Template";
 
         private Camera mainCamera;
         private Canvas mainCanvas;
         private RectTransform topGoalContainer;
         private RectTransform dockPanelRect;
+        private GameObject orderCardTemplate;
 
         private readonly List<RectTransform> slotRects = new List<RectTransform>();
         private readonly List<Image> slotImages = new List<Image>();
@@ -163,6 +160,19 @@ namespace MechaFind3D.PhysicsInteraction
         private bool gameOverTriggered;
 
         private static readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
+        private static ItemDataSO[] _itemDataCache;
+        private static ItemDataSO[] CachedItemData => _itemDataCache ??= Resources.LoadAll<ItemDataSO>("");
+
+        private static ItemDataSO FindItemDataSO(string itemId)
+        {
+            if (string.IsNullOrEmpty(itemId)) return null;
+            foreach (var so in CachedItemData)
+            {
+                if (so != null && so.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
+                    return so;
+            }
+            return null;
+        }
 
         private const string UIAccentButton = "Buttons/Button Blue";
         // Note the Misc/ subfolder - the blue square button lives there, unlike the violet one it replaces,
@@ -223,35 +233,17 @@ namespace MechaFind3D.PhysicsInteraction
             mainCamera = Camera.main;
             if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
 
-            EnsureCanvasStructure();
+            FindExistingUIReferences();
+            WireButtons();
         }
 
         private void OnEnable()
         {
             if (Instance == null) Instance = this;
-            if (!Application.isPlaying)
-            {
-                EnsureCanvasStructure();
-            }
         }
 
 #if UNITY_EDITOR
-        private void OnValidate()
-        {
-            if (!Application.isPlaying)
-            {
-                UnityEditor.EditorApplication.delayCall -= EditorRefresh;
-                UnityEditor.EditorApplication.delayCall += EditorRefresh;
-            }
-        }
-
-        private void EditorRefresh()
-        {
-            if (this == null) return;
-            EnsureCanvasStructure();
-        }
-
-        [ContextMenu("Rebuild UI")]
+        [ContextMenu("Rebuild UI (creates missing objects)")]
         public void RebuildUIFromContextMenu()
         {
             EnsureCanvasStructure();
@@ -260,14 +252,15 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void Start()
         {
+            if (orderCardTemplate != null) orderCardTemplate.SetActive(false);
+            CleanupLegacyPackagingObjects();
+            EnsureEventSystem();
+            Setup3DDockSlots();
             StartConveyorDecor();
+            EnsureSingleOrderManager();
             StartCoroutine(RefreshAfterLayout());
         }
 
-        /// <summary>
-        /// Deferred a frame: the order cards size their 3D icons from the canvas layout, which has not
-        /// settled during Start().
-        /// </summary>
         private System.Collections.IEnumerator RefreshAfterLayout()
         {
             yield return null;
@@ -280,6 +273,55 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             RefreshTargetGoalsUI();
+        }
+
+        /// <summary>
+        /// Finds existing scene objects by name and caches references. Does NOT create or modify anything.
+        /// Ezgi and Emre design the UI by hand in the scene — this code only reads what is already there.
+        /// </summary>
+        private void FindExistingUIReferences()
+        {
+            Transform canvasTr = transform.Find("MatchFactory_Canvas");
+            if (canvasTr != null)
+            {
+                mainCanvas = canvasTr.GetComponent<Canvas>();
+                if (mainCanvas != null && mainCanvas.worldCamera == null)
+                    mainCanvas.worldCamera = mainCamera;
+
+                Transform headerTr = canvasTr.Find("Header_Goal_Panel");
+                if (headerTr != null)
+                {
+                    Transform goalsTr = headerTr.Find("Goals_Container");
+                    if (goalsTr != null)
+                    {
+                        topGoalContainer = goalsTr.GetComponent<RectTransform>();
+                        Transform tmpl = goalsTr.Find(TemplateCardName);
+                        if (tmpl != null) orderCardTemplate = tmpl.gameObject;
+                    }
+                }
+            }
+        }
+
+        private void WireButtons()
+        {
+            if (mainCanvas == null) return;
+            Transform canvasTr = mainCanvas.transform;
+
+            WireButton(canvasTr, "Shuffle_Button", OnShuffleButtonClicked);
+            WireButton(canvasTr, "Undo_Booster_Button", OnUndoButtonClicked);
+            WireButton(canvasTr, "Reveal_Booster_Button", OnRevealButtonClicked);
+        }
+
+        private static void WireButton(Transform parent, string childName, UnityEngine.Events.UnityAction action)
+        {
+            Transform t = parent.Find(childName);
+            if (t == null) return;
+            Button btn = t.GetComponent<Button>();
+            if (btn == null) btn = t.gameObject.AddComponent<Button>();
+            btn.onClick.RemoveAllListeners();
+            btn.onClick.AddListener(action);
+            Image bg = t.GetComponent<Image>();
+            if (bg != null) btn.targetGraphic = bg;
         }
 
         private void Update()
@@ -295,7 +337,7 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
 #if UNITY_EDITOR
-        [MenuItem("Tools/Build Canvas UI Design")]
+        [MenuItem("Tools/Build Canvas UI Design (creates missing objects)")]
         public static void BuildCanvasUIDesignTool()
         {
             GameObject sceneController = GameObject.Find("Physics_Scene_Controller");
@@ -306,16 +348,142 @@ namespace MechaFind3D.PhysicsInteraction
 
             manager.EnsureCanvasStructure();
             Selection.activeGameObject = sceneController;
-            Debug.Log("🧺 Match-N biriktirme dock'u kuruldu.");
+            Debug.Log("UI yapısı oluşturuldu. Artık sahnede elle düzenleyebilirsiniz.");
+        }
+
+        [MenuItem("Tools/Preview Order Cards (Edit Mode)")]
+        [ContextMenu("Preview Order Cards")]
+        public static void PreviewOrderCardsInEditor()
+        {
+            var manager = FindFirstObjectByType<CanvasUIDesignManager>();
+            if (manager == null) { Debug.LogWarning("CanvasUIDesignManager bulunamadı."); return; }
+
+            manager.FindExistingUIReferences();
+            if (manager.topGoalContainer == null) { Debug.LogWarning("Goals_Container bulunamadı."); return; }
+
+            // Clear old previews
+            var toRemove = new List<Transform>();
+            foreach (Transform child in manager.topGoalContainer)
+            {
+                if (child.name.StartsWith(OrderCardPrefix) && child.name != TemplateCardName)
+                    toRemove.Add(child);
+            }
+            foreach (var t in toRemove) DestroyImmediate(t.gameObject);
+
+            // Find level data
+            var levelMgr = FindFirstObjectByType<LevelManager>();
+            LevelDataSO levelData = null;
+            if (levelMgr != null) levelData = levelMgr.ActiveLevelData;
+            if (levelData == null)
+            {
+                var allLevels = Resources.FindObjectsOfTypeAll<LevelDataSO>();
+                if (allLevels.Length > 0) levelData = allLevels[0];
+            }
+            if (levelData == null || levelData.targetGoals == null)
+            {
+                Debug.LogWarning("LevelDataSO bulunamadı — preview kartları oluşturulamıyor.");
+                return;
+            }
+
+            // Find template
+            Transform template = manager.topGoalContainer.Find(TemplateCardName);
+
+            int cardIndex = 0;
+            foreach (var goal in levelData.targetGoals)
+            {
+                if (goal == null || goal.itemData == null) continue;
+
+                string itemId = goal.itemData.GetEffectiveItemId();
+                string cardName = $"{OrderCardPrefix}Preview_{cardIndex}_{itemId}";
+
+                GameObject cardObj;
+                if (template != null)
+                {
+                    cardObj = Instantiate(template.gameObject, manager.topGoalContainer, false);
+                    cardObj.SetActive(true);
+                }
+                else
+                {
+                    cardObj = manager.BuildDefaultOrderCardShell(cardName);
+                }
+                cardObj.name = cardName;
+
+                // Place 3D icon
+                Transform windowTr = cardObj.transform.Find("Inner_Window");
+                Transform iconTr = windowTr != null ? windowTr.Find("Icon") : cardObj.transform.Find("Icon");
+                if (iconTr != null && goal.itemData.prefab != null)
+                {
+                    var existingIcon = iconTr.Find("3D_Icon_Wrapper");
+                    if (existingIcon != null) DestroyImmediate(existingIcon.gameObject);
+
+                    var existingImg = iconTr.GetComponent<UnityEngine.UI.Image>();
+                    if (existingImg != null) existingImg.enabled = false;
+
+                    Quaternion modelRotation = Quaternion.Euler(manager.goalCard3DModelRotation);
+
+                    GameObject wrapper = new GameObject("3D_Icon_Wrapper");
+                    wrapper.transform.SetParent(iconTr, false);
+                    wrapper.transform.localPosition = new Vector3(0f, 0f, manager.goalCard3DModelLocalPosition.z);
+                    wrapper.transform.localRotation = modelRotation;
+
+                    GameObject model = (GameObject)PrefabUtility.InstantiatePrefab(goal.itemData.prefab);
+                    model.name = "3D_Icon_Model";
+                    model.transform.SetParent(wrapper.transform, false);
+                    model.transform.localPosition = Vector3.zero;
+                    model.transform.localRotation = Quaternion.identity;
+
+                    foreach (var c in model.GetComponentsInChildren<Collider>(true)) DestroyImmediate(c);
+                    foreach (var r in model.GetComponentsInChildren<Rigidbody>(true)) DestroyImmediate(r);
+                    foreach (var m in model.GetComponentsInChildren<MonoBehaviour>(true)) DestroyImmediate(m);
+
+                    int uiLayer = LayerMask.NameToLayer("UI");
+                    foreach (Transform tr in wrapper.GetComponentsInChildren<Transform>(true)) tr.gameObject.layer = uiLayer;
+
+                    Renderer[] renderers = model.GetComponentsInChildren<Renderer>(true);
+                    Bounds combinedBounds = new Bounds();
+                    bool hasBounds = false;
+                    foreach (Renderer r in renderers)
+                    {
+                        if (r == null || !r.enabled) continue;
+                        if (!hasBounds) { combinedBounds = r.bounds; hasBounds = true; }
+                        else combinedBounds.Encapsulate(r.bounds);
+                    }
+                    if (hasBounds)
+                    {
+                        Vector3 localCenterOffset = wrapper.transform.InverseTransformPoint(combinedBounds.center);
+                        float maxDim = Mathf.Max(combinedBounds.size.x, combinedBounds.size.y, combinedBounds.size.z);
+                        float worldUnitInUI = wrapper.transform.lossyScale.x;
+                        float rawSize = (worldUnitInUI > 0.00001f) ? (maxDim / worldUnitInUI) : maxDim;
+                        float scale = (rawSize > 0.0001f) ? (manager.goalCard3DModelTargetSize / rawSize) : 1f;
+                        model.transform.localScale = Vector3.one * scale;
+                        model.transform.localPosition = -localCenterOffset * scale;
+                    }
+                }
+
+                // Set count text
+                var countTxt = cardObj.GetComponentInChildren<Text>();
+                if (countTxt != null) countTxt.text = $"{goal.requiredCount}";
+
+                cardIndex++;
+            }
+
+            // Hide template
+            if (template != null) template.gameObject.SetActive(false);
+
+            Debug.Log($"✅ {cardIndex} preview kart oluşturuldu. Sahnede düzenleyebilirsin. Play'e girince gerçek kartlarla değiştirilecek.");
         }
 #endif
 
         // ---------------------------------------------------------------------------------------------
-        // Canvas construction
+        // Canvas construction — ONLY called from the MenuItem or ContextMenu, never automatically.
+        // After running once, design the UI by hand in the scene. Play mode will not touch your layout.
         // ---------------------------------------------------------------------------------------------
 
         public void EnsureCanvasStructure()
         {
+            if (mainCamera == null) mainCamera = Camera.main;
+            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
+
             EnsureEventSystem();
             CleanupLegacyPackagingObjects();
 
@@ -329,20 +497,22 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 canvasObj = new GameObject("MatchFactory_Canvas");
                 canvasObj.transform.SetParent(transform);
+
+                Canvas canvas = canvasObj.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = mainCamera;
+                canvas.planeDistance = uiPlaneDistance;
+                canvas.sortingOrder = 100;
+
+                CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = referenceResolution;
+                scaler.matchWidthOrHeight = 0.5f;
+
+                canvasObj.AddComponent<GraphicRaycaster>();
             }
 
-            mainCanvas = canvasObj.GetComponent<Canvas>() ?? canvasObj.AddComponent<Canvas>();
-            mainCanvas.renderMode = RenderMode.ScreenSpaceCamera;
-            mainCanvas.worldCamera = mainCamera;
-            mainCanvas.planeDistance = uiPlaneDistance;
-            mainCanvas.sortingOrder = 100;
-
-            CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>() ?? canvasObj.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = referenceResolution;
-            scaler.matchWidthOrHeight = 0.5f;
-
-            if (canvasObj.GetComponent<GraphicRaycaster>() == null) canvasObj.AddComponent<GraphicRaycaster>();
+            mainCanvas = canvasObj.GetComponent<Canvas>();
 
             EnsureBackgroundCanvas();
             BuildHeaderOrderPanel(canvasObj.transform);
@@ -354,40 +524,12 @@ namespace MechaFind3D.PhysicsInteraction
             RemoveTrashButton(canvasObj.transform);
             Canvas.ForceUpdateCanvases();
 
-            CustomerOrderManager orderManager = EnsureSingleOrderManager();
+            EnsureSingleOrderManager();
+            FindExistingUIReferences();
 
-            // In PLAY MODE, skip rerolling orders here - LevelManager.Start()'s LoadLevel() is the single
-            // authoritative place that does this, and by the time it runs, the level's real goal data is
-            // guaranteed loaded. EnsureCanvasStructure() runs from THIS component's own Awake(), and Unity
-            // does not guarantee Awake() order between different components - if this ran before
-            // LevelManager's Awake() had assigned LevelManager.Instance, CustomerOrderManager.BuildOrderQueue
-            // silently fell back to its own hardcoded sample items ("onion", "sausage", "watermelon" - note
-            // the fallback even misspells "sausage" as different from the level data's real ids like
-            // "onion_001", "sasuage_003"). Those fallback ids never match any real ItemDataSO.itemId, so
-            // FindDisplayPrefabForItem found nothing for them and every card fell back to a flat 2D icon on
-            // an unstyled shell - exactly the "white card, only the leftmost looks right" report. In EDIT
-            // MODE there is no LevelManager.Start() ever coming to fix this, so the immediate build is still
-            // needed there for the [ExecuteAlways] scene preview to show anything at all.
-            if (!Application.isPlaying)
-            {
-                if (orderManager != null) orderManager.SetupCustomerOrders();
-                else Debug.LogWarning("🧾 CustomerOrderManager kurulamadı - sipariş kartları boş kalır.");
-
-                RefreshTargetGoalsUI();
-            }
+            Debug.Log("UI yapisi olusturuldu/guncellendi. Artik Inspector'dan elle duzenleme yapabilirsiniz.");
         }
 
-        /// <summary>
-        /// Returns the one order manager in the scene, creating it if needed and stripping any duplicates.
-        ///
-        /// This used to guard an UNCONDITIONAL AddComponent with <c>CustomerOrderManager.Instance == null</c>.
-        /// That singleton is only assigned by an Awake which never runs in edit mode, so every
-        /// [ExecuteAlways] rebuild and every domain reload stacked another copy onto the same GameObject -
-        /// the scene had 67 of them piled up. Searching by TYPE is what actually finds an existing one.
-        ///
-        /// Duplicates are removed COMPONENT-wise, never by destroying their GameObject: they all sit on the
-        /// one holder, so deleting the object would take the surviving manager with it.
-        /// </summary>
         private static CustomerOrderManager EnsureSingleOrderManager()
         {
             CustomerOrderManager[] found = Object.FindObjectsByType<CustomerOrderManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
@@ -403,7 +545,6 @@ namespace MechaFind3D.PhysicsInteraction
             if (kept != null) return kept;
 
             GameObject mgrObj = new GameObject("Customer_Order_Manager");
-            MarkTransientIfEditMode(mgrObj);
             return mgrObj.AddComponent<CustomerOrderManager>();
         }
 
@@ -417,8 +558,12 @@ namespace MechaFind3D.PhysicsInteraction
         /// (see BuildTrashButton below), so destroying it here would delete the dock's own button on every
         /// rebuild.
         /// </summary>
+        private static bool _legacyCleanupDoneThisSession;
+
         private void CleanupLegacyPackagingObjects()
         {
+            if (Application.isPlaying && _legacyCleanupDoneThisSession) return;
+
             foreach (GameObject go in Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
                 if (go == null) continue;
@@ -429,6 +574,8 @@ namespace MechaFind3D.PhysicsInteraction
                     SafeDestroy(go);
                 }
             }
+
+            if (Application.isPlaying) _legacyCleanupDoneThisSession = true;
         }
 
         /// <summary>The belt is scene decor now that nothing rides it, but it should still be moving.</summary>
@@ -445,19 +592,12 @@ namespace MechaFind3D.PhysicsInteraction
             Transform existingImageCanvas = transform.Find("MatchFactory_Background_Canvas");
             if (existingImageCanvas != null) SafeDestroy(existingImageCanvas.gameObject);
 
-            // The main gameplay camera is set to ClearFlags.Depth (see ScenePhysicsSetup.SetupCamera),
-            // meaning it never clears the color buffer itself - it relies entirely on this background
-            // camera clearing to a solid color first.
-            Camera bgCam = null;
             Transform bgCamTransform = transform.Find("Background_Camera");
-            if (bgCamTransform != null) bgCam = bgCamTransform.GetComponent<Camera>();
-            if (bgCam == null)
-            {
-                GameObject bgCamObj = new GameObject("Background_Camera");
-                bgCamObj.transform.SetParent(transform, false);
-                bgCam = bgCamObj.AddComponent<Camera>();
-            }
+            if (bgCamTransform != null) return;
 
+            GameObject bgCamObj = new GameObject("Background_Camera");
+            bgCamObj.transform.SetParent(transform, false);
+            Camera bgCam = bgCamObj.AddComponent<Camera>();
             bgCam.depth = -10;
             bgCam.clearFlags = CameraClearFlags.SolidColor;
             bgCam.backgroundColor = backgroundColor;
@@ -818,7 +958,7 @@ namespace MechaFind3D.PhysicsInteraction
                 reveal.ShowOutline(revealOutlineColor);
             }
 
-            Handheld.Vibrate();
+            HapticHelper.Vibrate();
 
             if (btnObj != null)
             {
@@ -1081,6 +1221,7 @@ namespace MechaFind3D.PhysicsInteraction
             var toRemove = new List<Transform>();
             foreach (Transform child in topGoalContainer)
             {
+                if (child.name == TemplateCardName) continue;
                 if (child.name.StartsWith(OrderCardPrefix) || child.name.StartsWith(RetiredCardPrefix))
                     toRemove.Add(child);
             }
@@ -1129,6 +1270,7 @@ namespace MechaFind3D.PhysicsInteraction
             var toRemove = new List<Transform>();
             foreach (Transform child in topGoalContainer)
             {
+                if (child.name == TemplateCardName) continue;
                 if (!child.name.StartsWith(OrderCardPrefix)) continue;
                 int orderId = GetCardOrderId(child);
                 bool duplicate = !seenOrderIds.Add(orderId);
@@ -1197,6 +1339,7 @@ namespace MechaFind3D.PhysicsInteraction
             if (topGoalContainer == null) return null;
             foreach (Transform child in topGoalContainer)
             {
+                if (child.name == TemplateCardName) continue;
                 if (!child.name.StartsWith(OrderCardPrefix)) continue;
                 if (GetCardOrderId(child) == orderId) return child;
             }
@@ -1324,18 +1467,11 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 #endif
-            ItemDataSO[] loadedItems = Resources.LoadAll<ItemDataSO>("");
-            if (loadedItems != null)
+            foreach (var itemSO in CachedItemData)
             {
-                foreach (var itemSO in loadedItems)
+                if (itemSO != null && itemSO.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
                 {
-                    if (itemSO != null)
-                    {
-                        if (itemSO.GetEffectiveItemId().Equals(itemId, System.StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (itemSO.prefab != null) return itemSO.prefab;
-                        }
-                    }
+                    if (itemSO.prefab != null) return itemSO.prefab;
                 }
             }
 
@@ -1407,11 +1543,13 @@ namespace MechaFind3D.PhysicsInteraction
                 if (template != null)
                 {
                     cardObj = Instantiate(template.gameObject, topGoalContainer, false);
+                    cardObj.SetActive(true);
                     cardObj.name = cardName;
                     MarkTransientIfEditMode(cardObj);
                 }
                 else
                 {
+                    Debug.LogWarning("[OrderCard] GoalCard_Template bulunamadı — Goals_Container altına sahnede bir template kart ekleyin.");
                     cardObj = BuildDefaultOrderCardShell(cardName);
                 }
             }
@@ -1424,21 +1562,7 @@ namespace MechaFind3D.PhysicsInteraction
             // it right after, so there is no visual glitch.
             cardObj.transform.localScale = Vector3.one;
 
-            // Tints the outer card frame with the order's own item color (Emre: "her obje/meyveye özel
-            // renk", e.g. watermelon red, onion purple) - runs on every sync, not just first build, so a
-            // card that gets reused for a DIFFERENT item (same slot, new customer) re-tints instead of
-            // keeping whatever color the previous occupant left behind. order.itemColor was already being
-            // populated for every order (from ItemDataSO.targetColor, or the sample-fallback colors) but
-            // nothing ever read it until now - the card background was permanently whatever was saved in
-            // the scene/cloned template.
-            Image cardBgImg = cardObj.GetComponent<Image>();
-            if (cardBgImg != null)
-            {
-                cardBgImg.color = new Color(0.91f, 0.22f, 0.30f, 1.0f);
-            }
-
-            // Populates/refreshes the order's icon and remaining-count text without touching the card's
-            // own images/colors, whether the card is hand-authored, cloned, or freshly built.
+            // Card background color comes from the template — not overwritten here.
             Transform windowTr = cardObj.transform.Find("Inner_Window");
             Transform iconTr = windowTr != null ? windowTr.Find("Icon") : cardObj.transform.Find("Icon");
             if (iconTr != null)
@@ -1477,6 +1601,7 @@ namespace MechaFind3D.PhysicsInteraction
         /// <summary>Any already-built order card in the container, used as the visual template for a new one.</summary>
         private Transform FindOrderCardTemplate()
         {
+            if (orderCardTemplate != null) return orderCardTemplate.transform;
             if (topGoalContainer == null) return null;
             foreach (Transform child in topGoalContainer)
             {
@@ -1504,16 +1629,7 @@ namespace MechaFind3D.PhysicsInteraction
             le.flexibleHeight = 0f;
 
             Image cardBg = cardObj.AddComponent<Image>();
-            ApplySlicedSprite(cardBg, LoadUISprite("Buttons/Button Red") ?? LoadUISprite(UIAccentSquareButton));
-            cardBg.color = new Color(0.91f, 0.22f, 0.30f, 1.0f);
-
-            Outline cardOutline = cardObj.AddComponent<Outline>();
-            cardOutline.effectColor = new Color(0.08f, 0.08f, 0.08f, 0.95f);
-            cardOutline.effectDistance = new Vector2(2.5f, -2.5f);
-
-            Shadow cardShadow = cardObj.AddComponent<Shadow>();
-            cardShadow.effectColor = new Color(0f, 0f, 0f, 0.45f);
-            cardShadow.effectDistance = new Vector2(0f, -4f);
+            cardBg.color = new Color(0f, 0f, 0f, 0f);
 
             GameObject windowObj = NewUIObject("Inner_Window", cardObj.transform);
             RectTransform windowRect = windowObj.GetComponent<RectTransform>();
@@ -1613,22 +1729,7 @@ namespace MechaFind3D.PhysicsInteraction
             Image existingIconImg = iconObj.GetComponent<Image>();
             if (existingIconImg != null) existingIconImg.enabled = false;
 
-            Quaternion modelRotation = Quaternion.Euler(goalCard3DModelTiltX, -25f, 0f);
-            string itemIdLower = order.itemId != null ? order.itemId.ToLowerInvariant() : "";
-            if (itemIdLower.Equals("watermelon_001"))
-            {
-                // Half watermelon (round red cut face facing front)
-                modelRotation = Quaternion.Euler(-75f, 0f, 0f);
-            }
-            else if (itemIdLower.Contains("watermelon"))
-            {
-                // Triangular watermelon slice (watermelon_002 / watermelon_003): tilted diagonally at ~40 deg (matching Image 2)
-                modelRotation = Quaternion.Euler(15f, -30f, 40f);
-            }
-            else if (itemIdLower.Contains("fish"))
-            {
-                modelRotation = Quaternion.Euler(15f, -45f, 10f);
-            }
+            Quaternion modelRotation = Quaternion.Euler(goalCard3DModelRotation);
 
             GameObject modelWrapper = new GameObject("3D_Icon_Wrapper");
             MarkTransientIfEditMode(modelWrapper);
@@ -1692,7 +1793,7 @@ namespace MechaFind3D.PhysicsInteraction
                 float worldUnitInUIPixels = modelWrapper.transform.lossyScale.x;
                 float rawMeshSizeInUIPixels = (worldUnitInUIPixels > 0.00001f) ? (maxWorldDim / worldUnitInUIPixels) : maxWorldDim;
 
-                float effectiveTargetSize = 100f;
+                float effectiveTargetSize = goalCard3DModelTargetSize;
                 float scaleFactor = (rawMeshSizeInUIPixels > 0.0001f) ? (effectiveTargetSize / rawMeshSizeInUIPixels) : 1f;
 
                 modelObj.transform.localScale = Vector3.one * scaleFactor;
@@ -1700,13 +1801,13 @@ namespace MechaFind3D.PhysicsInteraction
             }
             else
             {
-                modelObj.transform.localScale = Vector3.one * goalCard3DModelScale;
+                modelObj.transform.localScale = Vector3.one * goalCard3DModelTargetSize;
             }
 
             if (Application.isPlaying)
             {
-                modelWrapper.transform.DOLocalMoveY(goalCard3DModelLocalPosition.y + 4f, 1.8f).SetEase(Ease.InOutSine).SetLoops(-1, LoopType.Yoyo);
-                modelWrapper.transform.DORotate(modelRotation.eulerAngles + new Vector3(0f, 12f, 0f), 3.2f).SetEase(Ease.InOutSine).SetLoops(-1, LoopType.Yoyo);
+                modelWrapper.transform.DOLocalMoveY(goalCard3DModelLocalPosition.y + goalCardBobAmplitude, goalCardBobDuration).SetEase(Ease.InOutSine).SetLoops(-1, LoopType.Yoyo);
+                modelWrapper.transform.DORotate(modelRotation.eulerAngles + new Vector3(0f, goalCardRotateAmplitude, 0f), goalCardRotateDuration).SetEase(Ease.InOutSine).SetLoops(-1, LoopType.Yoyo);
             }
         }
 
@@ -1919,56 +2020,12 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         // ---------------------------------------------------------------------------------------------
-        // Mecha identification (unchanged gameplay: tap to reveal, tap again to vanish)
+        // Mecha identification — delegated to MechaIdentifier for separation of concerns
         // ---------------------------------------------------------------------------------------------
 
-        public static bool IsMechaItem(FindTargetObject item)
-        {
-            if (item == null) return false;
-            if (item.name.Contains("Mecha") || item.name.Contains("meccha")) return true;
-            if (item.colorName != null && (item.colorName.Equals("mecha", System.StringComparison.OrdinalIgnoreCase) || item.colorName.Contains("Mecha"))) return true;
-            if (item.GetComponentInChildren<MechaRagdollSpawner>() != null) return true;
-            if (item.transform.Find("MechaRagdoll") != null || item.transform.Find("meccha chameleon") != null) return true;
-
-            foreach (Transform t in item.GetComponentsInChildren<Transform>(true))
-            {
-                if (t.name.Contains("Mecha") || t.name.Contains("meccha")) return true;
-            }
-            return false;
-        }
-
-        public static bool HasChildMecha(FindTargetObject item)
-        {
-            if (item == null) return false;
-            foreach (Transform child in item.GetComponentsInChildren<Transform>(true))
-            {
-                if (child != item.transform && (child.name.Contains("Mecha") || child.name.Contains("meccha") || child.name.Contains("Ragdoll")))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        public static bool IsHitOnMechaCollider(FindTargetObject item, Collider hitCollider)
-        {
-            if (hitCollider == null) return false;
-
-            Transform t = hitCollider.transform;
-            while (t != null && (item == null || t != item.transform))
-            {
-                string name = t.name.ToLowerInvariant();
-                if (name.Contains("mecha") || name.Contains("meccha") || name.Contains("ragdoll") ||
-                    name.Contains("bodycollider") || name.Contains("mixamorig") || name.Contains("hullmesh") ||
-                    name.Contains("bone") || name.Contains("arm") || name.Contains("leg") || name.Contains("head"))
-                {
-                    return true;
-                }
-                if (t.GetComponent<MechaRagdollSpawner>() != null || t.GetComponent<SkinnedMeshRenderer>() != null) return true;
-                t = t.parent;
-            }
-            return false;
-        }
+        public static bool IsMechaItem(FindTargetObject item) => MechaIdentifier.IsMechaItem(item);
+        public static bool HasChildMecha(FindTargetObject item) => MechaIdentifier.HasChildMecha(item);
+        public static bool IsHitOnMechaCollider(FindTargetObject item, Collider hitCollider) => MechaIdentifier.IsHitOnMechaCollider(item, hitCollider);
 
         /// <summary>Called when the mecha is found or vanishes - credits its goal and ticks the badge.</summary>
         public void OnMechaVanished()
@@ -2326,7 +2383,7 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void CompleteDeliveredOrder(CustomerOrder order, int deliveredCount)
         {
-            if (deliveredCount > 0) Handheld.Vibrate();
+            if (deliveredCount > 0) HapticHelper.Vibrate();
 
             if (MatchGoalManager.Instance != null && deliveredCount > 0)
             {
@@ -2542,50 +2599,28 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (obj3D != null)
             {
-                string n = obj3D.name.ToLowerInvariant();
-                if (n.Contains("watermelon_002") || n.Contains("watermelon_003"))
+                FindTargetObject fto = obj3D.GetComponent<FindTargetObject>();
+                string itemId = fto != null ? fto.colorName : obj3D.name;
+                ItemDataSO itemSO = FindItemDataSO(itemId);
+                if (itemSO != null && itemSO.overrideDockRotation)
                 {
-                    // Lay triangular slice flat on its surface area on top of the cube
-                    return slotRot * Quaternion.Euler(-90f, 0f, 45f);
-                }
-                if (n.Contains("watermelon_001"))
-                {
-                    return slotRot * Quaternion.Euler(-90f, 0f, 0f);
-                }
-                if (n.Contains("sausage") || n.Contains("sasuage") || n.Contains("fish") || n.Contains("shrimp") || n.Contains("chili"))
-                {
-                    return slotRot * Quaternion.Euler(0f, 0f, 0f);
-                }
-                if (n.Contains("egg") && !n.Contains("eggplant"))
-                {
-                    // Flip egg 180 degrees so the yolk / cut face points UP towards the camera/player instead of upside down into slot
-                    return slotRot * Quaternion.Euler(180f, 15f, 0f);
+                    return slotRot * Quaternion.Euler(itemSO.dockRotationEuler);
                 }
             }
 
-            return slotRot * Quaternion.Euler(0f, 15f, 0f);
+            return slotRot * Quaternion.Euler(dockItemDefaultRotation);
         }
 
         public void Setup3DDockSlots()
         {
             slot3DTransforms.Clear();
 
-            // 1. Delete legacy 2D UI dock panel if present inside Canvas
-            GameObject canvasObj = GameObject.Find("MatchFactory_Canvas");
-            if (canvasObj != null)
-            {
-                Transform legacyPanel = canvasObj.transform.Find("Bottom_Dock_Panel");
-                if (legacyPanel != null) SafeDestroy(legacyPanel.gameObject);
-            }
-
-            // 2. Setup 3D Container
             GameObject container = GameObject.Find("Dock_3D_Slots");
             if (container == null)
             {
-                GameObject physicsController = GameObject.Find("Physics_Scene_Controller");
-                Transform parent = physicsController != null ? physicsController.transform : null;
                 container = new GameObject("Dock_3D_Slots");
-                if (parent != null) container.transform.SetParent(parent, false);
+                Transform psc = GameObject.Find("Physics_Scene_Controller")?.transform;
+                if (psc != null) container.transform.SetParent(psc, false);
             }
 
             int slotCount = DockCapacity;
@@ -2608,39 +2643,30 @@ namespace MechaFind3D.PhysicsInteraction
                     float spacing = 0.75f;
                     float startX = -(slotCount - 1) * 0.5f * spacing;
                     slotObj.transform.localPosition = new Vector3(startX + i * spacing, 0.08f, -3.0f);
-                    slotObj.transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
+                    slotObj.transform.localRotation = Quaternion.identity;
 
+                    ApplyDefaultSlotMaterial(slotObj.GetComponent<Renderer>());
                     existingSlot = slotObj.transform;
-                }
-
-                // Apply sleek grey material and full shadow casting/receiving to 3D slot
-                Renderer rend = existingSlot.GetComponent<Renderer>();
-                if (rend != null)
-                {
-                    rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-                    rend.receiveShadows = true;
-
-                    Material mat = rend.sharedMaterial;
-                    if (mat == null || mat.shader == null || !mat.name.Contains("SlateGrey"))
-                    {
-                        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-                        mat = new Material(shader);
-                        mat.name = "Mat_SlateGrey_3D_Slot";
-                    }
-
-                    Color slateGrey = new Color(0.26f, 0.30f, 0.36f, 1.0f);
-                    mat.color = slateGrey;
-
-                    if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.45f);
-                    else if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.45f);
-
-                    if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0.20f);
-
-                    rend.material = mat;
                 }
 
                 slot3DTransforms.Add(existingSlot);
             }
+        }
+
+        private static void ApplyDefaultSlotMaterial(Renderer rend)
+        {
+            if (rend == null) return;
+            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            rend.receiveShadows = true;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            Material mat = new Material(shader);
+            mat.name = "Mat_SlateGrey_3D_Slot";
+            mat.color = new Color(0.26f, 0.30f, 0.36f, 1.0f);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.45f);
+            else if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.45f);
+            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0.20f);
+            rend.material = mat;
         }
 
         private void UpdateSlotVisuals()

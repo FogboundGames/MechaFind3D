@@ -17,3 +17,7 @@ MonoBehaviour:
   prefab: {fileID: 1639582314757769289, guid: 6e95e7f04a74d9f4ebcac493d72479ce, type: 3}
   targetColor: {r: 0.98, g: 0.85, b: 0.15, a: 1}
   icon: {fileID: 0}
+  overrideDockRotation: 1
+  dockRotationEuler: {x: -90, y: 0, z: 45}
+  overrideCardRotation: 1
+  cardRotationEuler: {x: 15, y: -30, z: 40}
