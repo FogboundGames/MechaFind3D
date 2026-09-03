@@ -13,7 +13,6 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         private Vector2 scrollPos;
         private LevelDataSO selectedLevel;
         private string itemSearchQuery = "";
-        private Object dragAndDropPrefabTarget;
 
         // Expand/collapse state per additionalMechas entry, keyed by list index. Session-only (not saved
         // with the asset) - purely so re-drawing the same OnGUI frame doesn't reset every foldout shut.
@@ -284,6 +283,17 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 EditorGUILayout.PropertyField(so.FindProperty("blackObjectCount"), new GUIContent("Kaç Obje Siyah Olsun?"));
                 EditorGUILayout.PropertyField(so.FindProperty("blackObjectUnlockCount"), new GUIContent("Açılma Sayacı (İlk Text Değeri)"));
             }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space(10);
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("🧰 Booster Buton Kilitleri (Bu Seviye İçin)", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Bu seviyede hangi booster butonlarının açık olacağını seçebilirsiniz. " +
+                "Kapalı olan booster'lar sahnede kilitli kalır ve basılamaz.",
+                MessageType.Info);
+            EditorGUILayout.PropertyField(so.FindProperty("unlockUndoBooster"), new GUIContent("🔓 Undo (Geri Al / Çöp) Açık Mı?"));
+            EditorGUILayout.PropertyField(so.FindProperty("unlockRevealBooster"), new GUIContent("🔓 Reveal (Hedef / İpucu) Açık Mı?"));
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(10);
@@ -1467,6 +1477,9 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             ScenePhysicsSetup setup = sceneController.GetComponent<ScenePhysicsSetup>();
             if (setup != null) setup.SetupSceneEnvironment();
+
+            CanvasUIDesignManager uiMgr = sceneController.GetComponent<CanvasUIDesignManager>() ?? Object.FindFirstObjectByType<CanvasUIDesignManager>();
+            if (uiMgr != null) uiMgr.UpdateBoosterLockStates();
 
             Debug.Log($"✅ Seviye {level.levelNumber} sahnede aktifleştirildi ve başarıyla yüklendi!");
         }

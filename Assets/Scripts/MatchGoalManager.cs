@@ -37,7 +37,11 @@ namespace MechaFind3D.PhysicsInteraction
         private UnityEngine.UI.Image cachedTimerBadgeImage;
         private RectTransform cachedTimerBadgeRect;
         private Color defaultBadgeColor = new Color(0.20f, 0.25f, 0.32f, 0.98f);
-        private bool isFastDrainAnimating = false;
+        private Vector2 initialTimerTextPos;
+        private Vector3 initialTimerTextScale = Vector3.one;
+        private Vector2 initialTimerBadgePos;
+        private Vector3 initialTimerBadgeScale = Vector3.one;
+        private bool hasSavedTimerPos = false;
 
         private void Awake()
         {
@@ -57,6 +61,7 @@ namespace MechaFind3D.PhysicsInteraction
             mechasCaught = 0;
             mechasEscaped = 0;
             EarnedStars = 0;
+            hasSavedTimerPos = false;
 
             if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
             {
@@ -285,8 +290,23 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
+            if (!hasSavedTimerPos && cachedTimerTextRect != null)
+            {
+                initialTimerTextPos = cachedTimerTextRect.anchoredPosition;
+                initialTimerTextScale = cachedTimerTextRect.localScale;
+                if (cachedTimerBadgeRect != null)
+                {
+                    initialTimerBadgePos = cachedTimerBadgeRect.anchoredPosition;
+                    initialTimerBadgeScale = cachedTimerBadgeRect.localScale;
+                }
+                hasSavedTimerPos = true;
+            }
+
             if (cachedTimerText != null)
             {
+                cachedTimerText.horizontalOverflow = HorizontalWrapMode.Overflow;
+                cachedTimerText.verticalOverflow = VerticalWrapMode.Overflow;
+
                 int minutes = Mathf.FloorToInt(currentTime / 60f);
                 int seconds = Mathf.FloorToInt(currentTime % 60f);
 
@@ -294,80 +314,73 @@ namespace MechaFind3D.PhysicsInteraction
                 {
                     cachedTimerText.text = string.Format("⚡ {0:00}:{1:00} ⚡", minutes, seconds);
 
-                    float pingPong = Mathf.PingPong(Time.time * 4f, 1f);
-                    Color pulseTextColor = Color.Lerp(new Color(1f, 0.95f, 0.2f), new Color(1f, 0.25f, 0.25f), pingPong);
-                    cachedTimerText.color = pulseTextColor;
+                    // Hızlı ilerlediğini gösteren belirgin canlı renk (kehribar/turuncu)
+                    float pingPong = Mathf.PingPong(Time.time * 3.5f, 1f);
+                    Color fastDrainColor = Color.Lerp(new Color(1f, 0.45f, 0.15f), new Color(1f, 0.65f, 0.20f), pingPong);
+                    cachedTimerText.color = fastDrainColor;
 
                     if (cachedTimerBadgeImage != null)
                     {
-                        Color pulseBadgeColor = Color.Lerp(new Color(0.85f, 0.15f, 0.15f, 0.98f), new Color(0.95f, 0.45f, 0.15f, 0.98f), pingPong);
-                        cachedTimerBadgeImage.color = pulseBadgeColor;
+                        cachedTimerBadgeImage.color = fastDrainColor;
                     }
 
-                    if (!isFastDrainAnimating)
-                    {
-                        isFastDrainAnimating = true;
-                        if (cachedTimerBadgeRect != null)
-                        {
-                            cachedTimerBadgeRect.DOKill();
-                            cachedTimerBadgeRect.DOScale(Vector3.one * 1.10f, 0.35f).SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
-                        }
-                        else if (cachedTimerTextRect != null)
-                        {
-                            cachedTimerTextRect.DOKill();
-                            cachedTimerTextRect.DOScale(Vector3.one * 1.12f, 0.35f).SetLoops(-1, LoopType.Yoyo).SetEase(Ease.InOutSine);
-                        }
-                    }
-                }
-                else if (currentTime <= 20f)
-                {
-                    cachedTimerText.text = string.Format("⏱️ {0:00}:{1:00}", minutes, seconds);
-                    float pingPong = Mathf.PingPong(Time.time * 6f, 1f);
-                    cachedTimerText.color = Color.Lerp(Color.white, new Color(1.0f, 0.85f, 0.20f), pingPong);
+                    // Hafif sallanma (subtle shake & rotation) - ölçek sahnede ayarlanan boyutta kalır
+                    float shakeX = Mathf.Sin(Time.time * 28f) * 2.0f;
+                    float shakeY = Mathf.Cos(Time.time * 34f) * 1.0f;
+                    float shakeRot = Mathf.Sin(Time.time * 22f) * 2.0f;
 
-                    if (cachedTimerBadgeImage != null)
+                    if (cachedTimerTextRect != null)
                     {
-                        cachedTimerBadgeImage.color = Color.Lerp(defaultBadgeColor, new Color(0.90f, 0.30f, 0.15f, 0.98f), pingPong);
+                        cachedTimerTextRect.DOKill();
+                        cachedTimerTextRect.localScale = initialTimerTextScale;
+                        cachedTimerTextRect.anchoredPosition = initialTimerTextPos + new Vector2(shakeX, shakeY);
+                        cachedTimerTextRect.localRotation = Quaternion.Euler(0f, 0f, shakeRot);
                     }
-
-                    if (isFastDrainAnimating)
+                    if (cachedTimerBadgeRect != null)
                     {
-                        isFastDrainAnimating = false;
-                        if (cachedTimerBadgeRect != null)
-                        {
-                            cachedTimerBadgeRect.DOKill();
-                            cachedTimerBadgeRect.localScale = Vector3.one;
-                        }
-                        if (cachedTimerTextRect != null)
-                        {
-                            cachedTimerTextRect.DOKill();
-                            cachedTimerTextRect.localScale = Vector3.one;
-                        }
+                        cachedTimerBadgeRect.DOKill();
+                        cachedTimerBadgeRect.localScale = initialTimerBadgeScale;
+                        cachedTimerBadgeRect.anchoredPosition = initialTimerBadgePos + new Vector2(shakeX, shakeY);
+                        cachedTimerBadgeRect.localRotation = Quaternion.Euler(0f, 0f, shakeRot);
                     }
                 }
                 else
                 {
-                    cachedTimerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
-                    cachedTimerText.color = Color.white;
-
-                    if (cachedTimerBadgeImage != null)
+                    // Sallanmayı ve rotasyonu sıfırla, sahnede ayarlanan orijinal pozisyon ve boyuta getir
+                    if (cachedTimerTextRect != null)
                     {
-                        cachedTimerBadgeImage.color = defaultBadgeColor;
+                        cachedTimerTextRect.DOKill();
+                        cachedTimerTextRect.localScale = initialTimerTextScale;
+                        cachedTimerTextRect.anchoredPosition = initialTimerTextPos;
+                        cachedTimerTextRect.localRotation = Quaternion.identity;
+                    }
+                    if (cachedTimerBadgeRect != null)
+                    {
+                        cachedTimerBadgeRect.DOKill();
+                        cachedTimerBadgeRect.localScale = initialTimerBadgeScale;
+                        cachedTimerBadgeRect.anchoredPosition = initialTimerBadgePos;
+                        cachedTimerBadgeRect.localRotation = Quaternion.identity;
                     }
 
-                    if (isFastDrainAnimating)
+                    if (currentTime <= 20f)
                     {
-                        isFastDrainAnimating = false;
-                        if (cachedTimerBadgeRect != null)
+                        cachedTimerText.text = string.Format("⏱️ {0:00}:{1:00}", minutes, seconds);
+                        float pingPong = Mathf.PingPong(Time.time * 6f, 1f);
+                        cachedTimerText.color = Color.Lerp(Color.white, new Color(1.0f, 0.85f, 0.20f), pingPong);
+
+                        if (cachedTimerBadgeImage != null)
                         {
-                            cachedTimerBadgeRect.DOKill();
-                            cachedTimerBadgeRect.localScale = Vector3.one;
-                            cachedTimerBadgeRect.DOPunchScale(Vector3.one * 0.15f, 0.3f, 6, 0.8f);
+                            cachedTimerBadgeImage.color = Color.Lerp(defaultBadgeColor, new Color(0.90f, 0.30f, 0.15f, 0.98f), pingPong);
                         }
-                        if (cachedTimerTextRect != null)
+                    }
+                    else
+                    {
+                        cachedTimerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
+                        cachedTimerText.color = Color.white;
+
+                        if (cachedTimerBadgeImage != null)
                         {
-                            cachedTimerTextRect.DOKill();
-                            cachedTimerTextRect.localScale = Vector3.one;
+                            cachedTimerBadgeImage.color = defaultBadgeColor;
                         }
                     }
                 }

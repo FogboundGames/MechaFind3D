@@ -26,10 +26,6 @@ namespace MechaFind3D.PhysicsInteraction
     {
         public static CanvasUIDesignManager Instance { get; private set; }
 
-        [Header("Canvas Configuration")]
-        [SerializeField] private Vector2 referenceResolution = new Vector2(1080, 1920);
-        [SerializeField] private float uiPlaneDistance = 3.2f;
-
         [Header("Dock 3D Item Placement")]
         [Tooltip("How far in front of the camera the docked 3D items sit.")]
         [SerializeField] private float dockCameraDepth = 1.6f;
@@ -37,12 +33,6 @@ namespace MechaFind3D.PhysicsInteraction
         [Range(0.1f, 1f)]
         [SerializeField] private float dockItemFillRatio = 0.62f;
         [SerializeField] private float miniObjectDockScale = 0.08f;
-
-        [Header("Header Order Panel")]
-        [SerializeField] private Vector2 headerSize = new Vector2(950f, 220f);
-        [SerializeField] private Vector2 headerAnchoredPosition = new Vector2(0f, -60f);
-        [SerializeField] private int titleFontSize = 28;
-        [SerializeField] private int goalContainerSpacing = 24;
 
         [Header("Order Card 3D Icon")]
         [SerializeField] private float goalCard3DModelTargetSize = 100f;
@@ -63,59 +53,33 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float goalTickCardPunchDuration = 0.38f;
         [SerializeField] private float goalTickTextPunchStrength = 0.45f;
         [SerializeField] private float goalTickTextPunchDuration = 0.35f;
-        [SerializeField] private float goalRemoveBounceScale = 1.18f;
-        [SerializeField] private float goalRemoveBounceDuration = 0.14f;
-        [SerializeField] private float goalRemoveShrinkDuration = 0.28f;
 
-        [Header("Bottom Dock (square slots)")]
+        [Header("Bottom Dock Tray")]
         [Tooltip("Kaç kare slot olsun. Slotlar dolar ve hiçbir sipariş tamamlanmazsa oyun biter.")]
         [Min(1)]
         [SerializeField] private int dockCapacity = 5;
-        [SerializeField] private Vector2 dockPanelAnchoredPosition = new Vector2(0f, 90f);
-        [Tooltip("Edge length of one square slot, in reference-resolution pixels. Slots shrink below this when the row would otherwise be wider than Dock Panel Max Width.")]
-        [SerializeField] private float dockSlotSize = 165f;
-        [Tooltip("Widest the whole dock panel may get, in reference-resolution pixels. The slot size is capped so the row always fits inside it.")]
-        [SerializeField] private float dockPanelMaxWidth = 1020f;
-        [SerializeField] private float dockSlotSpacing = 18f;
-        [SerializeField] private float dockPanelPadding = 22f;
-        [SerializeField] private Color dockPanelColor = new Color(0f, 0f, 0f, 0f);
-        [SerializeField] private Color dockSlotEmptyColor = new Color(0.38f, 0.78f, 0.12f, 0.95f);
-        [SerializeField] private Color dockSlotFilledColor = new Color(0.52f, 0.94f, 0.20f, 1.0f);
         [SerializeField] private Vector3 dockItemDefaultRotation = new Vector3(0f, 15f, 0f);
 
         [Header("Item Collection Flight")]
         [SerializeField] private float collectFlightDuration = 0.38f;
 
-        [Header("Match Delivery Flight")]
-        [Tooltip("How far the matched group lifts out of the tray before it launches at the card.")]
-        [SerializeField] private float matchLiftDistance = 0.22f;
-        [SerializeField] private float matchLiftDuration = 0.16f;
-        [SerializeField] private float matchFlightDuration = 0.34f;
-        [Tooltip("Delay between consecutive items of the same group leaving the tray.")]
-        [SerializeField] private float matchStaggerDelay = 0.05f;
+        [Header("In-Place Match Animation")]
+        [Tooltip("Eşleşen 3 öğenin yerinde yukarı zıplama mesafesi.")]
+        [SerializeField] private float matchLiftDistance = 0.28f;
+        [SerializeField] private float matchLiftDuration = 0.18f;
+        [SerializeField] private float matchMergeDuration = 0.22f;
 
-        [Header("Shuffle Button")]
-        [SerializeField] private Vector2 shuffleButtonPosition = new Vector2(60f, 240f);
-        [SerializeField] private Vector2 shuffleButtonSize = new Vector2(80f, 80f);
-        [SerializeField] private float shuffleIconSize = 45f;
-
-        [Header("Undo Booster Button (Joker 1)")]
-        [SerializeField] private Vector2 undoButtonPosition = new Vector2(160f, 240f);
-        [SerializeField] private Vector2 undoButtonSize = new Vector2(80f, 80f);
-        [SerializeField] private float undoIconSize = 45f;
-
-        [Header("Mecha Reveal Booster Button (Joker 2)")]
-        [SerializeField] private Vector2 revealButtonPosition = new Vector2(160f, 340f);
-        [SerializeField] private Vector2 revealButtonSize = new Vector2(80f, 80f);
-        [SerializeField] private float revealIconSize = 45f;
+        [Header("Booster Joker Effects")]
         [SerializeField] private Color revealOutlineColor = new Color(0f, 1f, 0.85f, 1f);
         private bool revealOnCooldown = false;
 
+        [Header("Booster Kilit Nesneleri")]
+        [Tooltip("Undo butonu üzerindeki kilit nesnesi (Boş bırakılırsa buton altındaki kilit nesnesi otomatik bulunur).")]
+        [SerializeField] private GameObject undoLockObject;
+        [Tooltip("Reveal butonu üzerindeki kilit nesnesi (Boş bırakılırsa buton altındaki kilit nesnesi otomatik bulunur).")]
+        [SerializeField] private GameObject revealLockObject;
+
         [Header("Colours")]
-        [Tooltip("Solid fill colour behind the whole scene.")]
-        [SerializeField] private Color backgroundColor = new Color(0.06f, 0.09f, 0.24f);
-        [Tooltip("Colour of the UI badges, order cards and the shuffle button.")]
-        [SerializeField] private Color uiAccentColor = new Color(0f, 26f / 255f, 112f / 255f, 1f); // #001A70
         [Tooltip("Flash/text colour used everywhere something is marked complete.")]
         [SerializeField] private Color successAccentColor = new Color(0.45f, 1f, 0.55f);
         [Tooltip("Text colour for the Mecha goal badge while it's still outstanding.")]
@@ -123,17 +87,6 @@ namespace MechaFind3D.PhysicsInteraction
 
         /// <summary>Tray capacity. Filling every slot without completing an order loses the level.</summary>
         public int DockCapacity => Mathf.Max(1, dockCapacity);
-
-        /// <summary>
-        /// Slot edge length after fitting the whole row inside <see cref="dockPanelMaxWidth"/>. Without this
-        /// cap, raising the slot count simply pushed the outer slots off both sides of the screen.
-        /// </summary>
-        private float EffectiveSlotSize()
-        {
-            int n = DockCapacity;
-            float available = dockPanelMaxWidth - dockPanelPadding * 2f - (n - 1) * dockSlotSpacing;
-            return Mathf.Max(20f, Mathf.Min(dockSlotSize, available / n));
-        }
 
         private const string RetiredCardPrefix = "Retiring_";
         private const string OrderCardPrefix = "GoalCard_";
@@ -148,6 +101,7 @@ namespace MechaFind3D.PhysicsInteraction
         private readonly List<RectTransform> slotRects = new List<RectTransform>();
         private readonly List<Image> slotImages = new List<Image>();
         private readonly List<Transform> slot3DTransforms = new List<Transform>();
+        private readonly List<Color> initialSlotColors = new List<Color>();
 
         // Left to right, one entry per occupied slot. Same-type entries are always contiguous because
         // inserts land right after the last item of their own kind.
@@ -174,23 +128,7 @@ namespace MechaFind3D.PhysicsInteraction
             return null;
         }
 
-        private const string UIAccentButton = "Buttons/Button Blue";
-        // Note the Misc/ subfolder - the blue square button lives there, unlike the violet one it replaces,
-        // and loading it from "Buttons/" silently returns null and leaves the button spriteless.
         private const string UIAccentSquareButton = "Buttons/Misc/Small Square Button Blue";
-
-        /// <summary>Measured mid-tone of both blue button sprites, which is what the tint multiplies.</summary>
-        private static readonly Color UIAccentSpriteMidtone = new Color(0.18f, 0.612f, 1f);
-
-        /// <summary>
-        /// Image tint MULTIPLIES the sprite, so asking for #001A70 and assigning it straight would land
-        /// somewhere much darker. The wanted colour is divided by the sprite's own mid-tone instead.
-        /// </summary>
-        private Color UIAccentTint => new Color(
-            Mathf.Clamp01(uiAccentColor.r / UIAccentSpriteMidtone.r),
-            Mathf.Clamp01(uiAccentColor.g / UIAccentSpriteMidtone.g),
-            Mathf.Clamp01(uiAccentColor.b / UIAccentSpriteMidtone.b),
-            uiAccentColor.a);
 
         private static Sprite LoadUISprite(string resourcesPath)
         {
@@ -242,18 +180,9 @@ namespace MechaFind3D.PhysicsInteraction
             if (Instance == null) Instance = this;
         }
 
-#if UNITY_EDITOR
-        [ContextMenu("Rebuild UI (creates missing objects)")]
-        public void RebuildUIFromContextMenu()
-        {
-            EnsureCanvasStructure();
-        }
-#endif
-
         private void Start()
         {
             if (orderCardTemplate != null) orderCardTemplate.SetActive(false);
-            CleanupLegacyPackagingObjects();
             EnsureEventSystem();
             Setup3DDockSlots();
             StartConveyorDecor();
@@ -282,6 +211,7 @@ namespace MechaFind3D.PhysicsInteraction
         private void FindExistingUIReferences()
         {
             Transform canvasTr = transform.Find("MatchFactory_Canvas");
+            if (canvasTr == null) canvasTr = GameObject.Find("MatchFactory_Canvas")?.transform;
             if (canvasTr != null)
             {
                 mainCanvas = canvasTr.GetComponent<Canvas>();
@@ -310,6 +240,8 @@ namespace MechaFind3D.PhysicsInteraction
             WireButton(canvasTr, "Shuffle_Button", OnShuffleButtonClicked);
             WireButton(canvasTr, "Undo_Booster_Button", OnUndoButtonClicked);
             WireButton(canvasTr, "Reveal_Booster_Button", OnRevealButtonClicked);
+            WireButton(canvasTr, "Trash_Button", OnTrashButtonClicked);
+            UpdateBoosterLockStates();
         }
 
         private static void WireButton(Transform parent, string childName, UnityEngine.Events.UnityAction action)
@@ -337,20 +269,6 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
 #if UNITY_EDITOR
-        [MenuItem("Tools/Build Canvas UI Design (creates missing objects)")]
-        public static void BuildCanvasUIDesignTool()
-        {
-            GameObject sceneController = GameObject.Find("Physics_Scene_Controller");
-            if (sceneController == null) sceneController = new GameObject("Physics_Scene_Controller");
-
-            CanvasUIDesignManager manager = sceneController.GetComponent<CanvasUIDesignManager>();
-            if (manager == null) manager = sceneController.AddComponent<CanvasUIDesignManager>();
-
-            manager.EnsureCanvasStructure();
-            Selection.activeGameObject = sceneController;
-            Debug.Log("UI yapısı oluşturuldu. Artık sahnede elle düzenleyebilirsiniz.");
-        }
-
         [MenuItem("Tools/Preview Order Cards (Edit Mode)")]
         [ContextMenu("Preview Order Cards")]
         public static void PreviewOrderCardsInEditor()
@@ -387,6 +305,11 @@ namespace MechaFind3D.PhysicsInteraction
 
             // Find template
             Transform template = manager.topGoalContainer.Find(TemplateCardName);
+            if (template == null)
+            {
+                Debug.LogWarning("[Preview] GoalCard_Template bulunamadı — Goals_Container altında GoalCard_Template oluşturun.");
+                return;
+            }
 
             int cardIndex = 0;
             foreach (var goal in levelData.targetGoals)
@@ -396,16 +319,8 @@ namespace MechaFind3D.PhysicsInteraction
                 string itemId = goal.itemData.GetEffectiveItemId();
                 string cardName = $"{OrderCardPrefix}Preview_{cardIndex}_{itemId}";
 
-                GameObject cardObj;
-                if (template != null)
-                {
-                    cardObj = Instantiate(template.gameObject, manager.topGoalContainer, false);
-                    cardObj.SetActive(true);
-                }
-                else
-                {
-                    cardObj = manager.BuildDefaultOrderCardShell(cardName);
-                }
+                GameObject cardObj = Instantiate(template.gameObject, manager.topGoalContainer, false);
+                cardObj.SetActive(true);
                 cardObj.name = cardName;
 
                 // Place 3D icon
@@ -475,59 +390,13 @@ namespace MechaFind3D.PhysicsInteraction
 #endif
 
         // ---------------------------------------------------------------------------------------------
-        // Canvas construction — ONLY called from the MenuItem or ContextMenu, never automatically.
-        // After running once, design the UI by hand in the scene. Play mode will not touch your layout.
+        // UI is authored directly in the Unity Scene & Inspector.
+        // Code does NOT create, destroy, or force layouts onto UI elements.
         // ---------------------------------------------------------------------------------------------
 
         public void EnsureCanvasStructure()
         {
-            if (mainCamera == null) mainCamera = Camera.main;
-            if (mainCamera == null) mainCamera = Object.FindFirstObjectByType<Camera>();
-
-            EnsureEventSystem();
-            CleanupLegacyPackagingObjects();
-
-            Transform canvasTr = transform.Find("MatchFactory_Canvas");
-            GameObject canvasObj;
-            if (canvasTr != null)
-            {
-                canvasObj = canvasTr.gameObject;
-            }
-            else
-            {
-                canvasObj = new GameObject("MatchFactory_Canvas");
-                canvasObj.transform.SetParent(transform);
-
-                Canvas canvas = canvasObj.AddComponent<Canvas>();
-                canvas.renderMode = RenderMode.ScreenSpaceCamera;
-                canvas.worldCamera = mainCamera;
-                canvas.planeDistance = uiPlaneDistance;
-                canvas.sortingOrder = 100;
-
-                CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = referenceResolution;
-                scaler.matchWidthOrHeight = 0.5f;
-
-                canvasObj.AddComponent<GraphicRaycaster>();
-            }
-
-            mainCanvas = canvasObj.GetComponent<Canvas>();
-
-            EnsureBackgroundCanvas();
-            BuildHeaderOrderPanel(canvasObj.transform);
-            BuildBottomDockPanel(canvasObj.transform);
-            Setup3DDockSlots();
-            BuildShuffleButton(canvasObj.transform);
-            BuildUndoBoosterButton(canvasObj.transform);
-            BuildRevealBoosterButton(canvasObj.transform);
-            RemoveTrashButton(canvasObj.transform);
-            Canvas.ForceUpdateCanvases();
-
-            EnsureSingleOrderManager();
-            FindExistingUIReferences();
-
-            Debug.Log("UI yapisi olusturuldu/guncellendi. Artik Inspector'dan elle duzenleme yapabilirsiniz.");
+            // Deprecated no-op: Scene UI is designed manually in the Unity Inspector.
         }
 
         private static CustomerOrderManager EnsureSingleOrderManager()
@@ -548,36 +417,6 @@ namespace MechaFind3D.PhysicsInteraction
             return mgrObj.AddComponent<CustomerOrderManager>();
         }
 
-        /// <summary>
-        /// Removes what is left of the cardboard-box packaging flow that this dock replaces: the open slot
-        /// boxes and the sealed boxes that used to ride the belt. They are plain scene objects created by
-        /// the old code, so nothing else clears them.
-        ///
-        /// NOTE: Trash_Button is NOT in this list. It looks like the same kind of leftover - it was built by
-        /// the box system's BuildTrashButton - but the dock keeps its own trash button under that same name
-        /// (see BuildTrashButton below), so destroying it here would delete the dock's own button on every
-        /// rebuild.
-        /// </summary>
-        private static bool _legacyCleanupDoneThisSession;
-
-        private void CleanupLegacyPackagingObjects()
-        {
-            if (Application.isPlaying && _legacyCleanupDoneThisSession) return;
-
-            foreach (GameObject go in Object.FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            {
-                if (go == null) continue;
-                if (go.name.StartsWith("Slot3DBox") || go.name.StartsWith("Delivery_3DBox")
-                    || go.name.StartsWith("PackagingBox") || go.name.StartsWith("Cardboard Box")
-                    || go.name.StartsWith("ConveyorInitialBox") || go.name.StartsWith("Trash_Button"))
-                {
-                    SafeDestroy(go);
-                }
-            }
-
-            if (Application.isPlaying) _legacyCleanupDoneThisSession = true;
-        }
-
         /// <summary>The belt is scene decor now that nothing rides it, but it should still be moving.</summary>
         private void StartConveyorDecor()
         {
@@ -585,26 +424,6 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 if (tile != null) tile.AutoScroll = true;
             }
-        }
-
-        public void EnsureBackgroundCanvas()
-        {
-            Transform existingImageCanvas = transform.Find("MatchFactory_Background_Canvas");
-            if (existingImageCanvas != null) SafeDestroy(existingImageCanvas.gameObject);
-
-            Transform bgCamTransform = transform.Find("Background_Camera");
-            if (bgCamTransform != null) return;
-
-            GameObject bgCamObj = new GameObject("Background_Camera");
-            bgCamObj.transform.SetParent(transform, false);
-            Camera bgCam = bgCamObj.AddComponent<Camera>();
-            bgCam.depth = -10;
-            bgCam.clearFlags = CameraClearFlags.SolidColor;
-            bgCam.backgroundColor = backgroundColor;
-            bgCam.orthographic = true;
-            bgCam.orthographicSize = 5f;
-            bgCam.nearClipPlane = 0.1f;
-            bgCam.farClipPlane = 100f;
         }
 
         private void EnsureEventSystem()
@@ -620,309 +439,108 @@ namespace MechaFind3D.PhysicsInteraction
 #endif
         }
 
-        /// <summary>
-        /// A UI child, guaranteed to carry a RectTransform.
-        ///
-        /// THE TRAP THIS EXISTS FOR: `new GameObject(name)` gives the object a plain Transform, and
-        /// `AddComponent&lt;RectTransform&gt;()` does NOT convert one into the other - the add silently fails
-        /// and returns null, so the very next `rect.sizeDelta = ...` throws and takes the rest of the build
-        /// loop with it. That is exactly what left the dock with only the two slots an older build had
-        /// already saved into the scene: `DockSlot_2` was created bare, the loop threw, and slots 3+ were
-        /// never reached. Any such stray already sitting in the scene is replaced here rather than patched.
-        /// </summary>
-        private static GameObject GetOrCreateChild(Transform parent, string childName)
+        public bool IsUndoLocked()
         {
-            Transform existing = parent.Find(childName);
-            if (existing is RectTransform) return existing.gameObject;
-
-            if (existing != null)
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
             {
-                // Renamed and detached first: in Play, Destroy only lands at the end of the frame, so the
-                // stray would otherwise still answer Find() and still be laid out by the layout group.
-                existing.name = childName + "_Stale";
-                existing.SetParent(null, false);
-                SafeDestroy(existing.gameObject);
+                return !LevelManager.Instance.ActiveLevelData.unlockUndoBooster;
             }
-
-            return NewUIObject(childName, parent);
+            return true; // Araçtan açılmadıkça varsayılan olarak hep kilitli
         }
 
-        /// <summary>
-        /// Creates a UI object with its RectTransform in the constructor. Never `new GameObject(name)`
-        /// followed by `AddComponent&lt;RectTransform&gt;()` - see <see cref="GetOrCreateChild"/> for why that
-        /// pattern throws.
-        /// </summary>
-        private static GameObject NewUIObject(string name, Transform parent)
+        public bool IsRevealLocked()
         {
-            GameObject go = new GameObject(name, typeof(RectTransform));
-            go.transform.SetParent(parent, false);
-            return go;
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                return !LevelManager.Instance.ActiveLevelData.unlockRevealBooster;
+            }
+            return true; // Araçtan açılmadıkça varsayılan olarak hep kilitli
         }
 
-        private static void DestroyChildIfExists(Transform parent, string childName)
+        public GameObject GetUndoLockObject()
         {
-            Transform child = parent.Find(childName);
-            if (child != null) SafeDestroy(child.gameObject);
+            if (undoLockObject != null) return undoLockObject;
+            undoLockObject = FindLockObjectForButton("Undo_Booster_Button") ?? FindLockObjectForButton("Trash_Button");
+            return undoLockObject;
         }
 
-        private void BuildHeaderOrderPanel(Transform parent)
+        public GameObject GetRevealLockObject()
         {
-            Transform existingHeader = parent.Find("Header_Goal_Panel");
-            bool headerExisted = existingHeader != null;
-
-            GameObject headerObj = GetOrCreateChild(parent, "Header_Goal_Panel");
-            RectTransform headerRect = headerObj.GetComponent<RectTransform>();
-
-            if (!headerExisted)
-            {
-                headerRect.anchorMin = new Vector2(0.5f, 1f);
-                headerRect.anchorMax = new Vector2(0.5f, 1f);
-                headerRect.pivot = new Vector2(0.5f, 1f);
-                headerRect.anchoredPosition = headerAnchoredPosition;
-                headerRect.sizeDelta = headerSize;
-            }
-
-            DestroyChildIfExists(headerObj.transform, "Level_Badge");
-            DestroyChildIfExists(headerObj.transform, "Level_Text");
-            DestroyChildIfExists(headerObj.transform, "Mecha_Goal_Badge");
-            DestroyChildIfExists(headerObj.transform, "Mecha_Goal_Text");
-
-            Transform existingTimerBadge = headerObj.transform.Find("timer_badge");
-            bool timerExisted = existingTimerBadge != null;
-
-            GameObject timerBadgeObj = GetOrCreateChild(headerObj.transform, "timer_badge");
-            RectTransform timerBadgeRect = timerBadgeObj.GetComponent<RectTransform>();
-            if (!timerExisted)
-            {
-                timerBadgeRect.anchorMin = new Vector2(0.5f, 0.0f);
-                timerBadgeRect.anchorMax = new Vector2(0.5f, 0.0f);
-                timerBadgeRect.pivot = new Vector2(0.5f, 1.0f);
-                timerBadgeRect.anchoredPosition = new Vector2(0f, -10f);
-                timerBadgeRect.sizeDelta = new Vector2(210f, 44f);
-
-                Image timerBadge = timerBadgeObj.GetComponent<Image>() ?? timerBadgeObj.AddComponent<Image>();
-                ApplySlicedSprite(timerBadge, LoadUISprite("Buttons/Button Green"));
-                timerBadge.color = new Color(0.20f, 0.25f, 0.32f, 0.98f);
-
-                Outline timerOutline = timerBadgeObj.GetComponent<Outline>() ?? timerBadgeObj.AddComponent<Outline>();
-                timerOutline.effectColor = new Color(0.42f, 0.52f, 0.65f, 0.95f);
-                timerOutline.effectDistance = new Vector2(2f, -2f);
-
-                Shadow timerDropShadow = timerBadgeObj.GetComponent<Shadow>() ?? timerBadgeObj.AddComponent<Shadow>();
-                timerDropShadow.effectColor = new Color(0f, 0f, 0f, 0.40f);
-                timerDropShadow.effectDistance = new Vector2(0f, -3f);
-            }
-
-            Transform existingTimerText = headerObj.transform.Find("timer_text");
-            bool timerTextExisted = existingTimerText != null;
-
-            GameObject timerTextObj = GetOrCreateChild(headerObj.transform, "timer_text");
-            RectTransform timerTextRect = timerTextObj.GetComponent<RectTransform>();
-            if (!timerTextExisted)
-            {
-                timerTextRect.anchorMin = new Vector2(0.5f, 0.0f);
-                timerTextRect.anchorMax = new Vector2(0.5f, 0.0f);
-                timerTextRect.pivot = new Vector2(0.5f, 1.0f);
-                timerTextRect.anchoredPosition = new Vector2(0f, -10f);
-                timerTextRect.sizeDelta = new Vector2(210f, 44f);
-
-                Text timerTxt = timerTextObj.GetComponent<Text>() ?? timerTextObj.AddComponent<Text>();
-                timerTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                timerTxt.fontSize = 24;
-                timerTxt.fontStyle = FontStyle.Bold;
-                timerTxt.color = Color.white;
-                timerTxt.text = "⏱️ 00:00";
-                timerTxt.alignment = TextAnchor.MiddleCenter;
-
-                Shadow timerTextShadow = timerTextObj.GetComponent<Shadow>() ?? timerTextObj.AddComponent<Shadow>();
-                timerTextShadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
-                timerTextShadow.effectDistance = new Vector2(1.5f, -1.5f);
-            }
-
-            GameObject goalsContainer = GetOrCreateChild(headerObj.transform, "Goals_Container");
-            topGoalContainer = goalsContainer.GetComponent<RectTransform>();
-            topGoalContainer.anchorMin = new Vector2(0.01f, 0.0f);
-            topGoalContainer.anchorMax = new Vector2(0.99f, 1f);
-            topGoalContainer.sizeDelta = Vector2.zero;
-
-            HorizontalLayoutGroup layout = goalsContainer.GetComponent<HorizontalLayoutGroup>() ?? goalsContainer.AddComponent<HorizontalLayoutGroup>();
-            layout.padding = new RectOffset(4, 4, 4, 4);
-            layout.spacing = goalContainerSpacing;
-            layout.childAlignment = TextAnchor.MiddleCenter;
-            layout.childControlWidth = true;
-            layout.childControlHeight = true;
-            layout.childForceExpandWidth = false;
-            layout.childForceExpandHeight = false;
+            if (revealLockObject != null) return revealLockObject;
+            revealLockObject = FindLockObjectForButton("Reveal_Booster_Button");
+            return revealLockObject;
         }
 
-        /// <summary>
-        /// Five square slots in a row. The panel is sized from the slots rather than the other way round,
-        /// so the slots stay square whatever the reference resolution is.
-        /// </summary>
-        private void BuildBottomDockPanel(Transform parent)
+        private GameObject FindLockObjectForButton(string buttonName)
         {
-            // Remove 2D UI dock panel so only 3D Cube slots in 3D scene space are rendered
-            DestroyChildIfExists(parent, "Bottom_Dock_Panel");
+            Transform btnTr = null;
+            if (mainCanvas != null) btnTr = mainCanvas.transform.Find(buttonName);
+            if (btnTr == null) btnTr = transform.Find(buttonName);
+            if (btnTr == null) btnTr = GameObject.Find(buttonName)?.transform;
+            if (btnTr == null) return null;
+
+            // 1. Direct child with "lock" or "kilit" in name
+            foreach (Transform child in btnTr)
+            {
+                string lower = child.name.ToLowerInvariant();
+                if (lower.Contains("lock") || lower.Contains("kilit"))
+                {
+                    return child.gameObject;
+                }
+            }
+
+            // 2. Any child that is NOT named "Icon" or "Background" or "Image" or "Text"
+            foreach (Transform child in btnTr)
+            {
+                string lower = child.name.ToLowerInvariant();
+                if (lower != "icon" && lower != "background" && lower != "image" && lower != "text")
+                {
+                    return child.gameObject;
+                }
+            }
+
+            // 3. Check canvas children for e.g. Undo_Lock, Reveal_Lock
+            if (mainCanvas != null)
+            {
+                string prefix = buttonName.Replace("_Button", "").Replace("_Booster", "");
+                foreach (Transform child in mainCanvas.transform)
+                {
+                    string lower = child.name.ToLowerInvariant();
+                    if ((lower.Contains("lock") || lower.Contains("kilit")) && lower.Contains(prefix.ToLowerInvariant()))
+                    {
+                        return child.gameObject;
+                    }
+                }
+            }
+
+            return null;
         }
 
-        private void BuildShuffleButton(Transform parent)
+        public void UpdateBoosterLockStates()
         {
-            Transform existingBtn = parent.Find("Shuffle_Button");
-            GameObject btnObj;
-            if (existingBtn != null)
-            {
-                btnObj = existingBtn.gameObject;
-            }
-            else
-            {
-                btnObj = NewUIObject("Shuffle_Button", parent);
+            bool undoLocked = IsUndoLocked();
+            GameObject undoLock = GetUndoLockObject();
+            if (undoLock != null) undoLock.SetActive(undoLocked);
 
-                RectTransform btnRect = btnObj.GetComponent<RectTransform>();
-                btnRect.anchorMin = Vector2.zero;
-                btnRect.anchorMax = Vector2.zero;
-                btnRect.pivot = Vector2.zero;
-                btnRect.anchoredPosition = shuffleButtonPosition;
-                btnRect.sizeDelta = shuffleButtonSize;
-
-                Image btnBg = btnObj.AddComponent<Image>();
-                ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
-                btnBg.color = UIAccentTint;
-
-                GameObject btnIconObj = NewUIObject("Icon", btnObj.transform);
-
-                RectTransform btnIconRect = btnIconObj.GetComponent<RectTransform>();
-                btnIconRect.anchorMin = new Vector2(0.5f, 0.5f);
-                btnIconRect.anchorMax = new Vector2(0.5f, 0.5f);
-                btnIconRect.pivot = new Vector2(0.5f, 0.5f);
-                btnIconRect.anchoredPosition = Vector2.zero;
-                btnIconRect.sizeDelta = new Vector2(shuffleIconSize, shuffleIconSize);
-
-                Image btnIconImg = btnIconObj.AddComponent<Image>();
-                btnIconImg.sprite = IconSprite("Cycle");
-                btnIconImg.type = Image.Type.Simple;
-                btnIconImg.preserveAspect = true;
-                btnIconImg.color = Color.white;
-            }
-
-            Image bg = btnObj.GetComponent<Image>() ?? btnObj.AddComponent<Image>();
-            bg.raycastTarget = true;
-
-            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
-            btn.targetGraphic = bg;
-            btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(OnShuffleButtonClicked);
-        }
-
-        private void BuildUndoBoosterButton(Transform parent)
-        {
-            Transform existingBtn = parent.Find("Undo_Booster_Button");
-            GameObject btnObj;
-            if (existingBtn != null)
-            {
-                btnObj = existingBtn.gameObject;
-            }
-            else
-            {
-                btnObj = NewUIObject("Undo_Booster_Button", parent);
-
-                RectTransform btnRect = btnObj.GetComponent<RectTransform>();
-                btnRect.anchorMin = Vector2.zero;
-                btnRect.anchorMax = Vector2.zero;
-                btnRect.pivot = Vector2.zero;
-                btnRect.anchoredPosition = undoButtonPosition;
-                btnRect.sizeDelta = undoButtonSize;
-
-                Image btnBg = btnObj.AddComponent<Image>();
-                ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
-                btnBg.color = new Color(0.95f, 0.55f, 0.10f, 1.0f); // Vibrant amber booster button
-
-                GameObject btnIconObj = NewUIObject("Icon", btnObj.transform);
-
-                RectTransform btnIconRect = btnIconObj.GetComponent<RectTransform>();
-                btnIconRect.anchorMin = new Vector2(0.5f, 0.5f);
-                btnIconRect.anchorMax = new Vector2(0.5f, 0.5f);
-                btnIconRect.pivot = new Vector2(0.5f, 0.5f);
-                btnIconRect.anchoredPosition = Vector2.zero;
-                btnIconRect.sizeDelta = new Vector2(undoIconSize, undoIconSize);
-
-                Text iconText = btnIconObj.AddComponent<Text>();
-                iconText.text = "↩";
-                Font defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                if (defaultFont == null) defaultFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
-                if (defaultFont == null) defaultFont = Font.CreateDynamicFontFromOSFont("Arial", 60);
-
-                iconText.font = defaultFont;
-                iconText.fontSize = 54;
-                iconText.fontStyle = FontStyle.Bold;
-                iconText.alignment = TextAnchor.MiddleCenter;
-                iconText.color = Color.white;
-            }
-
-            Image bg = btnObj.GetComponent<Image>() ?? btnObj.AddComponent<Image>();
-            bg.raycastTarget = true;
-
-            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
-            btn.targetGraphic = bg;
-            btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(OnUndoButtonClicked);
-        }
-
-        private void BuildRevealBoosterButton(Transform parent)
-        {
-            Transform existingBtn = parent.Find("Reveal_Booster_Button");
-            GameObject btnObj;
-            if (existingBtn != null)
-            {
-                btnObj = existingBtn.gameObject;
-            }
-            else
-            {
-                btnObj = NewUIObject("Reveal_Booster_Button", parent);
-
-                RectTransform btnRect = btnObj.GetComponent<RectTransform>();
-                btnRect.anchorMin = Vector2.zero;
-                btnRect.anchorMax = Vector2.zero;
-                btnRect.pivot = Vector2.zero;
-                btnRect.anchoredPosition = revealButtonPosition;
-                btnRect.sizeDelta = revealButtonSize;
-
-                Image btnBg = btnObj.AddComponent<Image>();
-                ApplySlicedSprite(btnBg, LoadUISprite(UIAccentSquareButton));
-                btnBg.color = new Color(0.10f, 0.80f, 0.85f, 1.0f);
-
-                GameObject btnIconObj = NewUIObject("Icon", btnObj.transform);
-
-                RectTransform btnIconRect = btnIconObj.GetComponent<RectTransform>();
-                btnIconRect.anchorMin = new Vector2(0.5f, 0.5f);
-                btnIconRect.anchorMax = new Vector2(0.5f, 0.5f);
-                btnIconRect.pivot = new Vector2(0.5f, 0.5f);
-                btnIconRect.anchoredPosition = Vector2.zero;
-                btnIconRect.sizeDelta = new Vector2(revealIconSize, revealIconSize);
-
-                Text iconText = btnIconObj.AddComponent<Text>();
-                iconText.text = "👁";
-                Font defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-                if (defaultFont == null) defaultFont = Resources.GetBuiltinResource<Font>("Arial.ttf");
-                if (defaultFont == null) defaultFont = Font.CreateDynamicFontFromOSFont("Arial", 60);
-
-                iconText.font = defaultFont;
-                iconText.fontSize = 48;
-                iconText.fontStyle = FontStyle.Bold;
-                iconText.alignment = TextAnchor.MiddleCenter;
-                iconText.color = Color.white;
-            }
-
-            Image bg = btnObj.GetComponent<Image>() ?? btnObj.AddComponent<Image>();
-            bg.raycastTarget = true;
-
-            Button btn = btnObj.GetComponent<Button>() ?? btnObj.AddComponent<Button>();
-            btn.targetGraphic = bg;
-            btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(OnRevealButtonClicked);
+            bool revealLocked = IsRevealLocked();
+            GameObject revealLock = GetRevealLockObject();
+            if (revealLock != null) revealLock.SetActive(revealLocked);
         }
 
         public void OnRevealButtonClicked()
         {
+            if (IsRevealLocked())
+            {
+                GameObject lockObj = GetRevealLockObject();
+                if (lockObj != null)
+                {
+                    lockObj.transform.DOKill(true);
+                    lockObj.transform.DOShakeRotation(0.35f, new Vector3(0, 0, 16f), 14, 90f);
+                }
+                HapticHelper.Vibrate();
+                return;
+            }
+
             Transform btnObj = transform.Find("Reveal_Booster_Button");
             if (btnObj == null && transform.parent != null) btnObj = transform.parent.Find("Reveal_Booster_Button");
 
@@ -977,6 +595,18 @@ namespace MechaFind3D.PhysicsInteraction
         /// </summary>
         public void OnUndoButtonClicked()
         {
+            if (IsUndoLocked())
+            {
+                GameObject lockObj = GetUndoLockObject();
+                if (lockObj != null)
+                {
+                    lockObj.transform.DOKill(true);
+                    lockObj.transform.DOShakeRotation(0.35f, new Vector3(0, 0, 16f), 14, 90f);
+                }
+                HapticHelper.Vibrate();
+                return;
+            }
+
             Transform btnObj = transform.Find("Undo_Booster_Button");
             if (btnObj == null && transform.parent != null) btnObj = transform.parent.Find("Undo_Booster_Button");
 
@@ -1114,14 +744,6 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
-        private void RemoveTrashButton(Transform parent)
-        {
-            Transform existingBtn = parent.Find("Trash_Button");
-            if (existingBtn != null)
-            {
-                SafeDestroy(existingBtn.gameObject);
-            }
-        }
 
         /// <summary>
         /// Sends the LEFTMOST group in the tray - the type sitting in slot 0 - back into the pile as loose
@@ -1251,6 +873,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             ClearAllOrderCards();
             SyncOrderCards();
+            UpdateBoosterLockStates();
         }
 
         /// <summary>Adds cards for new customers and clears out cards whose order has already left.</summary>
@@ -1550,9 +1173,11 @@ namespace MechaFind3D.PhysicsInteraction
                 else
                 {
                     Debug.LogWarning("[OrderCard] GoalCard_Template bulunamadı — Goals_Container altına sahnede bir template kart ekleyin.");
-                    cardObj = BuildDefaultOrderCardShell(cardName);
+                    return null;
                 }
             }
+
+            if (cardObj == null) return null;
 
             // The spawn animation (below) drives localScale from zero to one. A card cloned from
             // a template that is mid-animation inherits that zero scale, which collapses
@@ -1584,10 +1209,14 @@ namespace MechaFind3D.PhysicsInteraction
                 if (cg == null) cg = cardObj.AddComponent<CanvasGroup>();
                 cg.alpha = 0f;
 
+                // Oyun ortasında tek kart yenileniyorsa gecikmesiz, akıcı bir şekilde belirsin
+                bool isReplacement = topGoalContainer.childCount > 1;
+                float delay = isReplacement ? 0f : spawnIndex * goalSpawnStaggerDelay;
+
                 Sequence spawnSeq = DOTween.Sequence();
-                spawnSeq.AppendInterval(spawnIndex * goalSpawnStaggerDelay);
-                spawnSeq.Append(cardObj.transform.DOScale(Vector3.one, goalSpawnScaleDuration).SetEase(Ease.OutBack, 1.6f));
-                spawnSeq.Join(cg.DOFade(1f, goalSpawnFadeDuration));
+                if (delay > 0f) spawnSeq.AppendInterval(delay);
+                spawnSeq.Append(cardObj.transform.DOScale(Vector3.one, goalSpawnScaleDuration).SetEase(Ease.OutBack, 1.25f));
+                spawnSeq.Join(cg.DOFade(1f, goalSpawnFadeDuration).SetEase(Ease.OutQuad));
                 spawnSeq.Play();
             }
             else if (!cardExisted)
@@ -1610,81 +1239,6 @@ namespace MechaFind3D.PhysicsInteraction
             return null;
         }
 
-        /// <summary>Hardcoded fallback shell, used only when the container has no existing card to clone from.</summary>
-        private GameObject BuildDefaultOrderCardShell(string cardName)
-        {
-            GameObject cardObj = NewUIObject(cardName, topGoalContainer);
-            MarkTransientIfEditMode(cardObj);
-            RectTransform cardRect = cardObj.GetComponent<RectTransform>();
-
-            Vector2 cardSize = new Vector2(140f, 155f);
-            cardRect.sizeDelta = cardSize;
-
-            LayoutElement le = cardObj.AddComponent<LayoutElement>();
-            le.preferredWidth = cardSize.x;
-            le.preferredHeight = cardSize.y;
-            le.minWidth = cardSize.x;
-            le.minHeight = cardSize.y;
-            le.flexibleWidth = 0f;
-            le.flexibleHeight = 0f;
-
-            Image cardBg = cardObj.AddComponent<Image>();
-            cardBg.color = new Color(0f, 0f, 0f, 0f);
-
-            GameObject windowObj = NewUIObject("Inner_Window", cardObj.transform);
-            RectTransform windowRect = windowObj.GetComponent<RectTransform>();
-            windowRect.anchorMin = new Vector2(0.06f, 0.28f);
-            windowRect.anchorMax = new Vector2(0.94f, 0.95f);
-            windowRect.offsetMin = Vector2.zero;
-            windowRect.offsetMax = Vector2.zero;
-
-            Image windowBg = windowObj.AddComponent<Image>();
-            windowBg.color = Color.white;
-
-            Outline windowOutline = windowObj.AddComponent<Outline>();
-            windowOutline.effectColor = new Color(0.12f, 0.12f, 0.12f, 0.90f);
-            windowOutline.effectDistance = new Vector2(1.5f, -1.5f);
-
-            GameObject iconObj = NewUIObject("Icon", windowObj.transform);
-            RectTransform iconRect = iconObj.GetComponent<RectTransform>();
-            iconRect.anchorMin = new Vector2(0.04f, 0.04f);
-            iconRect.anchorMax = new Vector2(0.96f, 0.96f);
-            iconRect.pivot = new Vector2(0.5f, 0.5f);
-            iconRect.anchoredPosition = Vector2.zero;
-            iconRect.sizeDelta = Vector2.zero;
-
-            GameObject dividerObj = NewUIObject("Divider_Line", cardObj.transform);
-            RectTransform dividerRect = dividerObj.GetComponent<RectTransform>();
-            dividerRect.anchorMin = new Vector2(0.06f, 0.26f);
-            dividerRect.anchorMax = new Vector2(0.94f, 0.27f);
-            dividerRect.sizeDelta = Vector2.zero;
-
-            Image dividerImg = dividerObj.AddComponent<Image>();
-            dividerImg.color = new Color(0.42f, 0.68f, 0.88f, 0.90f);
-
-            GameObject footerObj = NewUIObject("Footer_Bar", cardObj.transform);
-            RectTransform footerRect = footerObj.GetComponent<RectTransform>();
-            footerRect.anchorMin = new Vector2(0.05f, 0.05f);
-            footerRect.anchorMax = new Vector2(0.95f, 0.25f);
-            footerRect.offsetMin = Vector2.zero;
-            footerRect.offsetMax = Vector2.zero;
-
-            GameObject textObj = NewUIObject("Text", footerObj.transform);
-            RectTransform textRect = textObj.GetComponent<RectTransform>();
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = Vector2.zero;
-            textRect.offsetMax = Vector2.zero;
-
-            Text txt = textObj.AddComponent<Text>();
-            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            txt.fontSize = 22;
-            txt.fontStyle = FontStyle.Bold;
-            txt.alignment = TextAnchor.MiddleCenter;
-            txt.color = Color.white;
-
-            return cardObj;
-        }
 
         private void BuildOrderCardIcon(GameObject iconObj, CustomerOrder order)
         {
@@ -1915,8 +1469,17 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
         /// <summary>
-        /// Smoothly flashes the completed order card green, shrinks it away without checkmark icons,
-        /// and invokes onComplete when the exit sequence finishes so the replacement card can enter.
+        /// Animates completed order card closing gracefully and smoothly:
+        /// 1. Celebratory pop with checkmark "✓" and joyful punch.
+        /// 2. 3D model icon spin / celebratory nod.
+        /// 3. Smooth cinematic fold/close (Y-axis 3D flip fold, float up and gentle fade).
+        /// 4. Smooth preferredWidth collapse so adjacent cards glide together seamlessly without snapping.
+        /// </summary>
+        /// <summary>
+        /// Smoothly animates completed order card closing and vanishing:
+        /// 1. Count text shows "0" with a joyful punch.
+        /// 2. Soft celebratory highlight on card background.
+        /// 3. Smooth scale-down & fade out without layout distortion.
         /// </summary>
         private void RetireOrderCard(Transform card, System.Action onComplete = null)
         {
@@ -1932,43 +1495,39 @@ namespace MechaFind3D.PhysicsInteraction
             KillCardTweens(card);
             CanvasGroup cg = card.GetComponent<CanvasGroup>() ?? card.gameObject.AddComponent<CanvasGroup>();
 
-            // 1. Smoothly transition background and border to vibrant success green
+            // 1. Update count text to "0" with a gentle punch
+            Text countTxt = card.GetComponentInChildren<Text>();
+            if (countTxt != null)
+            {
+                countTxt.text = "0";
+                countTxt.transform.DOKill();
+                countTxt.transform.DOPunchScale(Vector3.one * 0.25f, 0.25f, 4, 0.6f);
+            }
+
+            // 2. Soft celebratory highlight on card background (preserves user's custom color)
             Image cardBg = card.GetComponent<Image>();
             if (cardBg != null)
             {
+                Color origCol = cardBg.color;
                 cardBg.DOKill();
-                cardBg.DOColor(new Color(0.18f, 0.80f, 0.44f, 0.98f), 0.15f).SetEase(Ease.OutQuad);
+                cardBg.DOColor(Color.Lerp(origCol, Color.white, 0.35f), 0.16f).SetEase(Ease.OutSine)
+                      .OnComplete(() =>
+                      {
+                          if (cardBg != null) cardBg.DOColor(origCol, 0.22f).SetEase(Ease.InSine);
+                      });
             }
 
-            Outline cardOutline = card.GetComponent<Outline>();
-            if (cardOutline != null)
-            {
-                cardOutline.DOKill();
-                cardOutline.DOColor(new Color(0.55f, 1.0f, 0.65f, 0.98f), 0.15f).SetEase(Ease.OutQuad);
-            }
-
-            // Remove any CheckIcon child if present (no checkmark icon)
-            Transform oldCheck = card.Find("CheckIcon");
-            if (oldCheck != null) SafeDestroy(oldCheck.gameObject);
-
-            // Update count text to "0"
-            Transform textT = card.Find("Text");
-            if (textT != null)
-            {
-                Text t = textT.GetComponent<Text>();
-                if (t != null)
-                {
-                    t.text = "0";
-                    t.color = Color.white;
-                }
-            }
-
-            // 2. Smooth sequence: Success pop -> pause -> smooth shrink & fade exit -> callback
+            // 3. Smooth, silky closing sequence (gentle swell -> smooth shrink & fade)
             Sequence removeSeq = DOTween.Sequence();
-            removeSeq.Append(card.DOPunchScale(Vector3.one * 0.16f, 0.28f, 6, 0.5f));
-            removeSeq.AppendInterval(0.10f);
-            removeSeq.Append(card.DOScale(Vector3.zero, 0.32f).SetEase(Ease.InBack, 1.5f));
-            removeSeq.Join(cg.DOFade(0f, 0.25f).SetEase(Ease.InQuad));
+
+            // Phase 1: Gentle swelling anticipation (smooth OutSine)
+            removeSeq.Append(card.DOScale(Vector3.one * 1.08f, 0.20f).SetEase(Ease.OutSine));
+            removeSeq.AppendInterval(0.08f);
+
+            // Phase 2: Silky smooth scale-down & fade (InCubic & InSine)
+            removeSeq.Append(card.DOScale(Vector3.zero, 0.30f).SetEase(Ease.InCubic));
+            removeSeq.Join(cg.DOFade(0f, 0.28f).SetEase(Ease.InSine));
+
             removeSeq.OnComplete(() =>
             {
                 if (card != null)
@@ -1978,6 +1537,7 @@ namespace MechaFind3D.PhysicsInteraction
                 }
                 onComplete?.Invoke();
             });
+
             removeSeq.Play();
         }
 
@@ -2327,26 +1887,54 @@ namespace MechaFind3D.PhysicsInteraction
             return true;
         }
 
+        /// <summary>
+        /// Matches the 3 items in-place directly on the tray without flying up to the order card:
+        /// 1. The 3 items lift slightly with a harmonious pop & spin anticipation.
+        /// 2. Smoothly converge inward towards their midpoint and shrink away.
+        /// 3. Play celebration burst VFX and haptic feedback right at the match spot.
+        /// 4. Complete the order, retiring the header card cleanly.
+        /// </summary>
         private void LaunchGroupAtOrderCard(List<DockItemData> group, CustomerOrder order)
         {
-            Transform card = FindOrderCard(order.orderId);
-            Vector3 target = card is RectTransform cardRect
-                ? GetUIWorldPosition(cardRect)
-                : GetUIWorldPosition(topGoalContainer);
+            if (group == null || group.Count == 0)
+            {
+                CompleteDeliveredOrder(order, 0);
+                return;
+            }
 
-            // The dock plane sits a fixed depth in front of a steeply pitched camera, so "up" for this
-            // flight is the camera's own up - world +Y would drive the items into the lens.
+            // 1. Calculate midpoint of the 3 matched items in the tray
+            Vector3 centerPos = Vector3.zero;
+            int validCount = 0;
+            Color blastColor = Color.white;
+
+            for (int i = 0; i < group.Count; i++)
+            {
+                if (group[i]?.targetObject != null)
+                {
+                    centerPos += group[i].targetObject.transform.position;
+                    blastColor = group[i].objectColor;
+                    validCount++;
+                }
+            }
+
+            if (validCount > 0)
+            {
+                centerPos /= validCount;
+            }
+
             Vector3 lift = mainCamera != null ? mainCamera.transform.up * matchLiftDistance : Vector3.up * matchLiftDistance;
+            Vector3 burstPoint = centerPos + lift * 0.45f;
 
-            int landed = 0;
+            int finishedCount = 0;
             int total = group.Count;
+            bool vfxTriggered = false;
 
             for (int i = 0; i < group.Count; i++)
             {
                 DockItemData data = group[i];
                 if (data?.targetObject == null)
                 {
-                    landed++;
+                    finishedCount++;
                     continue;
                 }
 
@@ -2355,26 +1943,43 @@ namespace MechaFind3D.PhysicsInteraction
                 tweeningDockObjects.Add(obj);
 
                 float startScale = obj.transform.localScale.x;
+                Vector3 startPos = obj.transform.position;
 
                 Sequence seq = DOTween.Sequence();
-                seq.AppendInterval(i * matchStaggerDelay);
-                seq.Append(obj.transform.DOMove(obj.transform.position + lift, matchLiftDuration).SetEase(Ease.OutQuad));
-                seq.Join(obj.transform.DOScale(startScale * 1.25f, matchLiftDuration).SetEase(Ease.OutQuad));
-                seq.Append(obj.transform.DOMove(target, matchFlightDuration).SetEase(Ease.InBack, 1.15f));
-                seq.Join(obj.transform.DORotate(new Vector3(0f, 720f, 0f), matchFlightDuration, RotateMode.FastBeyond360));
-                seq.Join(obj.transform.DOScale(startScale * 0.15f, matchFlightDuration).SetEase(Ease.InQuad));
+
+                // Phase 1: Harmonious slight lift & pop anticipation in place
+                seq.Append(obj.transform.DOMove(startPos + lift, matchLiftDuration).SetEase(Ease.OutSine));
+                seq.Join(obj.transform.DOScale(startScale * 1.16f, matchLiftDuration).SetEase(Ease.OutSine));
+                seq.Join(obj.transform.DORotate(new Vector3(0f, 180f, 0f), matchLiftDuration, RotateMode.LocalAxisAdd).SetEase(Ease.OutSine));
+
+                // Phase 2: Inward converge towards center point, spin & shrink away smoothly
+                seq.Append(obj.transform.DOMove(burstPoint, matchMergeDuration).SetEase(Ease.InSine));
+                seq.Join(obj.transform.DOScale(Vector3.zero, matchMergeDuration).SetEase(Ease.InSine));
+                seq.Join(obj.transform.DORotate(new Vector3(0f, 360f, 0f), matchMergeDuration, RotateMode.LocalAxisAdd).SetEase(Ease.InSine));
+
                 seq.OnComplete(() =>
                 {
                     tweeningDockObjects.Remove(obj);
-                    PunchOrderCard(card);
-                    if (VFXManager.Instance != null)
+
+                    if (!vfxTriggered)
                     {
-                        VFXManager.Instance.PlayMatchBlastVFX(target, data.objectColor);
+                        vfxTriggered = true;
+                        HapticHelper.Vibrate();
+
+                        if (VFXManager.Instance != null)
+                        {
+                            VFXManager.Instance.PlayMatchBlastVFX(burstPoint, blastColor);
+                        }
                     }
+
                     SafeDestroy(obj);
 
-                    if (++landed >= total) CompleteDeliveredOrder(order, total);
+                    if (++finishedCount >= total)
+                    {
+                        CompleteDeliveredOrder(order, total);
+                    }
                 });
+
                 seq.Play();
             }
 
@@ -2394,13 +1999,17 @@ namespace MechaFind3D.PhysicsInteraction
 
             RetireOrderCard(card, () =>
             {
-                if (CustomerOrderManager.Instance != null) CustomerOrderManager.Instance.CompleteOrder(order);
+                // Kart kapandıktan sonra temiz ve tatmin edici bir bekleme süresi bırak (0.35s)
+                DOVirtual.DelayedCall(0.35f, () =>
+                {
+                    if (CustomerOrderManager.Instance != null) CustomerOrderManager.Instance.CompleteOrder(order);
 
-                SyncOrderCards();
-                RefreshOrderCardCounts(order.itemId);
+                    SyncOrderCards();
+                    RefreshOrderCardCounts(order.itemId);
 
-                // The customer who just slid in may already be satisfied by items sitting in the tray.
-                CheckDockForCompletions();
+                    // The customer who just slid in may already be satisfied by items sitting in the tray.
+                    CheckDockForCompletions();
+                });
             });
         }
 
@@ -2614,6 +2223,7 @@ namespace MechaFind3D.PhysicsInteraction
         public void Setup3DDockSlots()
         {
             slot3DTransforms.Clear();
+            initialSlotColors.Clear();
 
             GameObject container = GameObject.Find("Dock_3D_Slots");
             if (container == null)
@@ -2645,73 +2255,58 @@ namespace MechaFind3D.PhysicsInteraction
                     slotObj.transform.localPosition = new Vector3(startX + i * spacing, 0.08f, -3.0f);
                     slotObj.transform.localRotation = Quaternion.identity;
 
-                    ApplyDefaultSlotMaterial(slotObj.GetComponent<Renderer>());
                     existingSlot = slotObj.transform;
                 }
 
                 slot3DTransforms.Add(existingSlot);
+
+                // Sahnede verdiğiniz orijinal rengi hafızaya al
+                Renderer r = existingSlot.GetComponent<Renderer>();
+                if (r != null && r.sharedMaterial != null)
+                {
+                    initialSlotColors.Add(r.sharedMaterial.color);
+                }
+                else
+                {
+                    initialSlotColors.Add(new Color(0.85f, 0.85f, 0.88f, 1f));
+                }
             }
         }
 
         private static void ApplyDefaultSlotMaterial(Renderer rend)
         {
-            if (rend == null) return;
-            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-            rend.receiveShadows = true;
-
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            Material mat = new Material(shader);
-            mat.name = "Mat_SlateGrey_3D_Slot";
-            mat.color = new Color(0.26f, 0.30f, 0.36f, 1.0f);
-            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.45f);
-            else if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.45f);
-            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0.20f);
-            rend.material = mat;
+            // Sahnede verilen slot materyalleri kesinlikle korunur.
         }
 
         private void UpdateSlotVisuals()
         {
-            for (int i = 0; i < slotImages.Count; i++)
-            {
-                if (slotImages[i] == null) continue;
-                slotImages[i].DOKill();
-                slotImages[i].color = i < dockItems.Count ? dockSlotFilledColor : dockSlotEmptyColor;
-            }
-
             for (int i = 0; i < slot3DTransforms.Count; i++)
             {
                 Transform t = slot3DTransforms[i];
                 if (t == null) continue;
 
                 Renderer rend = t.GetComponent<Renderer>();
-                if (rend != null)
+                if (rend == null) continue;
+
+                Material mat = Application.isPlaying ? rend.material : rend.sharedMaterial;
+                if (mat == null) continue;
+
+                bool isFilled = i < dockItems.Count;
+                Color baseColor = i < initialSlotColors.Count ? initialSlotColors[i] : (rend.sharedMaterial != null ? rend.sharedMaterial.color : Color.white);
+
+                // Obje geldiğinde sinematik olarak hafif gölgelendir (koyulaştır), boşalınca orijinal renge yumuşakça dön
+                Color targetColor = isFilled
+                    ? new Color(baseColor.r * 0.72f, baseColor.g * 0.72f, baseColor.b * 0.72f, baseColor.a)
+                    : baseColor;
+
+                if (Application.isPlaying)
                 {
-                    Material mat = Application.isPlaying ? rend.material : rend.sharedMaterial;
-                    if (mat == null) continue;
-                    bool isFilled = i < dockItems.Count;
-
-                    if (isFilled)
-                    {
-                        Color glowColor = new Color(0.38f, 0.82f, 0.20f, 1.0f);
-                        mat.color = glowColor;
-
-                        if (mat.HasProperty("_EmissionColor"))
-                        {
-                            mat.EnableKeyword("_EMISSION");
-                            mat.SetColor("_EmissionColor", new Color(0.20f, 0.70f, 0.12f) * 1.5f);
-                        }
-                    }
-                    else
-                    {
-                        Color slateGrey = new Color(0.26f, 0.30f, 0.36f, 1.0f);
-                        mat.color = slateGrey;
-
-                        if (mat.HasProperty("_EmissionColor"))
-                        {
-                            mat.DisableKeyword("_EMISSION");
-                            mat.SetColor("_EmissionColor", Color.black);
-                        }
-                    }
+                    mat.DOKill();
+                    mat.DOColor(targetColor, 0.28f).SetEase(Ease.OutQuad);
+                }
+                else
+                {
+                    mat.color = targetColor;
                 }
             }
         }
@@ -2792,11 +2387,6 @@ namespace MechaFind3D.PhysicsInteraction
                 if (obj3D != null)
                 {
                     obj3D.transform.DOPunchScale(targetScale * 0.18f, 0.20f, 5, 0.5f);
-                }
-
-                if (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)
-                {
-                    slot3DTransforms[slotIndex].DOPunchScale(Vector3.one * 0.08f, 0.20f, 5, 0.5f);
                 }
 
                 onComplete?.Invoke();

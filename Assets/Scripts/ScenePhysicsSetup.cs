@@ -36,6 +36,14 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
 #if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (Application.isPlaying) return;
+            UpdateBoundaryLineFromInspector();
+        }
+#endif
+
+#if UNITY_EDITOR
         [MenuItem("Tools/Setup 3D Physics Scene")]
         public static void CreateOrSetupScene()
         {
@@ -88,13 +96,13 @@ namespace MechaFind3D.PhysicsInteraction
                 camObj.tag = "MainCamera";
                 cam = camObj.AddComponent<Camera>();
                 camObj.AddComponent<AudioListener>();
-            }
 
-            cam.transform.position = new Vector3(0f, 11.2f, -7.6f);
-            cam.transform.rotation = Quaternion.Euler(58f, 0f, 0f);
-            cam.depth = 0;
-            cam.clearFlags = CameraClearFlags.Depth;
-            cam.fieldOfView = 58f;
+                cam.transform.position = new Vector3(0f, 11.2f, -7.6f);
+                cam.transform.rotation = Quaternion.Euler(58f, 0f, 0f);
+                cam.depth = 0;
+                cam.clearFlags = CameraClearFlags.Depth;
+                cam.fieldOfView = 58f;
+            }
         }
 
         private void SetupLighting()
@@ -289,35 +297,62 @@ namespace MechaFind3D.PhysicsInteraction
         private void CreateVisualBoundaryLineFrame(Transform parent)
         {
             Transform existingFrame = transform.Find("Boundary_Line_Frame");
+            LineRenderer line;
             if (existingFrame != null)
             {
-#if UNITY_EDITOR
-                DestroyImmediate(existingFrame.gameObject);
-#else
-                Destroy(existingFrame.gameObject);
-#endif
+                line = existingFrame.GetComponent<LineRenderer>();
+                if (line == null) line = existingFrame.gameObject.AddComponent<LineRenderer>();
+            }
+            else
+            {
+                GameObject lineObj = new GameObject("Boundary_Line_Frame");
+                lineObj.transform.SetParent(transform);
+                lineObj.transform.position = Vector3.zero;
+
+                line = lineObj.AddComponent<LineRenderer>();
+                line.enabled = true;
+                line.useWorldSpace = true;
+                line.loop = true;
+                line.positionCount = 4;
+                line.numCornerVertices = 4;
+                line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                line.receiveShadows = false;
+
+                Shader lineShader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+                Material lineMat = new Material(lineShader);
+                if (lineMat.HasProperty("_BaseColor")) lineMat.SetColor("_BaseColor", boundaryLineColor);
+                if (lineMat.HasProperty("_Color")) lineMat.SetColor("_Color", boundaryLineColor);
+                line.sharedMaterial = lineMat;
             }
 
-            GameObject lineObj = new GameObject("Boundary_Line_Frame");
-            lineObj.transform.SetParent(transform);
-            lineObj.transform.position = Vector3.zero;
-
-            LineRenderer line = lineObj.AddComponent<LineRenderer>();
-            line.enabled = true;
-            line.useWorldSpace = true;
-            line.loop = true;
-            line.positionCount = 4;
-            line.numCornerVertices = 4;
             line.startWidth = boundaryLineWidth;
             line.endWidth = boundaryLineWidth;
-            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            line.receiveShadows = false;
 
-            Shader lineShader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
-            Material lineMat = new Material(lineShader);
-            if (lineMat.HasProperty("_BaseColor")) lineMat.SetColor("_BaseColor", boundaryLineColor);
-            if (lineMat.HasProperty("_Color")) lineMat.SetColor("_Color", boundaryLineColor);
-            line.sharedMaterial = lineMat;
+            float halfX = boundaryAreaSize.x * 0.5f;
+            float halfZ = boundaryAreaSize.y * 0.5f;
+            float yPos = 0.02f;
+
+            line.SetPosition(0, new Vector3(-halfX, yPos, -halfZ));
+            line.SetPosition(1, new Vector3(halfX, yPos, -halfZ));
+            line.SetPosition(2, new Vector3(halfX, yPos, halfZ));
+            line.SetPosition(3, new Vector3(-halfX, yPos, halfZ));
+        }
+
+        public void UpdateBoundaryLineFromInspector()
+        {
+            Transform existingFrame = transform.Find("Boundary_Line_Frame");
+            if (existingFrame == null) return;
+            LineRenderer line = existingFrame.GetComponent<LineRenderer>();
+            if (line == null) return;
+
+            line.startWidth = boundaryLineWidth;
+            line.endWidth = boundaryLineWidth;
+
+            if (line.sharedMaterial != null)
+            {
+                if (line.sharedMaterial.HasProperty("_BaseColor")) line.sharedMaterial.SetColor("_BaseColor", boundaryLineColor);
+                if (line.sharedMaterial.HasProperty("_Color")) line.sharedMaterial.SetColor("_Color", boundaryLineColor);
+            }
 
             float halfX = boundaryAreaSize.x * 0.5f;
             float halfZ = boundaryAreaSize.y * 0.5f;
@@ -351,7 +386,6 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 canvasUIDesign = gameObject.AddComponent<CanvasUIDesignManager>();
             }
-            canvasUIDesign.EnsureCanvasStructure();
 
             PhysicsObjectSpawner spawner = GetComponent<PhysicsObjectSpawner>();
             if (spawner == null)

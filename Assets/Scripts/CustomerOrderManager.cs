@@ -50,9 +50,6 @@ namespace MechaFind3D.PhysicsInteraction
         [Min(1)]
         [SerializeField] private int activeOrderCount = 4;
 
-        [Tooltip("Bir siparişin isteyebileceği en az / en çok adet. Seviye hedefi bu aralıkta parçalara bölünür.")]
-        [SerializeField] private Vector2Int orderSizeRange = new Vector2Int(2, 3);
-
         // Fixed length == activeOrderCount. A null entry means the queue ran dry and that card slot stays
         // empty rather than collapsing the row, so the remaining cards don't jump sideways mid-level.
         private readonly List<CustomerOrder> activeOrders = new List<CustomerOrder>();

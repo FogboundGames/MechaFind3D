@@ -103,6 +103,7 @@ namespace MechaFind3D.PhysicsInteraction
                 Material matInstance = new Material(sharedOutlineMaterial);
                 if (matInstance.HasProperty("_OutlineColor")) matInstance.SetColor("_OutlineColor", color);
                 if (matInstance.HasProperty("_OutlineWidth")) matInstance.SetFloat("_OutlineWidth", outlineWidth);
+                if (matInstance.HasProperty("_GlowIntensity")) matInstance.SetFloat("_GlowIntensity", glowIntensity);
                 if (matInstance.HasProperty("_BaseColor")) matInstance.SetColor("_BaseColor", color);
                 if (matInstance.HasProperty("_Color")) matInstance.SetColor("_Color", color);
 

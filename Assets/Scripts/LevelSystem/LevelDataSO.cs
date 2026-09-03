@@ -136,6 +136,13 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Initial text countdown number required on each black object to unlock it.")]
         public int blackObjectUnlockCount = 3;
 
+        [Header("Booster Kilitleri (Bu Seviye İçin)")]
+        [Tooltip("Bu seviyede Undo (Geri Al / Çöp) butonu açık mı? Kapalıysa kilitli kalır.")]
+        public bool unlockUndoBooster = false;
+
+        [Tooltip("Bu seviyede Reveal (Hedef / İpucu) butonu açık mı? Kapalıysa kilitli kalır.")]
+        public bool unlockRevealBooster = false;
+
         [Header("Mecha Ragdoll & Disguise Config")]
         [Tooltip("Should a camouflaged mecha character drop into this level's pile?")]
         public bool enableCamouflageMecha = true;
