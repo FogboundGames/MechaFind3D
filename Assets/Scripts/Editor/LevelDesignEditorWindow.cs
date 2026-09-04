@@ -287,13 +287,33 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             EditorGUILayout.Space(10);
             EditorGUILayout.BeginVertical(GUI.skin.box);
-            GUILayout.Label("🧰 Booster Buton Kilitleri (Bu Seviye İçin)", EditorStyles.boldLabel);
+            GUILayout.Label("🪙 Booster & Coin Sistemi", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "Bu seviyede hangi booster butonlarının açık olacağını seçebilirsiniz. " +
-                "Kapalı olan booster'lar sahnede kilitli kalır ve basılamaz.",
+                "Booster butonları (Trash / Undo ve Reveal) artık seviye kilitleri yerine Coin ile çalışmaktadır.\n" +
+                $"Mevcut Oyuncu Coini: {CoinManager.Coins}",
                 MessageType.Info);
-            EditorGUILayout.PropertyField(so.FindProperty("unlockUndoBooster"), new GUIContent("🔓 Undo (Geri Al / Çöp) Açık Mı?"));
-            EditorGUILayout.PropertyField(so.FindProperty("unlockRevealBooster"), new GUIContent("🔓 Reveal (Hedef / İpucu) Açık Mı?"));
+
+            EditorGUILayout.BeginHorizontal();
+            if (GUILayout.Button("➕ 10 Coin Ekle"))
+            {
+                CoinManager.AddCoins(10);
+                var uiMgr = Object.FindFirstObjectByType<CanvasUIDesignManager>();
+                if (uiMgr != null) uiMgr.RefreshCoinUI();
+            }
+            if (GUILayout.Button("0️⃣ Coin Sıfırla"))
+            {
+                CoinManager.Coins = 0;
+                var uiMgr = Object.FindFirstObjectByType<CanvasUIDesignManager>();
+                if (uiMgr != null) uiMgr.RefreshCoinUI();
+            }
+            if (GUILayout.Button("🔄 10 Yap"))
+            {
+                CoinManager.ResetCoins(10);
+                var uiMgr = Object.FindFirstObjectByType<CanvasUIDesignManager>();
+                if (uiMgr != null) uiMgr.RefreshCoinUI();
+            }
+            EditorGUILayout.EndHorizontal();
+
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(10);

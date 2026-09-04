@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using DG.Tweening;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -71,12 +72,43 @@ namespace MechaFind3D.PhysicsInteraction
 
         [Header("Booster Joker Effects")]
         [SerializeField] private Color revealOutlineColor = new Color(0f, 1f, 0.85f, 1f);
-        private bool revealOnCooldown = false;
+        private int revealUseCountInLevel = 0;
 
-        [Header("Booster Kilit Nesneleri")]
-        [Tooltip("Undo butonu üzerindeki kilit nesnesi (Boş bırakılırsa buton altındaki kilit nesnesi otomatik bulunur).")]
+        [Header("Booster Cooldown Ayarları")]
+        [Tooltip("Booster bekleme süresi (saniye).")]
+        [SerializeField] private float boosterCooldownDuration = 4.0f;
+        [Tooltip("Bir booster kullanıldığında iki booster da aynı anda mı cooldown'a girsin?")]
+        [SerializeField] private bool sharedBoosterCooldown = false;
+
+        private bool isBoosterOnCooldown = false;
+        private bool isUndoOnCooldown = false;
+        private bool isRevealOnCooldown = false;
+        private Coroutine activeBoosterCooldownCoroutine;
+        private Coroutine activeUndoCooldownCoroutine;
+        private Coroutine activeRevealCooldownCoroutine;
+
+        [Header("Booster Coin Ayarları")]
+        [Tooltip("Trash / Çöp booster'ının coin maliyeti.")]
+        [SerializeField] private int trashSkillCoinCost = 1;
+        [Tooltip("Undo / Geri Alma booster'ının coin maliyeti.")]
+        [SerializeField] private int undoSkillCoinCost = 1;
+        [Tooltip("Reveal / İpucu booster'ının coin maliyeti.")]
+        [SerializeField] private int revealSkillCoinCost = 1;
+        [Tooltip("Shuffle / Karıştırma booster'ının coin maliyeti (0 = ücretsiz).")]
+        [SerializeField] private int shuffleSkillCoinCost = 0;
+
+        [Header("Üst Panel Coin Göstergesi (Opsiyonel)")]
+        [Tooltip("Sahnede üst panelde genel coin miktarını gösteren Text (boş bırakılırsa otomatik aranır).")]
+        [SerializeField] private Text coinBalanceText;
+        [Tooltip("Sahnede üst panelde genel coin miktarını gösteren TextMeshProUGUI (boş bırakılırsa otomatik aranır).")]
+        [SerializeField] private TMP_Text coinBalanceTMP;
+
+        [Header("Parmak / İpucu Göstergesi")]
+        [Tooltip("Hedef (Reveal) booster'ı kullanıldığında mecha'nın konumunu gösteren parmak ikonu.")]
+        [SerializeField] private Sprite fingerPointerSprite;
+
+        [Header("Booster Kilit Nesneleri (Eski sistem - otomatik gizlenir)")]
         [SerializeField] private GameObject undoLockObject;
-        [Tooltip("Reveal butonu üzerindeki kilit nesnesi (Boş bırakılırsa buton altındaki kilit nesnesi otomatik bulunur).")]
         [SerializeField] private GameObject revealLockObject;
 
         [Header("Colours")]
@@ -175,9 +207,35 @@ namespace MechaFind3D.PhysicsInteraction
             WireButtons();
         }
 
+        private int lastKnownCoinBalance = -1;
+        private Transform totalCoinDisplayTransform;
+        private Image totalCoinImage;
+
         private void OnEnable()
         {
             if (Instance == null) Instance = this;
+            lastKnownCoinBalance = CoinManager.Coins;
+            CoinManager.OnCoinsChanged += OnCoinBalanceChanged;
+            RefreshCoinUI();
+        }
+
+        private void OnDisable()
+        {
+            CoinManager.OnCoinsChanged -= OnCoinBalanceChanged;
+            ResetAllBoosterCooldowns();
+        }
+
+        private void OnCoinBalanceChanged(int newBalance)
+        {
+            bool gainedCoins = lastKnownCoinBalance >= 0 && newBalance > lastKnownCoinBalance;
+            lastKnownCoinBalance = newBalance;
+
+            RefreshCoinUI();
+
+            if (gainedCoins)
+            {
+                PlayTotalCoinGainAnimation();
+            }
         }
 
         private void Start()
@@ -187,6 +245,7 @@ namespace MechaFind3D.PhysicsInteraction
             Setup3DDockSlots();
             StartConveyorDecor();
             EnsureSingleOrderManager();
+            ResetAllBoosterCooldowns();
             StartCoroutine(RefreshAfterLayout());
         }
 
@@ -269,6 +328,30 @@ namespace MechaFind3D.PhysicsInteraction
         }
 
 #if UNITY_EDITOR
+        [ContextMenu("Coins/Add 10 Coins")]
+        public void DebugAdd10Coins()
+        {
+            CoinManager.AddCoins(10);
+            Debug.Log($"💰 10 coin eklendi! Toplam bakiye: {CoinManager.Coins}");
+            RefreshCoinUI();
+        }
+
+        [ContextMenu("Coins/Set 0 Coins (Yetersiz Bakiye Testi)")]
+        public void DebugSet0Coins()
+        {
+            CoinManager.Coins = 0;
+            Debug.Log($"💰 Coin 0 yapıldı! Toplam bakiye: {CoinManager.Coins}");
+            RefreshCoinUI();
+        }
+
+        [ContextMenu("Coins/Reset to Default (10 Coins)")]
+        public void DebugResetCoins()
+        {
+            CoinManager.ResetCoins(10);
+            Debug.Log($"💰 Coin varsayılana sıfırlandı (10). Toplam bakiye: {CoinManager.Coins}");
+            RefreshCoinUI();
+        }
+
         [MenuItem("Tools/Preview Order Cards (Edit Mode)")]
         [ContextMenu("Preview Order Cards")]
         public static void PreviewOrderCardsInEditor()
@@ -441,20 +524,14 @@ namespace MechaFind3D.PhysicsInteraction
 
         public bool IsUndoLocked()
         {
-            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
-            {
-                return !LevelManager.Instance.ActiveLevelData.unlockUndoBooster;
-            }
-            return true; // Araçtan açılmadıkça varsayılan olarak hep kilitli
+            // Coin sistemi devrede olduğundan kilitler kaldırıldı
+            return false;
         }
 
         public bool IsRevealLocked()
         {
-            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
-            {
-                return !LevelManager.Instance.ActiveLevelData.unlockRevealBooster;
-            }
-            return true; // Araçtan açılmadıkça varsayılan olarak hep kilitli
+            // Coin sistemi devrede olduğundan kilitler kaldırıldı
+            return false;
         }
 
         public GameObject GetUndoLockObject()
@@ -473,13 +550,11 @@ namespace MechaFind3D.PhysicsInteraction
 
         private GameObject FindLockObjectForButton(string buttonName)
         {
-            Transform btnTr = null;
-            if (mainCanvas != null) btnTr = mainCanvas.transform.Find(buttonName);
-            if (btnTr == null) btnTr = transform.Find(buttonName);
-            if (btnTr == null) btnTr = GameObject.Find(buttonName)?.transform;
+            Transform btnTr = FindButtonTransform(buttonName);
             if (btnTr == null) return null;
 
-            // 1. Direct child with "lock" or "kilit" in name
+            // Yalnızca isminde 'lock' veya 'kilit' geçen eski objeleri kilit say
+            // Coin ve Text kesinlikle kilit sayılmamalı
             foreach (Transform child in btnTr)
             {
                 string lower = child.name.ToLowerInvariant();
@@ -489,26 +564,732 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // 2. Any child that is NOT named "Icon" or "Background" or "Image" or "Text"
-            foreach (Transform child in btnTr)
+            return null;
+        }
+
+        public void UpdateBoosterLockStates()
+        {
+            // Eski kilit objeleri varsa gizle (kilit sisteminden coine geçiş yapıldı)
+            GameObject undoLock = GetUndoLockObject();
+            if (undoLock != null) undoLock.SetActive(false);
+
+            GameObject revealLock = GetRevealLockObject();
+            if (revealLock != null) revealLock.SetActive(false);
+
+            RefreshCoinUI();
+        }
+
+        public Transform FindButtonTransform(string buttonName)
+        {
+            if (mainCanvas != null)
             {
-                string lower = child.name.ToLowerInvariant();
-                if (lower != "icon" && lower != "background" && lower != "image" && lower != "text")
+                Transform t = mainCanvas.transform.Find(buttonName);
+                if (t != null) return t;
+            }
+            Transform selfT = transform.Find(buttonName);
+            if (selfT != null) return selfT;
+            if (transform.parent != null)
+            {
+                Transform pT = transform.parent.Find(buttonName);
+                if (pT != null) return pT;
+            }
+            return GameObject.Find(buttonName)?.transform;
+        }
+
+        public void FindCoinAndCostElements(Transform root, out Image coinImg, out Component costTextComp)
+        {
+            coinImg = null;
+            costTextComp = null;
+            if (root == null) return;
+
+            // 1. Coin görselini bul
+            Image[] allImages = root.GetComponentsInChildren<Image>(true);
+            foreach (Image img in allImages)
+            {
+                if (img.transform == root) continue;
+                string n = img.name.ToLowerInvariant();
+                string spriteName = (img.sprite != null) ? img.sprite.name.ToLowerInvariant() : "";
+
+                if (n.Contains("coin") || spriteName.Contains("coin"))
                 {
-                    return child.gameObject;
+                    coinImg = img;
+                    break;
                 }
             }
 
-            // 3. Check canvas children for e.g. Undo_Lock, Reveal_Lock
+            // 2. Fiyat metnini bul (TMP veya standart UI Text) - ana buton ikonunu hariç tut
+            TMP_Text[] allTmps = root.GetComponentsInChildren<TMP_Text>(true);
+            foreach (TMP_Text tmp in allTmps)
+            {
+                if (tmp.name.Equals("Icon", System.StringComparison.OrdinalIgnoreCase)) continue;
+                costTextComp = tmp;
+                break;
+            }
+
+            if (costTextComp == null)
+            {
+                Text[] allTexts = root.GetComponentsInChildren<Text>(true);
+                foreach (Text txt in allTexts)
+                {
+                    if (txt.name.Equals("Icon", System.StringComparison.OrdinalIgnoreCase)) continue;
+                    costTextComp = txt;
+                    break;
+                }
+            }
+        }
+
+        public void SetupBoosterButtonCoinUI(string buttonName, int cost)
+        {
+            Transform btnTr = FindButtonTransform(buttonName);
+            if (btnTr == null) return;
+
+            // Varsa eski kilit objesini gizle
+            foreach (Transform child in btnTr)
+            {
+                string lower = child.name.ToLowerInvariant();
+                if (lower.Contains("lock") || lower.Contains("kilit"))
+                {
+                    child.gameObject.SetActive(false);
+                }
+            }
+
+            FindCoinAndCostElements(btnTr, out Image coinImg, out Component costTextComp);
+
+            if (costTextComp != null)
+            {
+                string costStr = cost > 0 ? cost.ToString() : "";
+                if (costTextComp is Text uiTxt)
+                {
+                    uiTxt.text = costStr;
+                }
+                else if (costTextComp is TMP_Text tmpTxt)
+                {
+                    tmpTxt.text = costStr;
+                }
+            }
+
+            if (coinImg != null)
+            {
+                coinImg.gameObject.SetActive(cost > 0);
+            }
+        }
+
+        public void RefreshCoinUI()
+        {
+            int currentCoins = CoinManager.Coins;
+
+            // Genel / Total coin göstergesini bul ve güncelle
+            if (coinBalanceText == null && coinBalanceTMP == null)
+            {
+                FindTotalCoinDisplay();
+            }
+
+            if (coinBalanceText != null) coinBalanceText.text = currentCoins.ToString();
+            if (coinBalanceTMP != null) coinBalanceTMP.text = currentCoins.ToString();
+
+            // Butonların coin & text elemanlarını ayarla
+            SetupBoosterButtonCoinUI("Undo_Booster_Button", undoSkillCoinCost);
+            SetupBoosterButtonCoinUI("Trash_Button", trashSkillCoinCost);
+            SetupBoosterButtonCoinUI("Reveal_Booster_Button", revealSkillCoinCost);
+            if (shuffleSkillCoinCost > 0) SetupBoosterButtonCoinUI("Shuffle_Button", shuffleSkillCoinCost);
+        }
+
+        public void PlayTotalCoinGainAnimation()
+        {
+            Transform targetTr = totalCoinDisplayTransform != null ? totalCoinDisplayTransform : (totalCoinImage != null ? totalCoinImage.transform : null);
+            if (targetTr != null)
+            {
+                targetTr.DOKill(true);
+                targetTr.localScale = Vector3.one;
+                targetTr.DOPunchScale(Vector3.one * 0.35f, 0.4f, 6, 0.5f);
+            }
+        }
+
+        private void FindTotalCoinDisplay()
+        {
+            if (mainCanvas == null)
+            {
+                Transform canvasTr = transform.Find("MatchFactory_Canvas");
+                if (canvasTr == null) canvasTr = GameObject.Find("MatchFactory_Canvas")?.transform;
+                if (canvasTr != null) mainCanvas = canvasTr.GetComponent<Canvas>();
+            }
+            if (mainCanvas == null) return;
+
+            Transform[] allTransforms = mainCanvas.GetComponentsInChildren<Transform>(true);
+
+            // 1. Öncelik: İsminde 'total' ve 'coin' geçen nesneler
+            foreach (Transform t in allTransforms)
+            {
+                if (IsBoosterOrCardChild(t)) continue;
+                string lower = t.name.ToLowerInvariant();
+                if (lower.Contains("total") && lower.Contains("coin"))
+                {
+                    BindTotalCoinElements(t);
+                    if (coinBalanceTMP != null || coinBalanceText != null) return;
+                }
+            }
+
+            // 2. Öncelik: 'total', 'coincount', 'coin_text', 'cointext', 'coinbalance', 'coincounter', 'coins'
+            string[] preferredKeywords = { "total", "coincount", "coin_text", "cointext", "coinbalance", "coincounter", "coins" };
+            foreach (string kw in preferredKeywords)
+            {
+                foreach (Transform t in allTransforms)
+                {
+                    if (IsBoosterOrCardChild(t)) continue;
+                    string lower = t.name.ToLowerInvariant();
+                    if (lower.Contains(kw))
+                    {
+                        BindTotalCoinElements(t);
+                        if (coinBalanceTMP != null || coinBalanceText != null) return;
+                    }
+                }
+            }
+
+            // 3. Öncelik: Butonlar dışında kalan 'coin' isimli herhangi bir görsel / obje
+            foreach (Transform t in allTransforms)
+            {
+                if (IsBoosterOrCardChild(t)) continue;
+                string lower = t.name.ToLowerInvariant();
+                if (lower.Equals("coin") || lower.StartsWith("coin ") || lower.StartsWith("coin_"))
+                {
+                    BindTotalCoinElements(t);
+                    if (coinBalanceTMP != null || coinBalanceText != null) return;
+                }
+            }
+        }
+
+        private bool IsBoosterOrCardChild(Transform t)
+        {
+            if (t == null) return true;
+            Transform curr = t;
+            while (curr != null && curr != mainCanvas.transform)
+            {
+                string n = curr.name.ToLowerInvariant();
+                if (n.Contains("shuffle") || n.Contains("undo") || n.Contains("trash") || n.Contains("reveal") ||
+                    n.Contains("booster") || n.Contains("winpanel") || n.Contains("losepanel") ||
+                    n.Contains("goalcard") || n.Contains("goals_container"))
+                {
+                    return true;
+                }
+                curr = curr.parent;
+            }
+            return false;
+        }
+
+        private void BindTotalCoinElements(Transform root)
+        {
+            if (root == null) return;
+            totalCoinDisplayTransform = root;
+
+            coinBalanceTMP = root.GetComponent<TMP_Text>() ?? root.GetComponentInChildren<TMP_Text>(true);
+            if (coinBalanceTMP == null)
+            {
+                coinBalanceText = root.GetComponent<Text>() ?? root.GetComponentInChildren<Text>(true);
+            }
+
+            totalCoinImage = root.GetComponent<Image>() ?? root.GetComponentInChildren<Image>(true);
+
+            // Eğer root üzerinde metin yoksa, parent veya kardeşinde ara
+            if (coinBalanceTMP == null && coinBalanceText == null && root.parent != null && root.parent != mainCanvas.transform)
+            {
+                coinBalanceTMP = root.parent.GetComponentInChildren<TMP_Text>(true);
+                if (coinBalanceTMP == null)
+                {
+                    coinBalanceText = root.parent.GetComponentInChildren<Text>(true);
+                }
+            }
+        }
+
+        private void PlayCoinSpendAnimation(Transform buttonTr)
+        {
+            if (buttonTr == null) return;
+            // Boyut ve konum tamamen sabit kalır, dokunulmaz
+            HapticHelper.Vibrate();
+        }
+
+        private void PlayInsufficientCoinsFeedback(Transform buttonTr, Component costTextComp = null)
+        {
+            // Boyut veya konum asla değişmez (sallantı veya scale yapılmaz)
+            FindCoinAndCostElements(buttonTr, out Image coinImg, out Component textComp);
+            Component targetText = costTextComp ?? textComp;
+            if (targetText != null)
+            {
+                if (targetText is Text uiTxt)
+                {
+                    Color origColor = uiTxt.color;
+                    uiTxt.DOKill();
+                    uiTxt.color = new Color(1f, 0.3f, 0.3f, 1f);
+                    uiTxt.DOColor(origColor, 0.4f).SetDelay(0.15f);
+                }
+                else if (targetText is TMP_Text tmpTxt)
+                {
+                    Color origColor = tmpTxt.color;
+                    tmpTxt.DOKill();
+                    tmpTxt.color = new Color(1f, 0.3f, 0.3f, 1f);
+                    tmpTxt.DOColor(origColor, 0.4f).SetDelay(0.15f);
+                }
+            }
+
+            HapticHelper.Vibrate();
+        }
+
+        private Sprite GetFingerPointerSprite()
+        {
+            if (fingerPointerSprite != null) return fingerPointerSprite;
+
+#if UNITY_EDITOR
+            fingerPointerSprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Violet Theme Ui/Colored Icons/Touch.png");
+            if (fingerPointerSprite != null) return fingerPointerSprite;
+#endif
+
+            // Fallback disk yükleyici
+            string assetPath = System.IO.Path.Combine(Application.dataPath, "Violet Theme Ui/Colored Icons/Touch.png");
+            if (System.IO.File.Exists(assetPath))
+            {
+                byte[] fileData = System.IO.File.ReadAllBytes(assetPath);
+                Texture2D tex = new Texture2D(2, 2);
+                if (tex.LoadImage(fileData))
+                {
+                    fingerPointerSprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+                    return fingerPointerSprite;
+                }
+            }
+
+            return null;
+        }
+
+        private Coroutine activeFingerCoroutine;
+        private GameObject currentFingerObj;
+
+        public void ShowFingerPointerAtMecha(Transform mechaTarget)
+        {
+            if (mechaTarget == null) return;
+            if (mainCanvas == null)
+            {
+                Transform canvasTr = transform.Find("MatchFactory_Canvas") ?? GameObject.Find("MatchFactory_Canvas")?.transform;
+                if (canvasTr != null) mainCanvas = canvasTr.GetComponent<Canvas>();
+            }
+            if (mainCanvas == null) return;
+
+            if (currentFingerObj != null)
+            {
+                Destroy(currentFingerObj);
+            }
+            if (activeFingerCoroutine != null)
+            {
+                StopCoroutine(activeFingerCoroutine);
+            }
+
+            activeFingerCoroutine = StartCoroutine(FingerPointerRoutine(mechaTarget));
+        }
+
+        private System.Collections.IEnumerator FingerPointerRoutine(Transform mechaTarget)
+        {
+            Sprite fingerSprite = GetFingerPointerSprite();
+            if (fingerSprite == null) yield break;
+
+            GameObject pointerObj = new GameObject("Mecha_Finger_Hint");
+            currentFingerObj = pointerObj;
+            pointerObj.transform.SetParent(mainCanvas.transform, false);
+
+            RectTransform rect = pointerObj.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.sizeDelta = new Vector2(95f, 95f);
+            // Parmak mecha'yı gösterecek şekilde aşağı açılı yönlendirilir
+            rect.localRotation = Quaternion.Euler(0f, 0f, 160f);
+
+            Image img = pointerObj.AddComponent<Image>();
+            img.sprite = fingerSprite;
+            img.raycastTarget = false;
+            img.color = new Color(1f, 1f, 1f, 0f);
+            img.DOFade(1f, 0.22f);
+
+            Camera cam = mainCamera != null ? mainCamera : Camera.main;
+            RectTransform canvasRect = mainCanvas.GetComponent<RectTransform>();
+
+            float timer = 0f;
+            float hintDuration = 1.6f; // Sadece ilk başta kısa ve net gösterim
+            float bouncePhase = 0f;
+
+            MechaRunnerBehavior runner = (mechaTarget != null)
+                ? (mechaTarget.GetComponent<MechaRunnerBehavior>() ?? mechaTarget.GetComponentInParent<MechaRunnerBehavior>())
+                : null;
+
+            Vector3 initialWorldPos = (mechaTarget != null) ? mechaTarget.position : Vector3.zero;
+
+            if (VFXManager.Instance != null && mechaTarget != null)
+            {
+                VFXManager.Instance.PlayTouchRippleVFX(mechaTarget.position);
+            }
+
+            while (timer < hintDuration && mechaTarget != null && pointerObj != null)
+            {
+                // Mecha koşmaya başladığında parmak hemen yok olsun, koşarken takip etmesin
+                if (runner != null && runner.currentState == MechaRunnerBehavior.MechaState.RunningInArea)
+                {
+                    break;
+                }
+                if (runner != null && runner.currentState == MechaRunnerBehavior.MechaState.Vanishing)
+                {
+                    break;
+                }
+
+                if (cam == null) cam = Camera.main;
+                if (cam != null && canvasRect != null)
+                {
+                    Vector3 worldTarget = (runner != null && runner.currentState == MechaRunnerBehavior.MechaState.CamouflagedOnHost)
+                        ? mechaTarget.position + Vector3.up * 0.40f
+                        : initialWorldPos + Vector3.up * 0.40f;
+
+                    Vector3 screenPos = cam.WorldToScreenPoint(worldTarget);
+
+                    if (screenPos.z > 0)
+                    {
+                        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                            canvasRect,
+                            screenPos,
+                            mainCanvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : cam,
+                            out Vector2 localPt);
+
+                        // Tıklama / gösterme zıplama hareketi
+                        bouncePhase += Time.deltaTime * 6.5f;
+                        float bounceOffset = Mathf.Abs(Mathf.Sin(bouncePhase)) * 22f;
+
+                        // İşaret yönünde (parmak ucu mecha'ya doğru) hareket
+                        rect.anchoredPosition = localPt + new Vector2(18f, 35f) - new Vector2(0.35f, 0.93f) * bounceOffset;
+                    }
+                }
+
+                timer += Time.deltaTime;
+                yield return null;
+            }
+
+            // İlk gösterim bittiğinde veya mecha koşmaya başladığında pürüzsüzce yok olur
+            if (pointerObj != null)
+            {
+                img.DOKill();
+                img.DOFade(0f, 0.20f).OnComplete(() =>
+                {
+                    if (pointerObj != null) Destroy(pointerObj);
+                    if (currentFingerObj == pointerObj) currentFingerObj = null;
+                });
+            }
+        }
+
+        public void OnRevealButtonClicked()
+        {
+            Transform btnTr = FindButtonTransform("Reveal_Booster_Button");
+
+            if (IsBoosterOnCooldown("Reveal_Booster_Button") || gameOverTriggered)
+            {
+                HapticHelper.Vibrate();
+                return;
+            }
+
+            // Coin kontrolü: coin yoksa hafifçe salla ve çık
+            if (!CoinManager.HasCoins(revealSkillCoinCost))
+            {
+                PlayInsufficientCoinsFeedback(btnTr);
+                return;
+            }
+
+            // Sahnedeki aktif mecha adaylarını topla (Vanishing olanlar hariç)
+            List<MechaRunnerBehavior> candidates = new List<MechaRunnerBehavior>();
+            MechaRunnerBehavior[] mechas = FindObjectsByType<MechaRunnerBehavior>(FindObjectsSortMode.None);
+            if (mechas != null)
+            {
+                foreach (MechaRunnerBehavior m in mechas)
+                {
+                    if (m != null && m.gameObject != null && m.currentState != MechaRunnerBehavior.MechaState.Vanishing)
+                    {
+                        candidates.Add(m);
+                    }
+                }
+            }
+
+            Transform targetMecha = null;
+
+            if (candidates.Count > 0)
+            {
+                // Öncelik sıralaması:
+                // 1. Henüz bulunmamış/kamufle mecha'lar (CamouflagedOnHost) önce
+                // 2. Ortada koşanlar (RunningInArea) sonra
+                // Deterministik sıralama (InstanceID) ile stabil sıra sağlanır
+                candidates.Sort((a, b) =>
+                {
+                    int stateA = (a.currentState == MechaRunnerBehavior.MechaState.CamouflagedOnHost) ? 0 : 1;
+                    int stateB = (b.currentState == MechaRunnerBehavior.MechaState.CamouflagedOnHost) ? 0 : 1;
+                    if (stateA != stateB) return stateA.CompareTo(stateB);
+                    return a.GetInstanceID().CompareTo(b.GetInstanceID());
+                });
+
+                // Levele ve kullanım sırasına göre 2 mecha varsa SADECE 1 TANESİ seçilir
+                int currentLvl = (LevelManager.Instance != null) ? LevelManager.Instance.currentLevelIndex : 0;
+                int selectedIdx = (currentLvl + revealUseCountInLevel) % candidates.Count;
+                targetMecha = candidates[selectedIdx].transform;
+                revealUseCountInLevel++;
+            }
+
+            // Fallback 1: Sahnedeki MechaOutlineReveal bileşeni
+            if (targetMecha == null)
+            {
+                MechaOutlineReveal revealComp = FindFirstObjectByType<MechaOutlineReveal>();
+                if (revealComp != null) targetMecha = revealComp.transform;
+            }
+
+            // Fallback 2: Mecha eşyası taşıyan nesneler
+            if (targetMecha == null)
+            {
+                List<Transform> ftoCandidates = new List<Transform>();
+                foreach (FindTargetObject fto in FindObjectsByType<FindTargetObject>(FindObjectsSortMode.None))
+                {
+                    if (fto != null && (MechaIdentifier.IsMechaItem(fto) || MechaIdentifier.HasChildMecha(fto)))
+                    {
+                        ftoCandidates.Add(fto.transform);
+                    }
+                }
+                if (ftoCandidates.Count > 0)
+                {
+                    ftoCandidates.Sort((a, b) => a.GetInstanceID().CompareTo(b.GetInstanceID()));
+                    int currentLvl = (LevelManager.Instance != null) ? LevelManager.Instance.currentLevelIndex : 0;
+                    int selectedIdx = (currentLvl + revealUseCountInLevel) % ftoCandidates.Count;
+                    targetMecha = ftoCandidates[selectedIdx];
+                    revealUseCountInLevel++;
+                }
+            }
+
+            if (targetMecha == null)
+            {
+                HapticHelper.Vibrate();
+                return;
+            }
+
+            // Coini harca (coin veya buton kesinlikle büyümez)
+            CoinManager.TrySpendCoins(revealSkillCoinCost);
+            PlayCoinSpendAnimation(btnTr);
+
+            // SADECE seçilen 1 mecha için parıltılı vurguyu (outline) aç
+            MechaOutlineReveal targetReveal = targetMecha.GetComponent<MechaOutlineReveal>();
+            if (targetReveal == null) targetReveal = targetMecha.gameObject.AddComponent<MechaOutlineReveal>();
+            targetReveal.ShowOutline(revealOutlineColor);
+
+            // Parmak ikonuyla SADECE seçilen bu mecha'nın bulunduğu konumu göster
+            ShowFingerPointerAtMecha(targetMecha);
+
+            // Cooldown başlat (her iki booster da cooldown'a girer, boyut & konumları asla değişmez, Cooldowntext gösterilir)
+            StartBoosterCooldown("Reveal_Booster_Button", boosterCooldownDuration);
+        }
+
+        public bool IsBoosterOnCooldown(string buttonName)
+        {
+            if (sharedBoosterCooldown) return isBoosterOnCooldown;
+            string lower = buttonName.ToLowerInvariant();
+            if (lower.Contains("undo") || lower.Contains("trash")) return isUndoOnCooldown;
+            if (lower.Contains("reveal") || lower.Contains("hedef")) return isRevealOnCooldown;
+            return false;
+        }
+
+        public void StartBoosterCooldown(string sourceButtonName, float duration)
+        {
+            if (sharedBoosterCooldown)
+            {
+                if (activeBoosterCooldownCoroutine != null)
+                {
+                    StopCoroutine(activeBoosterCooldownCoroutine);
+                }
+                activeBoosterCooldownCoroutine = StartCoroutine(CombinedBoosterCooldownRoutine(duration));
+            }
+            else
+            {
+                string lower = sourceButtonName.ToLowerInvariant();
+                if (lower.Contains("undo") || lower.Contains("trash"))
+                {
+                    if (activeUndoCooldownCoroutine != null) StopCoroutine(activeUndoCooldownCoroutine);
+                    activeUndoCooldownCoroutine = StartCoroutine(SingleBoosterCooldownRoutine("Undo_Booster_Button", duration, b => isUndoOnCooldown = b));
+                }
+                else
+                {
+                    if (activeRevealCooldownCoroutine != null) StopCoroutine(activeRevealCooldownCoroutine);
+                    activeRevealCooldownCoroutine = StartCoroutine(SingleBoosterCooldownRoutine("Reveal_Booster_Button", duration, b => isRevealOnCooldown = b));
+                }
+            }
+        }
+
+        private System.Collections.IEnumerator CombinedBoosterCooldownRoutine(float duration)
+        {
+            isBoosterOnCooldown = true;
+            isUndoOnCooldown = true;
+            isRevealOnCooldown = true;
+
+            Transform undoBtn = FindButtonTransform("Undo_Booster_Button") ?? FindButtonTransform("Trash_Button");
+            Transform revealBtn = FindButtonTransform("Reveal_Booster_Button");
+
+            CanvasGroup undoCg = GetOrCreateCanvasGroup(undoBtn);
+            CanvasGroup revealCg = GetOrCreateCanvasGroup(revealBtn);
+
+            // Butonları pürüzsüzce soluklaştır (boyut ve konumları kesinlikle değişmez)
+            if (undoCg != null)
+            {
+                undoCg.DOKill();
+                undoCg.DOFade(0.40f, 0.40f).SetEase(Ease.OutQuad).SetUpdate(true);
+            }
+            if (revealCg != null)
+            {
+                revealCg.DOKill();
+                revealCg.DOFade(0.40f, 0.40f).SetEase(Ease.OutQuad).SetUpdate(true);
+            }
+
+            Component undoTxt = FindCooldownTextComponent(undoBtn, "Undo");
+            Component revealTxt = FindCooldownTextComponent(revealBtn, "Reveal");
+
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                float remaining = duration - elapsed;
+                int seconds = Mathf.CeilToInt(remaining);
+                string textStr = $"{seconds}s";
+
+                UpdateCooldownTextUI(undoTxt, true, textStr);
+                UpdateCooldownTextUI(revealTxt, true, textStr);
+
+                yield return null;
+                elapsed += Time.deltaTime;
+            }
+
+            // Cooldown bitti: Cooldowntext nesnelerini gizle
+            UpdateCooldownTextUI(undoTxt, false, "");
+            UpdateCooldownTextUI(revealTxt, false, "");
+
+            // Butonları pürüzsüzce eski canlı rengine ve tam opaklığına döndür
+            if (undoCg != null)
+            {
+                undoCg.DOKill();
+                undoCg.DOFade(1.0f, 0.50f).SetEase(Ease.OutQuad).SetUpdate(true);
+            }
+            if (revealCg != null)
+            {
+                revealCg.DOKill();
+                revealCg.DOFade(1.0f, 0.50f).SetEase(Ease.OutQuad).SetUpdate(true);
+            }
+
+            isBoosterOnCooldown = false;
+            isUndoOnCooldown = false;
+            isRevealOnCooldown = false;
+            activeBoosterCooldownCoroutine = null;
+        }
+
+        private System.Collections.IEnumerator SingleBoosterCooldownRoutine(string buttonName, float duration, System.Action<bool> stateSetter)
+        {
+            stateSetter(true);
+
+            Transform btnTr = FindButtonTransform(buttonName);
+            if (btnTr == null && buttonName.Contains("Undo")) btnTr = FindButtonTransform("Trash_Button");
+            if (btnTr == null && buttonName.Contains("Trash")) btnTr = FindButtonTransform("Undo_Booster_Button");
+            CanvasGroup cg = GetOrCreateCanvasGroup(btnTr);
+            if (cg != null)
+            {
+                cg.DOKill();
+                cg.DOFade(0.40f, 0.40f).SetEase(Ease.OutQuad).SetUpdate(true);
+            }
+
+            Component cooldownTxt = FindCooldownTextComponent(btnTr, buttonName);
+
+            float elapsed = 0f;
+            while (elapsed < duration)
+            {
+                float remaining = duration - elapsed;
+                int seconds = Mathf.CeilToInt(remaining);
+                UpdateCooldownTextUI(cooldownTxt, true, $"{seconds}s");
+
+                yield return null;
+                elapsed += Time.deltaTime;
+            }
+
+            UpdateCooldownTextUI(cooldownTxt, false, "");
+
+            if (cg != null)
+            {
+                cg.DOKill();
+                cg.DOFade(1.0f, 0.50f).SetEase(Ease.OutQuad).SetUpdate(true);
+            }
+
+            stateSetter(false);
+        }
+
+        private CanvasGroup GetOrCreateCanvasGroup(Transform tr)
+        {
+            if (tr == null) return null;
+            CanvasGroup cg = tr.GetComponent<CanvasGroup>();
+            if (cg == null) cg = tr.gameObject.AddComponent<CanvasGroup>();
+            return cg;
+        }
+
+        private Component FindCooldownTextComponent(Transform btnTr, string buttonRoleHint)
+        {
+            if (btnTr == null) return null;
+
+            // 1. Doğrudan butonun çocukları içinde ara
+            foreach (Transform child in btnTr.GetComponentsInChildren<Transform>(true))
+            {
+                if (child == btnTr) continue;
+                string n = child.name.ToLowerInvariant();
+                if (n.Contains("cooldown"))
+                {
+                    Component c = (Component)child.GetComponent<TMP_Text>() ?? child.GetComponent<Text>();
+                    if (c != null) return c;
+                }
+            }
+
+            // 2. Butonun parent'ı altındaki kardeş nesneler (aynı hiyerarşi düzeyi)
+            if (btnTr.parent != null)
+            {
+                string role = buttonRoleHint.ToLowerInvariant();
+                // Önce role'e göre özelleşmiş isim var mı bak
+                foreach (Transform sib in btnTr.parent)
+                {
+                    if (sib == btnTr) continue;
+                    string n = sib.name.ToLowerInvariant();
+                    if (n.Contains("cooldown") && n.Contains(role))
+                    {
+                        Component c = (Component)sib.GetComponent<TMP_Text>() ?? sib.GetComponent<Text>();
+                        if (c != null) return c;
+                    }
+                }
+                // Genel cooldowntext ara
+                foreach (Transform sib in btnTr.parent)
+                {
+                    if (sib == btnTr) continue;
+                    string n = sib.name.ToLowerInvariant();
+                    if (n.Contains("cooldown"))
+                    {
+                        Component c = (Component)sib.GetComponent<TMP_Text>() ?? sib.GetComponent<Text>();
+                        if (c != null) return c;
+                    }
+                }
+            }
+
+            // 3. Main canvas genelinde ara
             if (mainCanvas != null)
             {
-                string prefix = buttonName.Replace("_Button", "").Replace("_Booster", "");
-                foreach (Transform child in mainCanvas.transform)
+                string role = buttonRoleHint.ToLowerInvariant();
+                foreach (Transform t in mainCanvas.GetComponentsInChildren<Transform>(true))
                 {
-                    string lower = child.name.ToLowerInvariant();
-                    if ((lower.Contains("lock") || lower.Contains("kilit")) && lower.Contains(prefix.ToLowerInvariant()))
+                    string n = t.name.ToLowerInvariant();
+                    if (n.Contains("cooldown") && n.Contains(role))
                     {
-                        return child.gameObject;
+                        Component c = (Component)t.GetComponent<TMP_Text>() ?? t.GetComponent<Text>();
+                        if (c != null) return c;
+                    }
+                }
+                foreach (Transform t in mainCanvas.GetComponentsInChildren<Transform>(true))
+                {
+                    string n = t.name.ToLowerInvariant();
+                    if (n.Contains("cooldown"))
+                    {
+                        Component c = (Component)t.GetComponent<TMP_Text>() ?? t.GetComponent<Text>();
+                        if (c != null) return c;
                     }
                 }
             }
@@ -516,77 +1297,92 @@ namespace MechaFind3D.PhysicsInteraction
             return null;
         }
 
-        public void UpdateBoosterLockStates()
+        private void UpdateCooldownTextUI(Component textComp, bool visible, string textContent)
         {
-            bool undoLocked = IsUndoLocked();
-            GameObject undoLock = GetUndoLockObject();
-            if (undoLock != null) undoLock.SetActive(undoLocked);
+            if (textComp == null) return;
+            GameObject go = textComp.gameObject;
 
-            bool revealLocked = IsRevealLocked();
-            GameObject revealLock = GetRevealLockObject();
-            if (revealLock != null) revealLock.SetActive(revealLocked);
+            if (!visible)
+            {
+                if (go.activeSelf) go.SetActive(false);
+                return;
+            }
+
+            if (!go.activeSelf) go.SetActive(true);
+
+            if (textComp is TMP_Text tmp)
+            {
+                tmp.text = textContent;
+            }
+            else if (textComp is Text txt)
+            {
+                txt.text = textContent;
+            }
+
+            // Cooldown text butonun çocuğuysa, buton soluklaşınca textin soluklaşmaması için
+            CanvasGroup textCg = go.GetComponent<CanvasGroup>();
+            if (textCg == null) textCg = go.AddComponent<CanvasGroup>();
+            textCg.ignoreParentGroups = true;
+            textCg.alpha = 1.0f;
         }
 
-        public void OnRevealButtonClicked()
+        public void ResetAllBoosterCooldowns()
         {
-            if (IsRevealLocked())
+            if (activeBoosterCooldownCoroutine != null)
             {
-                GameObject lockObj = GetRevealLockObject();
-                if (lockObj != null)
-                {
-                    lockObj.transform.DOKill(true);
-                    lockObj.transform.DOShakeRotation(0.35f, new Vector3(0, 0, 16f), 14, 90f);
-                }
-                HapticHelper.Vibrate();
-                return;
+                StopCoroutine(activeBoosterCooldownCoroutine);
+                activeBoosterCooldownCoroutine = null;
+            }
+            if (activeUndoCooldownCoroutine != null)
+            {
+                StopCoroutine(activeUndoCooldownCoroutine);
+                activeUndoCooldownCoroutine = null;
+            }
+            if (activeRevealCooldownCoroutine != null)
+            {
+                StopCoroutine(activeRevealCooldownCoroutine);
+                activeRevealCooldownCoroutine = null;
             }
 
-            Transform btnObj = transform.Find("Reveal_Booster_Button");
-            if (btnObj == null && transform.parent != null) btnObj = transform.parent.Find("Reveal_Booster_Button");
+            isBoosterOnCooldown = false;
+            isUndoOnCooldown = false;
+            isRevealOnCooldown = false;
+            revealUseCountInLevel = 0;
 
-            if (revealOnCooldown || gameOverTriggered)
+            Transform undoBtn = FindButtonTransform("Undo_Booster_Button") ?? FindButtonTransform("Trash_Button");
+            Transform revealBtn = FindButtonTransform("Reveal_Booster_Button");
+
+            if (undoBtn != null)
             {
-                if (btnObj != null)
-                {
-                    btnObj.DOKill();
-                    btnObj.DOShakeRotation(0.3f, new Vector3(0, 0, 15f), 15, 90f);
-                }
-                return;
+                CanvasGroup cg = undoBtn.GetComponent<CanvasGroup>();
+                if (cg != null) { cg.DOKill(); cg.alpha = 1.0f; }
+                Component undoTxt = FindCooldownTextComponent(undoBtn, "Undo");
+                UpdateCooldownTextUI(undoTxt, false, "");
             }
 
-            if (btnObj != null)
+            if (revealBtn != null)
             {
-                btnObj.DOKill();
-                btnObj.transform.localScale = Vector3.one;
-                btnObj.transform.DOPunchScale(Vector3.one * 0.2f, 0.25f, 5, 0.5f);
+                CanvasGroup cg = revealBtn.GetComponent<CanvasGroup>();
+                if (cg != null) { cg.DOKill(); cg.alpha = 1.0f; }
+                Component revealTxt = FindCooldownTextComponent(revealBtn, "Reveal");
+                UpdateCooldownTextUI(revealTxt, false, "");
             }
 
-            MechaRunnerBehavior[] mechas = FindObjectsByType<MechaRunnerBehavior>(FindObjectsSortMode.None);
-            if (mechas == null || mechas.Length == 0) return;
-
-            revealOnCooldown = true;
-
-            foreach (MechaRunnerBehavior mecha in mechas)
+            if (currentFingerObj != null)
             {
-                if (mecha == null || mecha.gameObject == null) continue;
-                if (mecha.currentState == MechaRunnerBehavior.MechaState.Vanishing) continue;
-
-                MechaOutlineReveal reveal = mecha.GetComponent<MechaOutlineReveal>();
-                if (reveal == null) reveal = mecha.gameObject.AddComponent<MechaOutlineReveal>();
-                reveal.ShowOutline(revealOutlineColor);
+                Destroy(currentFingerObj);
+                currentFingerObj = null;
             }
-
-            HapticHelper.Vibrate();
-
-            if (btnObj != null)
+            if (activeFingerCoroutine != null)
             {
-                Image btnBg = btnObj.GetComponent<Image>();
-                if (btnBg != null)
-                {
-                    Color dimColor = new Color(0.4f, 0.4f, 0.4f, 0.6f);
-                    btnBg.DOColor(dimColor, 0.3f).SetUpdate(true);
-                }
+                StopCoroutine(activeFingerCoroutine);
+                activeFingerCoroutine = null;
             }
+        }
+
+        public void ResetRevealBoosterState()
+        {
+            ResetAllBoosterCooldowns();
         }
 
         /// <summary>
@@ -595,37 +1391,27 @@ namespace MechaFind3D.PhysicsInteraction
         /// </summary>
         public void OnUndoButtonClicked()
         {
-            if (IsUndoLocked())
+            Transform btnTr = FindButtonTransform("Undo_Booster_Button") ?? FindButtonTransform("Trash_Button");
+
+            if (IsBoosterOnCooldown("Undo_Booster_Button") || gameOverTriggered || dockItems == null || dockItems.Count == 0)
             {
-                GameObject lockObj = GetUndoLockObject();
-                if (lockObj != null)
-                {
-                    lockObj.transform.DOKill(true);
-                    lockObj.transform.DOShakeRotation(0.35f, new Vector3(0, 0, 16f), 14, 90f);
-                }
                 HapticHelper.Vibrate();
                 return;
             }
 
-            Transform btnObj = transform.Find("Undo_Booster_Button");
-            if (btnObj == null && transform.parent != null) btnObj = transform.parent.Find("Undo_Booster_Button");
-
-            if (gameOverTriggered || dockItems == null || dockItems.Count == 0)
+            // Coin kontrolü
+            if (!CoinManager.HasCoins(undoSkillCoinCost))
             {
-                if (btnObj != null)
-                {
-                    btnObj.DOKill();
-                    btnObj.DOShakeRotation(0.3f, new Vector3(0, 0, 15f), 15, 90f);
-                }
+                PlayInsufficientCoinsFeedback(btnTr);
                 return;
             }
 
-            if (btnObj != null)
-            {
-                btnObj.DOKill();
-                btnObj.transform.localScale = Vector3.one;
-                btnObj.transform.DOPunchScale(Vector3.one * 0.2f, 0.25f, 5, 0.5f);
-            }
+            // Coini düş ve harcama animasyonunu oynat (boyut ve konum kesinlikle değişmez)
+            CoinManager.TrySpendCoins(undoSkillCoinCost);
+            PlayCoinSpendAnimation(btnTr);
+
+            // Cooldown başlat (her iki booster da cooldown'a girer, boyut & konumları asla değişmez, Cooldowntext gösterilir)
+            StartBoosterCooldown("Undo_Booster_Button", boosterCooldownDuration);
 
             int lastIdx = dockItems.Count - 1;
             DockItemData lastData = dockItems[lastIdx];
@@ -709,6 +1495,20 @@ namespace MechaFind3D.PhysicsInteraction
 
         public void OnShuffleButtonClicked()
         {
+            Transform btnTr = FindButtonTransform("Shuffle_Button");
+
+            if (shuffleSkillCoinCost > 0)
+            {
+                if (!CoinManager.HasCoins(shuffleSkillCoinCost))
+                {
+                    PlayInsufficientCoinsFeedback(btnTr);
+                    return;
+                }
+
+                CoinManager.TrySpendCoins(shuffleSkillCoinCost);
+                PlayCoinSpendAnimation(btnTr);
+            }
+
             PhysicsObjectSpawner spawner = Object.FindFirstObjectByType<PhysicsObjectSpawner>();
             if (spawner != null)
             {
@@ -756,13 +1556,30 @@ namespace MechaFind3D.PhysicsInteraction
         /// </summary>
         public void OnTrashButtonClicked()
         {
-            if (dockItems.Count == 0 || gameOverTriggered)
+            Transform btnTr = FindButtonTransform("Trash_Button") ?? FindButtonTransform("Undo_Booster_Button");
+
+            if (IsBoosterOnCooldown("Trash_Button") || dockItems.Count == 0 || gameOverTriggered)
             {
+                HapticHelper.Vibrate();
+                return;
+            }
+
+            // Coin kontrolü
+            if (!CoinManager.HasCoins(trashSkillCoinCost))
+            {
+                PlayInsufficientCoinsFeedback(btnTr);
                 return;
             }
 
             string leftoverType = dockItems[0]?.colorName;
             if (string.IsNullOrEmpty(leftoverType)) return;
+
+            // Coini düş ve harcama animasyonunu oynat
+            CoinManager.TrySpendCoins(trashSkillCoinCost);
+            PlayCoinSpendAnimation(btnTr);
+
+            // Cooldown başlat
+            StartBoosterCooldown("Trash_Button", boosterCooldownDuration);
 
             var group = new List<DockItemData>();
             while (dockItems.Count > 0 && dockItems[0] != null &&
@@ -777,11 +1594,9 @@ namespace MechaFind3D.PhysicsInteraction
             // CountInDock, so this alone puts the card's count back up without any extra bookkeeping.
             RefreshOrderCardCounts(leftoverType);
 
-            GameObject trashBtn = mainCanvas != null ? mainCanvas.transform.Find("Trash_Button")?.gameObject : GameObject.Find("Trash_Button");
-            if (trashBtn != null)
+            if (btnTr != null)
             {
-                trashBtn.transform.DOKill(true);
-                trashBtn.transform.DOPunchScale(Vector3.one * 0.15f, 0.25f, 5, 0.5f);
+                btnTr.DOKill(true);
             }
 
             for (int i = 0; i < group.Count; i++)
@@ -868,6 +1683,8 @@ namespace MechaFind3D.PhysicsInteraction
                     if (titleTxt != null) titleTxt.text = LevelManager.Instance.ActiveLevelData.levelTitle.ToUpperInvariant();
                 }
             }
+
+            ResetAllBoosterCooldowns();
 
             if (topGoalContainer == null) return;
 

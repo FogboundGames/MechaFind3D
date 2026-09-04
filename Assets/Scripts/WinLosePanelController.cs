@@ -31,6 +31,10 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float buttonFadeInDuration = 0.28f;
         [SerializeField] private float buttonSlideInY = -30f;
 
+        [Header("Coin Ödülü")]
+        [Tooltip("Bölüm kazanıldığında oyuncuya verilecek coin miktarı.")]
+        [SerializeField] private int winCoinReward = 5;
+
         private GameObject winPanel;
         private GameObject losePanel;
 
@@ -79,6 +83,10 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (losePanel != null) losePanel.SetActive(false);
             HideTimerUI();
+
+            // Bölüm kazanma coin ödülü
+            CoinManager.AddCoins(winCoinReward);
+
             AnimateIn(winPanel, starsEarned, true);
         }
 
