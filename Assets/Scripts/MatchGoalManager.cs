@@ -236,6 +236,27 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void Update()
         {
+            // Debug Cheat: 'O' tuşuna basıldığında bölümü hemen kazandırarak bitir
+            bool oKeyPressed = false;
+
+#if ENABLE_INPUT_SYSTEM
+            if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.oKey.wasPressedThisFrame)
+            {
+                oKeyPressed = true;
+            }
+#else
+            try
+            {
+                if (Input.GetKeyDown(KeyCode.O)) oKeyPressed = true;
+            }
+            catch { }
+#endif
+
+            if (oKeyPressed)
+            {
+                TriggerWinCheat();
+            }
+
             if (isTimerRunning && !isLevelComplete)
             {
                 bool isMechaRunning = MechaRunnerBehavior.IsAnyMechaRunning();
@@ -249,6 +270,28 @@ namespace MechaFind3D.PhysicsInteraction
                     TriggerLose();
                 }
                 UpdateTimerUI(isMechaRunning);
+            }
+        }
+
+        public void TriggerWinCheat()
+        {
+            if (isLevelComplete) return;
+
+            isTimerRunning = false;
+            isLevelComplete = true;
+
+            if (levelGoals != null)
+            {
+                foreach (MatchGoal goal in levelGoals)
+                {
+                    goal.currentCount = goal.totalRequired;
+                }
+            }
+
+            EarnedStars = 3;
+            if (WinLosePanelController.Instance != null)
+            {
+                WinLosePanelController.Instance.ShowWin(EarnedStars);
             }
         }
 

@@ -50,6 +50,7 @@ namespace MechaFind3D.PhysicsInteraction
         private GameObject winPanel;
         private GameObject losePanel;
         private RectTransform confettiContainer;
+        private LevelSystem.LevelProgressController progressController;
 
         private class WinLevelRow
         {
@@ -74,15 +75,22 @@ namespace MechaFind3D.PhysicsInteraction
             winPanel = winT != null ? winT.gameObject : null;
             losePanel = loseT != null ? loseT.gameObject : null;
 
+            if (winPanel != null)
+            {
+                progressController = winPanel.GetComponent<LevelSystem.LevelProgressController>();
+                if (progressController == null) progressController = winPanel.AddComponent<LevelSystem.LevelProgressController>();
+            }
+
             LoadCoinSpriteIfMissing();
 
-            WireButton(winT, "PopupPanel/ActionButton", () =>
+            WireButton(winT, "ActionButton", () =>
             {
                 if (isLevelTransitioning) return;
                 isLevelTransitioning = true;
 
                 // Buton basılma yaylanma efekti
-                Transform btnT = winT != null ? winT.Find("PopupPanel/ActionButton") : null;
+                Transform popupT = GetPopupTransform(winT);
+                Transform btnT = popupT != null ? (popupT.Find("ActionButton") ?? popupT.Find("NextButton")) : null;
                 if (btnT != null)
                 {
                     btnT.DOKill();
@@ -121,7 +129,7 @@ namespace MechaFind3D.PhysicsInteraction
                     }
                 });
             });
-            WireButton(winT, "PopupPanel/HomeText", () =>
+            WireButton(winT, "HomeText", () =>
             {
                 HideAll();
                 if (LevelMapManager.Instance != null)
@@ -130,12 +138,12 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             });
 
-            WireButton(loseT, "PopupPanel/ActionButton", () =>
+            WireButton(loseT, "ActionButton", () =>
             {
                 HideAll();
                 if (LevelManager.Instance != null) LevelManager.Instance.RestartCurrentLevel();
             });
-            WireButton(loseT, "PopupPanel/HomeText", () =>
+            WireButton(loseT, "HomeText", () =>
             {
                 HideAll();
                 if (LevelMapManager.Instance != null)
@@ -166,10 +174,72 @@ namespace MechaFind3D.PhysicsInteraction
 #endif
         }
 
-        private static void WireButton(Transform root, string path, UnityEngine.Events.UnityAction action)
+        private static Transform GetPopupTransform(Transform root)
+        {
+            if (root == null) return null;
+
+            // 1. İsimle doğrudan arama
+            Transform popupT = root.Find("PopupPanel");
+            if (popupT != null) return popupT;
+
+            popupT = root.Find("Popup") ?? root.Find("Panel") ?? root.Find("Window") ?? root.Find("Inner_Window") ?? root.Find("Content") ?? root.Find("WinPopup") ?? root.Find("LosePopup");
+            if (popupT != null) return popupT;
+
+            // 2. İsminde 'popup', 'panel', 'window', 'card', 'content' geçen çocukları ara
+            foreach (Transform child in root)
+            {
+                string n = child.name.ToLowerInvariant();
+                if (n.Contains("popup") || n.Contains("panel") || n.Contains("window") || n.Contains("card") || n.Contains("content"))
+                {
+                    return child;
+                }
+            }
+
+            // 3. Bulunamadıysa RectTransform'a sahip ilk çocuk elemanı dön
+            for (int i = 0; i < root.childCount; i++)
+            {
+                Transform child = root.GetChild(i);
+                if (child.GetComponent<RectTransform>() != null)
+                {
+                    return child;
+                }
+            }
+
+            return null;
+        }
+
+        private static void WireButton(Transform root, string buttonPath, UnityEngine.Events.UnityAction action)
         {
             if (root == null) return;
-            Transform t = root.Find(path);
+
+            Transform t = root.Find(buttonPath);
+
+            if (t == null)
+            {
+                Transform popupT = GetPopupTransform(root);
+                if (popupT != null)
+                {
+                    string btnName = buttonPath.Contains("/") ? buttonPath.Substring(buttonPath.LastIndexOf('/') + 1) : buttonPath;
+                    t = popupT.Find(btnName);
+
+                    if (t == null)
+                    {
+                        foreach (Transform child in popupT.GetComponentsInChildren<Transform>(true))
+                        {
+                            string n = child.name.ToLowerInvariant();
+                            string targetN = btnName.ToLowerInvariant();
+                            if (n == targetN ||
+                                (targetN.Contains("action") && (n.Contains("action") || n.Contains("next") || n.Contains("restart") || n.Contains("retry"))) ||
+                                (targetN.Contains("home") && (n.Contains("home") || n.Contains("menu"))))
+                            {
+                                t = child;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             if (t == null) return;
 
             Button btn = t.GetComponent<Button>();
@@ -190,6 +260,20 @@ namespace MechaFind3D.PhysicsInteraction
             SpawnCoinConfettiShower();
 
             AnimateIn(winPanel, starsEarned, true);
+
+            int currentIdx = (LevelManager.Instance != null) ? LevelManager.Instance.currentLevelIndex : 0;
+            int totalLevels = (LevelManager.Instance != null && LevelManager.Instance.levels != null && LevelManager.Instance.levels.Count > 0)
+                ? LevelManager.Instance.levels.Count
+                : 10;
+
+            if (progressController != null)
+            {
+                SetWinButtonsInteractable(false);
+                progressController.PlayProgressionSequence(currentIdx, () =>
+                {
+                    SetWinButtonsInteractable(true);
+                });
+            }
         }
 
         public void ShowLose()
@@ -719,6 +803,21 @@ namespace MechaFind3D.PhysicsInteraction
             }
         }
 
+        private void SetWinButtonsInteractable(bool interactable)
+        {
+            Transform winT = winPanel != null ? winPanel.transform : null;
+            if (winT == null) return;
+
+            Transform actionT = winT.Find("ActionButton");
+            Transform homeT = winT.Find("HomeText");
+
+            Button actionBtn = actionT != null ? actionT.GetComponent<Button>() : null;
+            if (actionBtn != null) actionBtn.interactable = interactable;
+
+            Button homeBtn = homeT != null ? homeT.GetComponent<Button>() : null;
+            if (homeBtn != null) homeBtn.interactable = interactable;
+        }
+
         private static void SetLevelText(Component comp, string text)
         {
             if (comp is Text uiTxt) uiTxt.text = text;
@@ -743,7 +842,7 @@ namespace MechaFind3D.PhysicsInteraction
             panelCG.alpha = 0f;
             panelCG.interactable = false;
             panelCG.blocksRaycasts = true;
-            panelCG.DOFade(backdropAlpha, backdropFadeDuration)
+            panelCG.DOFade(1f, backdropFadeDuration)
                 .SetUpdate(true)
                 .SetEase(Ease.OutQuad)
                 .OnComplete(() =>
@@ -752,11 +851,21 @@ namespace MechaFind3D.PhysicsInteraction
                     panelCG.interactable = true;
                 });
 
-            Transform popupT = panel.transform.Find("PopupPanel");
+            Transform popupT = GetPopupTransform(panel.transform);
             if (popupT == null) return;
 
             RectTransform popupRect = popupT.GetComponent<RectTransform>();
+            if (popupRect == null) return;
+
             popupT.DOKill();
+            popupRect.DOKill();
+
+            CanvasGroup popupCG = popupT.GetComponent<CanvasGroup>();
+            if (popupCG == null) popupCG = popupT.gameObject.AddComponent<CanvasGroup>();
+            popupCG.DOKill();
+            popupCG.alpha = 0f;
+            popupCG.DOFade(1f, popupInDuration * 0.6f).SetEase(Ease.OutQuad).SetUpdate(true);
+
             popupRect.localScale = Vector3.one * popupInStartScale;
             popupRect.anchoredPosition = new Vector2(0f, popupInStartY);
 
@@ -768,8 +877,10 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (isWin)
             {
-                // Kullanıcının yeni tasarladığı Win Panel yıldız ve seviye satırlarını ayarla
-                SetupWinPanelLevelRows(popupT, seq, popupInDuration);
+                if (progressController == null)
+                {
+                    SetupWinPanelLevelRows(popupT, seq, popupInDuration);
+                }
 
                 HapticHelper.Vibrate();
                 SpawnWinCelebration(Camera.main);
@@ -802,8 +913,6 @@ namespace MechaFind3D.PhysicsInteraction
 
                 seq.Append(popupRect.DOShakePosition(0.55f, new Vector3(22f, 8f, 0f), 16, 90f).SetUpdate(true));
 
-                CanvasGroup popupCG = popupT.GetComponent<CanvasGroup>();
-                if (popupCG == null) popupCG = popupT.gameObject.AddComponent<CanvasGroup>();
                 seq.InsertCallback(0f, () =>
                 {
                     Image bgImg = panel.GetComponent<Image>();
@@ -821,23 +930,41 @@ namespace MechaFind3D.PhysicsInteraction
                 });
             }
 
-            string[] buttonPaths = { "ActionButton", "HomeText" };
-            for (int i = 0; i < buttonPaths.Length; i++)
+            string[] buttonNames = { "ActionButton", "HomeText", "NextButton", "RestartButton", "HomeButton", "RetryButton" };
+            int btnIdx = 0;
+            foreach (string bName in buttonNames)
             {
-                Transform btnT = popupT.Find(buttonPaths[i]);
+                Transform btnT = popupT.Find(bName);
+                if (btnT == null)
+                {
+                    foreach (Transform ch in popupT.GetComponentsInChildren<Transform>(true))
+                    {
+                        if (ch.name.Equals(bName, System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            btnT = ch;
+                            break;
+                        }
+                    }
+                }
                 if (btnT == null) continue;
 
                 CanvasGroup btnCG = btnT.GetComponent<CanvasGroup>();
                 if (btnCG == null) btnCG = btnT.gameObject.AddComponent<CanvasGroup>();
                 RectTransform btnRect = btnT.GetComponent<RectTransform>();
 
-                btnCG.alpha = 0f;
-                Vector2 origPos = btnRect.anchoredPosition;
-                btnRect.anchoredPosition = origPos + new Vector2(0f, buttonSlideInY);
+                btnCG.DOKill();
+                if (btnRect != null) btnRect.DOKill();
 
-                float delay = popupInDuration * 0.55f + i * buttonStaggerDelay;
-                seq.Insert(delay, btnCG.DOFade(1f, buttonFadeInDuration).SetEase(Ease.OutQuad));
-                seq.Insert(delay, btnRect.DOAnchorPos(origPos, buttonFadeInDuration).SetEase(Ease.OutQuad));
+                btnCG.alpha = 0f;
+                Vector2 origPos = btnRect != null ? btnRect.anchoredPosition : Vector2.zero;
+                if (btnRect != null) btnRect.anchoredPosition = origPos + new Vector2(0f, buttonSlideInY);
+
+                float delay = popupInDuration * 0.55f + (btnIdx++) * buttonStaggerDelay;
+                seq.Insert(delay, btnCG.DOFade(1f, buttonFadeInDuration).SetEase(Ease.OutQuad).SetUpdate(true));
+                if (btnRect != null)
+                {
+                    seq.Insert(delay, btnRect.DOAnchorPos(origPos, buttonFadeInDuration).SetEase(Ease.OutQuad).SetUpdate(true));
+                }
             }
 
             seq.Play();
@@ -1064,10 +1191,11 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (panel == null || !panel.activeSelf) return;
 
-            Transform popupT = panel.transform.Find("PopupPanel");
+            Transform popupT = GetPopupTransform(panel.transform);
             CanvasGroup panelCG = panel.GetComponent<CanvasGroup>();
             if (panelCG == null) panelCG = panel.AddComponent<CanvasGroup>();
 
+            panelCG.DOKill();
             panelCG.interactable = false;
 
             Sequence seq = DOTween.Sequence().SetUpdate(true);
@@ -1075,15 +1203,33 @@ namespace MechaFind3D.PhysicsInteraction
             if (popupT != null)
             {
                 RectTransform popupRect = popupT.GetComponent<RectTransform>();
-                seq.Append(popupRect.DOScale(Vector3.one * popupOutEndScale, popupOutDuration).SetEase(Ease.InBack));
-                seq.Join(panelCG.DOFade(0f, popupOutDuration).SetEase(Ease.InQuad));
+                CanvasGroup popupCG = popupT.GetComponent<CanvasGroup>();
+
+                popupT.DOKill();
+                if (popupRect != null) popupRect.DOKill();
+                if (popupCG != null) popupCG.DOKill();
+
+                if (popupRect != null)
+                {
+                    seq.Append(popupRect.DOScale(Vector3.one * popupOutEndScale, popupOutDuration).SetEase(Ease.InBack));
+                    if (popupCG != null) seq.Join(popupCG.DOFade(0f, popupOutDuration).SetEase(Ease.InQuad));
+                    seq.Join(panelCG.DOFade(0f, popupOutDuration).SetEase(Ease.InQuad));
+                }
+                else
+                {
+                    seq.Append(panelCG.DOFade(0f, popupOutDuration).SetEase(Ease.InQuad));
+                }
             }
             else
             {
                 seq.Append(panelCG.DOFade(0f, popupOutDuration).SetEase(Ease.InQuad));
             }
 
-            seq.OnComplete(() => panel.SetActive(false));
+            seq.OnComplete(() =>
+            {
+                panel.SetActive(false);
+                panelCG.alpha = 1f;
+            });
             seq.Play();
         }
     }
