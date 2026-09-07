@@ -310,7 +310,14 @@ namespace MechaFind3D.PhysicsInteraction
             Button btn = t.GetComponent<Button>();
             if (btn == null) btn = t.gameObject.AddComponent<Button>();
             btn.onClick.RemoveAllListeners();
-            btn.onClick.AddListener(action);
+            btn.onClick.AddListener(() =>
+            {
+                // Tüm booster/aksiyon butonları için ortak basma geri bildirimi - tek yerden
+                // eklendiği için Shuffle/Undo/Reveal/Trash hepsi aynı tutarlı "tık" hissini alır.
+                t.DOKill();
+                t.DOPunchScale(Vector3.one * 0.18f, 0.28f, 6, 0.6f).SetUpdate(true);
+                action?.Invoke();
+            });
             Image bg = t.GetComponent<Image>();
             if (bg != null) btn.targetGraphic = bg;
         }
@@ -1144,6 +1151,11 @@ namespace MechaFind3D.PhysicsInteraction
             Component undoTxt = FindCooldownTextComponent(undoBtn, "Undo");
             Component revealTxt = FindCooldownTextComponent(revealBtn, "Reveal");
 
+            Image undoOverlay = GetOrCreateCooldownOverlay(undoBtn);
+            Image revealOverlay = GetOrCreateCooldownOverlay(revealBtn);
+            if (undoOverlay != null) undoOverlay.fillAmount = 1f;
+            if (revealOverlay != null) revealOverlay.fillAmount = 1f;
+
             float elapsed = 0f;
             while (elapsed < duration)
             {
@@ -1154,6 +1166,10 @@ namespace MechaFind3D.PhysicsInteraction
                 UpdateCooldownTextUI(undoTxt, true, textStr);
                 UpdateCooldownTextUI(revealTxt, true, textStr);
 
+                float fill = Mathf.Clamp01(remaining / duration);
+                if (undoOverlay != null) undoOverlay.fillAmount = fill;
+                if (revealOverlay != null) revealOverlay.fillAmount = fill;
+
                 yield return null;
                 elapsed += Time.deltaTime;
             }
@@ -1161,6 +1177,8 @@ namespace MechaFind3D.PhysicsInteraction
             // Cooldown bitti: Cooldowntext nesnelerini gizle
             UpdateCooldownTextUI(undoTxt, false, "");
             UpdateCooldownTextUI(revealTxt, false, "");
+            if (undoOverlay != null) undoOverlay.fillAmount = 0f;
+            if (revealOverlay != null) revealOverlay.fillAmount = 0f;
 
             // Butonları pürüzsüzce eski canlı rengine ve tam opaklığına döndür
             if (undoCg != null)
@@ -1196,18 +1214,23 @@ namespace MechaFind3D.PhysicsInteraction
 
             Component cooldownTxt = FindCooldownTextComponent(btnTr, buttonName);
 
+            Image cooldownOverlay = GetOrCreateCooldownOverlay(btnTr);
+            if (cooldownOverlay != null) cooldownOverlay.fillAmount = 1f;
+
             float elapsed = 0f;
             while (elapsed < duration)
             {
                 float remaining = duration - elapsed;
                 int seconds = Mathf.CeilToInt(remaining);
                 UpdateCooldownTextUI(cooldownTxt, true, $"{seconds}s");
+                if (cooldownOverlay != null) cooldownOverlay.fillAmount = Mathf.Clamp01(remaining / duration);
 
                 yield return null;
                 elapsed += Time.deltaTime;
             }
 
             UpdateCooldownTextUI(cooldownTxt, false, "");
+            if (cooldownOverlay != null) cooldownOverlay.fillAmount = 0f;
 
             if (cg != null)
             {
@@ -1216,6 +1239,55 @@ namespace MechaFind3D.PhysicsInteraction
             }
 
             stateSetter(false);
+        }
+
+        /// <summary>
+        /// Butonun TÜMÜNÜN üstüne (sadece ikonun kendi silüeti değil - o zaman kontrast çok zayıf
+        /// kalıyordu, ikon zaten renkli arka plan üstünde ince duruyordu), cooldown boyunca koyu duran
+        /// ve süre bittikçe saat ibresi gibi (12 hizasından saat yönünde) açılan bir radial maske
+        /// kurar/getirir. Butonun KENDİ arka plan sprite'ı kullanılıyor - hem yuvarlak köşelere tam
+        /// oturuyor, hem de sprite=null ile denendiğinde Unity'nin Radial360 dolgusunun fillAmount=0'da
+        /// bile mesh'i tam kırpmayıp (CanvasRenderer.cull=false) sürekli görünür kalması sorununu çözüyor.
+        /// </summary>
+        private Image GetOrCreateCooldownOverlay(Transform btnTr)
+        {
+            if (btnTr == null) return null;
+
+            Image btnBg = btnTr.GetComponent<Image>();
+            if (btnBg == null) return null;
+
+            Transform overlayT = btnTr.Find("CooldownOverlay");
+            Image overlay;
+            if (overlayT == null)
+            {
+                GameObject overlayGO = new GameObject("CooldownOverlay", typeof(RectTransform), typeof(Image));
+                overlayGO.transform.SetParent(btnTr, false);
+                overlayGO.transform.SetAsLastSibling(); // butonun tamamının en üstünde dursun
+
+                RectTransform ort = overlayGO.GetComponent<RectTransform>();
+                RectTransform btnRt = btnTr.GetComponent<RectTransform>();
+                ort.anchorMin = new Vector2(0.5f, 0.5f);
+                ort.anchorMax = new Vector2(0.5f, 0.5f);
+                ort.pivot = new Vector2(0.5f, 0.5f);
+                ort.sizeDelta = btnRt.sizeDelta;
+                ort.anchoredPosition = Vector2.zero;
+
+                overlay = overlayGO.GetComponent<Image>();
+                overlay.raycastTarget = false;
+                overlay.type = Image.Type.Filled;
+                overlay.fillMethod = Image.FillMethod.Radial360;
+                overlay.fillOrigin = (int)Image.Origin360.Top;
+                overlay.fillClockwise = true;
+                overlay.fillAmount = 0f; // Cooldown başlamadan önce buton tamamen normal görünsün
+            }
+            else
+            {
+                overlay = overlayT.GetComponent<Image>();
+            }
+
+            overlay.sprite = btnBg.sprite; // butonun kendi (yuvarlak köşeli) arka plan şekli
+            overlay.color = new Color(0f, 0f, 0f, 0.62f);
+            return overlay;
         }
 
         private CanvasGroup GetOrCreateCanvasGroup(Transform tr)
