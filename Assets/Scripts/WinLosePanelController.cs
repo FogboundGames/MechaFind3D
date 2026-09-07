@@ -66,6 +66,23 @@ namespace MechaFind3D.PhysicsInteraction
         private int nextRowIdx = -1;
         private bool isLevelTransitioning = false;
 
+        // Popup'ların gerçek "dinlenme" ölçeğini (WinPanel/LosePanel'in tasarımda önceden verilmiş
+        // ölçeği - burada 1.0 değil, tilted 3D canvas kurulumu için 0.31 gibi bir değer) ilk erişimde
+        // sabitler. AnimateIn/AnimateOut bunun yerine popupRect.localScale'i CANLI okusaydı, her
+        // aç/kapa döngüsünde küçülen değeri "yeni gerçek ölçek" sanıp kümülatif olarak küçülmeye
+        // devam ederdi.
+        private readonly Dictionary<Transform, Vector3> popupRestScales = new Dictionary<Transform, Vector3>();
+
+        private Vector3 GetPopupRestScale(Transform popupT)
+        {
+            if (!popupRestScales.TryGetValue(popupT, out Vector3 scale))
+            {
+                scale = popupT.localScale;
+                popupRestScales[popupT] = scale;
+            }
+            return scale;
+        }
+
         private void Awake()
         {
             Instance = this;
@@ -195,7 +212,16 @@ namespace MechaFind3D.PhysicsInteraction
                 }
             }
 
-            // 3. Bulunamadıysa RectTransform'a sahip ilk çocuk elemanı dön
+            // 3. Root'un kendisi zaten arka plan görseli taşıyan bir kartsa (WinPanel/LosePanel deseni:
+            // Title/ActionButton/Viewport doğrudan root'un altında, ayrı bir "PopupPanel" katmanı yok),
+            // popup kartı root'un kendisidir. Bunu kontrol etmeden adım 4'e geçmek, rastgele bir çocuğu
+            // (ör. Title) "kart" sanıp panel giriş/çıkış animasyonlarını ona uygulamaya yol açıyordu.
+            if (root.GetComponent<Image>() != null)
+            {
+                return root;
+            }
+
+            // 4. Bulunamadıysa RectTransform'a sahip ilk çocuk elemanı dön
             for (int i = 0; i < root.childCount; i++)
             {
                 Transform child = root.GetChild(i);
@@ -255,6 +281,7 @@ namespace MechaFind3D.PhysicsInteraction
 
             // Bölüm kazanma coin ödülü
             CoinManager.AddCoins(winCoinReward);
+            ShowCoinRewardPopup(winCoinReward);
 
             // Ekrana konfeti gibi coinler yağsın
             SpawnCoinConfettiShower();
@@ -818,6 +845,83 @@ namespace MechaFind3D.PhysicsInteraction
             if (homeBtn != null) homeBtn.interactable = interactable;
         }
 
+        /// <summary>
+        /// Win panelinde, kazanılan coin miktarını gösteren "+N" rozetini Subtitle'ın altında
+        /// zıplayarak belirtip kısa süre sonra soluklaştırır. CoinManager arka planda HUD sayacını
+        /// zaten güncelliyor, ama HUD win paneli tarafından kaplandığı için oyuncu onu göremiyor -
+        /// bu yüzden ödül geri bildirimi panelin kendi içinde ayrıca gösteriliyor.
+        /// </summary>
+        private void ShowCoinRewardPopup(int amount)
+        {
+            if (winPanel == null) return;
+            LoadCoinSpriteIfMissing();
+
+            Transform popupT = GetPopupTransform(winPanel.transform) ?? winPanel.transform;
+            Transform existing = popupT.Find("CoinReward");
+            GameObject rewardGO = existing != null ? existing.gameObject : CreateCoinRewardObject(popupT);
+
+            Text rewardText = rewardGO.transform.Find("Text").GetComponent<Text>();
+            rewardText.text = $"+{amount}";
+
+            CanvasGroup cg = rewardGO.GetComponent<CanvasGroup>();
+            rewardGO.transform.DOKill();
+            cg.DOKill();
+
+            rewardGO.SetActive(true);
+            rewardGO.transform.localScale = Vector3.zero;
+            cg.alpha = 1f;
+
+            Sequence seq = DOTween.Sequence().SetUpdate(true);
+            seq.AppendInterval(0.55f); // panel açılış animasyonu otursun, ondan sonra belirsin
+            seq.Append(rewardGO.transform.DOScale(1f, 0.35f).SetEase(Ease.OutBack, 2.5f));
+            seq.AppendInterval(1.1f);
+            seq.Append(rewardGO.transform.DOScale(0.85f, 0.3f).SetEase(Ease.InQuad));
+            seq.Join(cg.DOFade(0f, 0.3f).SetEase(Ease.InQuad));
+            seq.OnComplete(() => { if (rewardGO != null) rewardGO.SetActive(false); });
+        }
+
+        private GameObject CreateCoinRewardObject(Transform parent)
+        {
+            GameObject rewardGO = new GameObject("CoinReward", typeof(RectTransform), typeof(CanvasGroup));
+            rewardGO.transform.SetParent(parent, false);
+            RectTransform rewardRT = rewardGO.GetComponent<RectTransform>();
+            rewardRT.anchorMin = new Vector2(0.5f, 1.0f);
+            rewardRT.anchorMax = new Vector2(0.5f, 1.0f);
+            rewardRT.pivot = new Vector2(0.5f, 1.0f);
+            rewardRT.anchoredPosition = new Vector2(0f, -455f);
+            rewardRT.sizeDelta = new Vector2(260f, 90f);
+
+            GameObject iconGO = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            iconGO.transform.SetParent(rewardGO.transform, false);
+            RectTransform iconRT = iconGO.GetComponent<RectTransform>();
+            iconRT.anchorMin = iconRT.anchorMax = new Vector2(0.5f, 0.5f);
+            iconRT.pivot = new Vector2(0.5f, 0.5f);
+            iconRT.sizeDelta = new Vector2(70f, 70f);
+            iconRT.anchoredPosition = new Vector2(-70f, 0f);
+            Image iconImg = iconGO.GetComponent<Image>();
+            if (coinSprite != null) iconImg.sprite = coinSprite;
+
+            GameObject textGO = new GameObject("Text", typeof(RectTransform), typeof(Text));
+            textGO.transform.SetParent(rewardGO.transform, false);
+            RectTransform textRT = textGO.GetComponent<RectTransform>();
+            textRT.anchorMin = textRT.anchorMax = new Vector2(0.5f, 0.5f);
+            textRT.pivot = new Vector2(0.5f, 0.5f);
+            textRT.sizeDelta = new Vector2(160f, 90f);
+            textRT.anchoredPosition = new Vector2(35f, 0f);
+            Text txt = textGO.GetComponent<Text>();
+            txt.alignment = TextAnchor.MiddleLeft;
+            txt.fontSize = 48;
+            txt.color = new Color(1f, 0.85f, 0.2f, 1f);
+            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Font.CreateDynamicFontFromOSFont("Arial", 48);
+
+            Outline ol = textGO.AddComponent<Outline>();
+            ol.effectColor = new Color(0f, 0f, 0f, 0.6f);
+            ol.effectDistance = new Vector2(1.5f, -1.5f);
+
+            rewardGO.SetActive(false);
+            return rewardGO;
+        }
+
         private static void SetLevelText(Component comp, string text)
         {
             if (comp is Text uiTxt) uiTxt.text = text;
@@ -857,21 +961,40 @@ namespace MechaFind3D.PhysicsInteraction
             RectTransform popupRect = popupT.GetComponent<RectTransform>();
             if (popupRect == null) return;
 
-            popupT.DOKill();
+            // popupT artık (root'un kendisi bir kart ise) panel'in KENDİSİ olabilir - bu durumda
+            // popupT'nin CanvasGroup'u panelCG ile AYNI component. Onu ayrıca DOKill()'leyip yeniden
+            // fade'lemek, panelCG'nin yukarıdaki DOFade'ini (ve onun interactable=true yapan
+            // OnComplete'ini) daha hiç çalışmadan öldürüyordu - buton sonsuza dek tıklanamaz kalıyordu.
+            bool popupIsPanelItself = popupT == panel.transform;
+
             popupRect.DOKill();
 
-            CanvasGroup popupCG = popupT.GetComponent<CanvasGroup>();
-            if (popupCG == null) popupCG = popupT.gameObject.AddComponent<CanvasGroup>();
-            popupCG.DOKill();
-            popupCG.alpha = 0f;
-            popupCG.DOFade(1f, popupInDuration * 0.6f).SetEase(Ease.OutQuad).SetUpdate(true);
+            CanvasGroup popupCG;
+            if (popupIsPanelItself)
+            {
+                popupCG = panelCG;
+            }
+            else
+            {
+                popupT.DOKill();
+                popupCG = popupT.GetComponent<CanvasGroup>();
+                if (popupCG == null) popupCG = popupT.gameObject.AddComponent<CanvasGroup>();
+                popupCG.DOKill();
+                popupCG.alpha = 0f;
+                popupCG.DOFade(1f, popupInDuration * 0.6f).SetEase(Ease.OutQuad).SetUpdate(true);
+            }
 
-            popupRect.localScale = Vector3.one * popupInStartScale;
+            // WinPanel'in "dinlenme" ölçeği 1.0 değil (bu sahne tilted 3D canvas kurulumu için
+            // panel özellikle 0.3125 gibi bir değere önceden ölçeklenmiş durumda) - bu yüzden animasyon
+            // Vector3.one yerine panelin GERÇEK (ilk erişimde sabitlenmiş) ölçeğini hedeflemeli, yoksa
+            // panel ya ekrandan taşar ya da her aç/kapa döngüsünde biraz daha küçülür.
+            Vector3 popupRestScale = GetPopupRestScale(popupT);
+            popupRect.localScale = popupRestScale * popupInStartScale;
             popupRect.anchoredPosition = new Vector2(0f, popupInStartY);
 
             Sequence seq = DOTween.Sequence().SetUpdate(true);
             seq.Append(popupRect.DOAnchorPosY(0f, popupInDuration).SetEase(Ease.OutBack, 1.1f));
-            seq.Join(popupRect.DOScale(Vector3.one, popupInDuration).SetEase(Ease.OutBack, 1.3f));
+            seq.Join(popupRect.DOScale(popupRestScale, popupInDuration).SetEase(Ease.OutBack, 1.3f));
 
             seq.Insert(popupInDuration, popupRect.DOPunchRotation(new Vector3(0f, 0f, 4f), 0.5f, 8, 0.5f).SetUpdate(true));
 
@@ -1203,16 +1326,26 @@ namespace MechaFind3D.PhysicsInteraction
             if (popupT != null)
             {
                 RectTransform popupRect = popupT.GetComponent<RectTransform>();
-                CanvasGroup popupCG = popupT.GetComponent<CanvasGroup>();
+                bool popupIsPanelItself = popupT == panel.transform;
+                CanvasGroup popupCG = popupIsPanelItself ? panelCG : popupT.GetComponent<CanvasGroup>();
 
-                popupT.DOKill();
+                if (!popupIsPanelItself)
+                {
+                    popupT.DOKill();
+                    if (popupCG != null) popupCG.DOKill();
+                }
                 if (popupRect != null) popupRect.DOKill();
-                if (popupCG != null) popupCG.DOKill();
 
                 if (popupRect != null)
                 {
-                    seq.Append(popupRect.DOScale(Vector3.one * popupOutEndScale, popupOutDuration).SetEase(Ease.InBack));
-                    if (popupCG != null) seq.Join(popupCG.DOFade(0f, popupOutDuration).SetEase(Ease.InQuad));
+                    // AnimateIn'deki gibi: sabitlenmiş gerçek dinlenme ölçeğine göre orantılı
+                    // küçültmeliyiz - popupRect.localScale'i canlı okumak (önceki kapanıştan kalma
+                    // küçülmüş değeri "gerçek ölçek" sanıp) kümülatif küçülmeye yol açardı.
+                    Vector3 restScale = GetPopupRestScale(popupT);
+                    seq.Append(popupRect.DOScale(restScale * popupOutEndScale, popupOutDuration).SetEase(Ease.InBack));
+                    // popupCG panelCG ile aynı component olabilir (root'un kendisi kart ise) - bu
+                    // durumda tek bir DOFade yeterli, ikisini de Join etmek aynı tweeni iki kez eklerdi.
+                    if (popupCG != null && !popupIsPanelItself) seq.Join(popupCG.DOFade(0f, popupOutDuration).SetEase(Ease.InQuad));
                     seq.Join(panelCG.DOFade(0f, popupOutDuration).SetEase(Ease.InQuad));
                 }
                 else

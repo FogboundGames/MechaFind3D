@@ -18,6 +18,7 @@ namespace MechaFind3D.LevelSystem
     public class LevelItem : MonoBehaviour
     {
         [Header("UI Referansları")]
+        [SerializeField] private RectTransform starGroup;
         [SerializeField] private Image starImage;
         [SerializeField] private GameObject glowObject;
         [SerializeField] private Image glowImage;
@@ -33,8 +34,8 @@ namespace MechaFind3D.LevelSystem
         [SerializeField] private Color unlockedColor = new Color(0.95f, 0.95f, 1.0f, 0.95f);
         [SerializeField] private Color completedColor = new Color(1.0f, 0.92f, 0.15f, 1.0f);
 
-        [SerializeField] private float lockedScale = 0.90f;
-        [SerializeField] private float unlockedScale = 0.95f;
+        [SerializeField] private float lockedScale = 0.85f;
+        [SerializeField] private float unlockedScale = 1.30f;
         [SerializeField] private float completedScale = 1.00f;
 
         public LevelState CurrentState { get; private set; } = LevelState.Locked;
@@ -51,6 +52,14 @@ namespace MechaFind3D.LevelSystem
 
         public RectTransform RectTransform => transform as RectTransform;
 
+        /// <summary>
+        /// Star/Ring/Glow/Lock/Check'i içeren, item'ın kendi merkezinden (starColumnX kadar) kaydırılmış
+        /// container. Locked/Unlocked/Completed ölçeklemesi item'ın tamamı yerine SADECE bunu hedefler -
+        /// aksi halde yıldız item'ın merkezine göre off-center olduğu için item ölçeklenince yıldızın
+        /// ekrandaki X konumu da kayar (path çizgisiyle hizası bozulur).
+        /// </summary>
+        public Transform StarGroup => starGroup != null ? (Transform)starGroup : transform;
+
         private void Awake()
         {
             AutoAssignReferencesIfMissing();
@@ -58,9 +67,17 @@ namespace MechaFind3D.LevelSystem
 
         public void AutoAssignReferencesIfMissing()
         {
+            if (starGroup == null)
+            {
+                Transform sg = transform.Find("StarGroup");
+                if (sg != null) starGroup = sg.GetComponent<RectTransform>();
+            }
+
+            Transform starSearchRoot = starGroup != null ? starGroup : transform;
+
             if (starImage == null)
             {
-                Transform starT = transform.Find("Star");
+                Transform starT = starSearchRoot.Find("Star");
                 starImage = starT != null ? starT.GetComponent<Image>() : GetComponentInChildren<Image>(true);
             }
 
@@ -105,9 +122,9 @@ namespace MechaFind3D.LevelSystem
 
             if (highlightRingObject == null)
             {
-                // HighlightRing, Star'ın gerisinde (arka planda) görünmesi için Star'ın kardeşi
-                // olarak konur (Star'ın çocuğu olsaydı üstünde çizilirdi).
-                Transform t = transform.Find("HighlightRing");
+                // HighlightRing, Star'ın gerisinde (arka planda) görünmesi için StarGroup içinde
+                // Star'ın kardeşi olarak konur (Star'ın çocuğu olsaydı üstünde çizilirdi).
+                Transform t = starSearchRoot.Find("HighlightRing");
                 if (t != null)
                 {
                     highlightRingObject = t.gameObject;
@@ -124,7 +141,7 @@ namespace MechaFind3D.LevelSystem
             SetState(initialState, true);
         }
 
-        public void SetState(LevelState state, bool immediate = true)
+        public void SetState(LevelState state, bool immediate = true, bool impactFlash = false)
         {
             CurrentState = state;
             AutoAssignReferencesIfMissing();
@@ -149,8 +166,22 @@ namespace MechaFind3D.LevelSystem
             if (starImage != null)
             {
                 starImage.DOKill();
-                if (immediate) starImage.color = targetColor;
-                else starImage.DOColor(targetColor, 0.35f).SetUpdate(true);
+                if (immediate)
+                {
+                    starImage.color = targetColor;
+                }
+                else if (impactFlash)
+                {
+                    // Path bar tam bu yıldıza değdiği anı vurgulamak için: önce kısa bir beyaz flaş,
+                    // sonra hedef renge yumuşak geçiş - "temas anı" görsel olarak hissedilsin.
+                    Sequence flashSeq = DOTween.Sequence().SetUpdate(true);
+                    flashSeq.Append(starImage.DOColor(Color.white, 0.08f));
+                    flashSeq.Append(starImage.DOColor(targetColor, 0.27f));
+                }
+                else
+                {
+                    starImage.DOColor(targetColor, 0.35f).SetUpdate(true);
+                }
             }
 
             if (levelTextComponent != null)
@@ -161,14 +192,14 @@ namespace MechaFind3D.LevelSystem
                 SetTextColor(levelTextComponent, textCol);
             }
 
-            transform.DOKill();
+            StarGroup.DOKill();
             if (immediate)
             {
-                transform.localScale = Vector3.one * targetScale;
+                StarGroup.localScale = Vector3.one * targetScale;
             }
             else
             {
-                transform.DOScale(Vector3.one * targetScale, 0.35f).SetEase(Ease.OutBack).SetUpdate(true);
+                StarGroup.DOScale(Vector3.one * targetScale, 0.35f).SetEase(Ease.OutBack).SetUpdate(true);
             }
         }
 
@@ -235,7 +266,7 @@ namespace MechaFind3D.LevelSystem
                 seq.Join(DOTween.To(() => GetTextColor(levelTextComponent), c => SetTextColor(levelTextComponent, c), textCol, 0.35f));
             }
 
-            seq.Join(transform.DOScale(Vector3.one * targetScale, 0.38f).SetEase(Ease.OutBack, 2.2f));
+            seq.Join(StarGroup.DOScale(Vector3.one * targetScale, 0.38f).SetEase(Ease.OutBack, 2.2f));
 
             return seq;
         }

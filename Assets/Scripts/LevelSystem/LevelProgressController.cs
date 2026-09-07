@@ -18,13 +18,14 @@ namespace MechaFind3D.LevelSystem
 
         [Header("Layout Ayarları")]
         [Tooltip("Seviye ögeleri arasındaki sabit dikey mesafe (px).")]
-        [SerializeField] private float levelSpacing = 220f;
+        [SerializeField] private float levelSpacing = 260f;
         [Tooltip("Viewport alanında aynı anda görünecek seviye sayısı.")]
         [SerializeField] private int visibleLevelCount = 3;
         [Header("UI Yapısı")]
         [SerializeField] private RectTransform viewportRect;
         [SerializeField] private RectTransform contentRect;
         [SerializeField] private RectTransform popupPanelRect;
+        [SerializeField] private Text subtitleText;
 
         [Header("Prefab & Görsel Hazırlık")]
         [SerializeField] private GameObject levelItemPrefab;
@@ -34,7 +35,7 @@ namespace MechaFind3D.LevelSystem
 
         [Header("Path Çizgisi")]
         [SerializeField] private float pathLineWidth = 8f;
-        [SerializeField] private Color pathTrackColor = new Color(1f, 1f, 1f, 0.12f);
+        [SerializeField] private Color pathTrackColor = new Color(0.55f, 0.57f, 0.62f, 0.85f);
         [SerializeField] private Color pathFillColor = new Color(1f, 0.85f, 0.15f, 1f);
 
         private List<LevelItem> activeItems = new List<LevelItem>();
@@ -90,10 +91,26 @@ namespace MechaFind3D.LevelSystem
                         titleRT.anchorMin = new Vector2(0.5f, 1.0f);
                         titleRT.anchorMax = new Vector2(0.5f, 1.0f);
                         titleRT.pivot = new Vector2(0.5f, 1.0f);
-                        titleRT.anchoredPosition = new Vector2(0f, -140f);
+                        titleRT.anchoredPosition = new Vector2(0f, -230f);
                         titleRT.sizeDelta = new Vector2(800f, 120f);
                     }
                 }
+
+                // Subtitle: Title'ın hemen altında, hangi levelin tamamlandığını belirten bağlam yazısı
+                Transform subtitleT = popupPanelRect.Find("Subtitle");
+                GameObject subtitleGO = subtitleT != null ? subtitleT.gameObject : new GameObject("Subtitle", typeof(RectTransform), typeof(Text));
+                if (subtitleT == null) subtitleGO.transform.SetParent(popupPanelRect, false);
+                RectTransform subtitleRT = subtitleGO.GetComponent<RectTransform>();
+                subtitleRT.anchorMin = new Vector2(0.5f, 1.0f);
+                subtitleRT.anchorMax = new Vector2(0.5f, 1.0f);
+                subtitleRT.pivot = new Vector2(0.5f, 1.0f);
+                subtitleRT.anchoredPosition = new Vector2(0f, -365f);
+                subtitleRT.sizeDelta = new Vector2(700f, 60f);
+                subtitleText = subtitleGO.GetComponent<Text>();
+                subtitleText.alignment = TextAnchor.MiddleCenter;
+                subtitleText.fontSize = 32;
+                subtitleText.color = new Color(0.75f, 0.82f, 0.92f, 0.85f);
+                subtitleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Font.CreateDynamicFontFromOSFont("Arial", 32);
 
                 // ActionButton'ı alt nota (Bottom-Center) sabitle (X:0, Y:140)
                 Transform actionBtnT = popupPanelRect.Find("ActionButton") ?? popupPanelRect.Find("NextButton");
@@ -145,6 +162,7 @@ namespace MechaFind3D.LevelSystem
                     maskComp.showMaskGraphic = false;
                 }
 
+                EnsureCenterGlow();
                 EnsureEdgeFade(true);
                 EnsureEdgeFade(false);
             }
@@ -179,10 +197,15 @@ namespace MechaFind3D.LevelSystem
 
             if (contentRect == null) return;
 
-            // Eski ögeleri temizle
-            foreach (Transform child in contentRect)
+            // Eski ögeleri temizle. Destroy() Play mode dışında (Editor'de) etkisizdir/gecikmelidir;
+            // bu yöntem Edit mode'da manuel önizleme için çağrıldığında eskiler silinmeden yenileri
+            // üstüne eklenip sahnede çift/artık içerik birikmesine yol açıyordu.
+            var oldChildren = new List<GameObject>();
+            foreach (Transform child in contentRect) oldChildren.Add(child.gameObject);
+            foreach (GameObject old in oldChildren)
             {
-                Destroy(child.gameObject);
+                if (Application.isPlaying) Destroy(old);
+                else DestroyImmediate(old);
             }
             activeItems.Clear();
             activePathFills.Clear();
@@ -190,6 +213,8 @@ namespace MechaFind3D.LevelSystem
             // Görüntülenecek seviye sayısı
             int count = Mathf.Max(visibleLevelCount + 2, totalLevels);
             int currentLvlNumber = currentLevelIndex + 1;
+
+            if (subtitleText != null) subtitleText.text = $"LEVEL {currentLvlNumber} TAMAMLANDI!";
 
             for (int i = 0; i < count; i++)
             {
@@ -276,7 +301,7 @@ namespace MechaFind3D.LevelSystem
             float length = topY - bottomY;
 
             rt.sizeDelta = new Vector2(pathLineWidth, length);
-            rt.anchoredPosition = new Vector2(-160f, bottomY);
+            rt.anchoredPosition = new Vector2(-200f, bottomY);
         }
 
         /// <summary>
@@ -320,17 +345,17 @@ namespace MechaFind3D.LevelSystem
                 currentSequence.InsertCallback(0.30f, () =>
                 {
                     current.SetState(LevelState.Completed, false);
-                    current.transform.localScale = Vector3.one * 0.8f;
+                    current.StarGroup.localScale = Vector3.one * 0.8f;
                 });
 
-                currentSequence.Insert(0.30f, current.transform.DOScale(1.15f, 0.12f).SetEase(Ease.OutBack));
-                currentSequence.Insert(0.42f, current.transform.DOScale(0.95f, 0.08f).SetEase(Ease.InQuad));
-                currentSequence.Insert(0.50f, current.transform.DOScale(1.00f, 0.10f).SetEase(Ease.OutCubic));
+                currentSequence.Insert(0.30f, current.StarGroup.DOScale(1.15f, 0.12f).SetEase(Ease.OutBack));
+                currentSequence.Insert(0.42f, current.StarGroup.DOScale(0.95f, 0.08f).SetEase(Ease.InQuad));
+                currentSequence.Insert(0.50f, current.StarGroup.DOScale(1.00f, 0.10f).SetEase(Ease.OutCubic));
 
                 // 0.45s - Glow + Particle Burst
                 currentSequence.InsertCallback(0.45f, () =>
                 {
-                    SpawnStarBurstParticles(current.transform.position);
+                    SpawnStarBurstParticles(current.StarGroup.position);
                     HapticHelper.Vibrate();
                 });
             }
@@ -355,14 +380,21 @@ namespace MechaFind3D.LevelSystem
                 float nextUnlockTime = 1.30f;
                 currentSequence.InsertCallback(nextUnlockTime, () =>
                 {
-                    next.SetState(LevelState.Unlocked, false);
-                    next.transform.DOKill();
-                    next.transform.localScale = Vector3.one * 0.85f;
-                    next.transform.DOScale(1.10f, 0.15f).SetEase(Ease.OutBack).SetUpdate(true)
+                    // Bar tam bu anda dolduğu için (Insert(pathDelay=0.80, duration=0.5) => 1.30s'de biter),
+                    // "bar yıldıza değdi -> yıldız açıldı" hissi verecek şekilde burada da current star'ın
+                    // 0.45s'deki tamamlanma anındaki AYNI patlama+titreşim kombosu tetikleniyor - iki olay
+                    // artık sadece zamanlama olarak değil, görsel olarak da bağlı hissettiriyor.
+                    next.SetState(LevelState.Unlocked, false, impactFlash: true);
+                    next.StarGroup.DOKill();
+                    next.StarGroup.localScale = Vector3.one * 0.85f;
+                    next.StarGroup.DOScale(1.10f, 0.15f).SetEase(Ease.OutBack).SetUpdate(true)
                         .OnComplete(() =>
                         {
-                            next.transform.DOScale(0.95f, 0.10f).SetEase(Ease.OutQuad).SetUpdate(true);
+                            next.StarGroup.DOScale(0.95f, 0.10f).SetEase(Ease.OutQuad).SetUpdate(true);
                         });
+
+                    SpawnStarBurstParticles(next.StarGroup.position);
+                    HapticHelper.Vibrate();
                 });
             }
 
@@ -379,7 +411,7 @@ namespace MechaFind3D.LevelSystem
                 // Aynı anda eski completed star'ı hafifçe küçült (Scale 1.0 -> 0.85) geride kaldı hissi için
                 if (current != null)
                 {
-                    currentSequence.Insert(scrollTime, current.transform.DOScale(0.85f, 0.50f).SetEase(Ease.InOutQuad));
+                    currentSequence.Insert(scrollTime, current.StarGroup.DOScale(0.85f, 0.50f).SetEase(Ease.InOutQuad));
                 }
             }
 
@@ -420,15 +452,26 @@ namespace MechaFind3D.LevelSystem
             SetCenteredAnchors(itemRT);
             itemRT.sizeDelta = new Vector2(500f, 140f);
 
-            const float starColumnX = -160f;
+            const float starColumnX = -200f;
+
+            // StarGroup: Ring+Star+Glow+Lock+Check bu container'a göre (0,0) merkezli duruyor.
+            // Locked/Unlocked/Completed state ölçeklemesi tüm item yerine SADECE bu grubu hedefler
+            // (bkz. LevelItem.SetState) - aksi halde yıldız item'ın merkezinden kaydırılmış olduğu için
+            // (starColumnX) item ölçeklenince yıldızın ekrandaki X konumu da kayar ve path çizgisiyle
+            // hizası bozulurdu (0.85 ölçekte -170'e, 1.30 ölçekte -260'a kayardı, çizgi hep -200'de kalır).
+            GameObject starGroupGO = new GameObject("StarGroup", typeof(RectTransform));
+            starGroupGO.transform.SetParent(itemGO.transform, false);
+            RectTransform starGroupRT = starGroupGO.GetComponent<RectTransform>();
+            SetCenteredAnchors(starGroupRT);
+            starGroupRT.anchoredPosition = new Vector2(starColumnX, 0f);
 
             // 0. Highlight Ring - Star'ın kardeşi olarak ÖNCE eklenir ki Star'ın arkasında kalsın
             GameObject ringGO = new GameObject("HighlightRing", typeof(RectTransform), typeof(Image));
-            ringGO.transform.SetParent(itemGO.transform, false);
+            ringGO.transform.SetParent(starGroupGO.transform, false);
             RectTransform ringRT = ringGO.GetComponent<RectTransform>();
             SetCenteredAnchors(ringRT);
-            ringRT.sizeDelta = new Vector2(150f, 150f);
-            ringRT.anchoredPosition = new Vector2(starColumnX, 0f);
+            ringRT.sizeDelta = new Vector2(190f, 190f);
+            ringRT.anchoredPosition = Vector2.zero;
             Image ringImg = ringGO.GetComponent<Image>();
             if (starSprite != null) ringImg.sprite = starSprite;
             ringImg.color = new Color(0.5f, 0.95f, 1f, 0.45f);
@@ -437,11 +480,11 @@ namespace MechaFind3D.LevelSystem
 
             // 1. Yıldız (Star)
             GameObject starGO = new GameObject("Star", typeof(RectTransform), typeof(Image));
-            starGO.transform.SetParent(itemGO.transform, false);
+            starGO.transform.SetParent(starGroupGO.transform, false);
             RectTransform starRT = starGO.GetComponent<RectTransform>();
             SetCenteredAnchors(starRT);
-            starRT.sizeDelta = new Vector2(110f, 110f);
-            starRT.anchoredPosition = new Vector2(starColumnX, 0f);
+            starRT.sizeDelta = new Vector2(140f, 140f);
+            starRT.anchoredPosition = Vector2.zero;
 
             Image starImg = starGO.GetComponent<Image>();
             if (starSprite != null) starImg.sprite = starSprite;
@@ -451,7 +494,7 @@ namespace MechaFind3D.LevelSystem
             glowGO.transform.SetParent(starGO.transform, false);
             RectTransform glowRT = glowGO.GetComponent<RectTransform>();
             SetCenteredAnchors(glowRT);
-            glowRT.sizeDelta = new Vector2(148f, 148f);
+            glowRT.sizeDelta = new Vector2(188f, 188f);
             glowRT.anchoredPosition = Vector2.zero;
             Image glowImg = glowGO.GetComponent<Image>();
             if (starSprite != null) glowImg.sprite = starSprite;
@@ -463,7 +506,7 @@ namespace MechaFind3D.LevelSystem
             lockGO.transform.SetParent(starGO.transform, false);
             RectTransform lockRT = lockGO.GetComponent<RectTransform>();
             SetCenteredAnchors(lockRT);
-            lockRT.sizeDelta = new Vector2(48f, 48f);
+            lockRT.sizeDelta = new Vector2(60f, 60f);
             lockRT.anchoredPosition = Vector2.zero;
             Image lockImg = lockGO.GetComponent<Image>();
             if (lockSprite != null) lockImg.sprite = lockSprite;
@@ -475,8 +518,8 @@ namespace MechaFind3D.LevelSystem
             checkGO.transform.SetParent(starGO.transform, false);
             RectTransform checkRT = checkGO.GetComponent<RectTransform>();
             SetCenteredAnchors(checkRT);
-            checkRT.sizeDelta = new Vector2(42f, 42f);
-            checkRT.anchoredPosition = new Vector2(38f, 38f);
+            checkRT.sizeDelta = new Vector2(52f, 52f);
+            checkRT.anchoredPosition = new Vector2(48f, 48f);
             Image checkImg = checkGO.GetComponent<Image>();
             if (checkSprite != null) checkImg.sprite = checkSprite;
             checkImg.color = new Color(0.25f, 0.95f, 0.45f, 1f);
@@ -487,15 +530,15 @@ namespace MechaFind3D.LevelSystem
             textGO.transform.SetParent(itemGO.transform, false);
             RectTransform textRT = textGO.GetComponent<RectTransform>();
             SetCenteredAnchors(textRT);
-            textRT.sizeDelta = new Vector2(260f, 90f);
-            textRT.anchoredPosition = new Vector2(60f, 0f);
+            textRT.sizeDelta = new Vector2(280f, 90f);
+            textRT.anchoredPosition = new Vector2(80f, -34f);
 
             Text uiTxt = textGO.AddComponent<Text>();
             uiTxt.text = $"LEVEL {levelNum}";
-            uiTxt.fontSize = 40;
+            uiTxt.fontSize = 46;
             uiTxt.alignment = TextAnchor.MiddleLeft;
             uiTxt.color = Color.white;
-            uiTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Font.CreateDynamicFontFromOSFont("Arial", 40);
+            uiTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Font.CreateDynamicFontFromOSFont("Arial", 46);
 
             Outline textOutline = textGO.AddComponent<Outline>();
             textOutline.effectColor = new Color(0f, 0f, 0f, 0.65f);
@@ -541,6 +584,55 @@ namespace MechaFind3D.LevelSystem
                 rt.DOScale(0f, 0.45f).SetEase(Ease.InQuad).SetUpdate(true);
                 cg.DOFade(0f, 0.45f).SetEase(Ease.InQuad).SetUpdate(true).OnComplete(() => Destroy(spark));
             }
+        }
+
+        /// <summary>
+        /// Düz koyu arka planın ortasına, mevcut (unlocked) seviyenin her zaman ortalandığı viewport
+        /// arkasına yumuşak bir radial glow yerleştirir - panel derinliksiz/düz durmasın diye.
+        /// </summary>
+        private void EnsureCenterGlow()
+        {
+            if (popupPanelRect == null || viewportRect == null) return;
+
+            Transform existing = popupPanelRect.Find("CenterGlow");
+            GameObject glowGO = existing != null ? existing.gameObject : new GameObject("CenterGlow", typeof(RectTransform), typeof(Image));
+            if (existing == null) glowGO.transform.SetParent(popupPanelRect, false);
+            glowGO.transform.SetSiblingIndex(Mathf.Max(0, viewportRect.GetSiblingIndex()));
+
+            RectTransform glowRT = glowGO.GetComponent<RectTransform>();
+            SetCenteredAnchors(glowRT);
+            glowRT.sizeDelta = new Vector2(viewportRect.sizeDelta.x * 1.15f, viewportRect.sizeDelta.y * 1.15f);
+            glowRT.anchoredPosition = Vector2.zero;
+
+            Image glowImg = glowGO.GetComponent<Image>();
+            glowImg.sprite = GetRadialGlowSprite();
+            glowImg.raycastTarget = false;
+            glowImg.color = new Color(1f, 0.85f, 0.35f, 0.16f);
+        }
+
+        private Sprite cachedRadialGlowSprite;
+
+        private Sprite GetRadialGlowSprite()
+        {
+            if (cachedRadialGlowSprite != null) return cachedRadialGlowSprite;
+
+            const int size = 128;
+            const float half = size * 0.5f;
+            Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(half, half)) / half;
+                    float alpha = Mathf.Clamp01(1f - dist);
+                    alpha = alpha * alpha; // merkeze doğru daha yumuşak sönümlenme
+                    tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+            }
+            tex.Apply();
+
+            cachedRadialGlowSprite = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f));
+            return cachedRadialGlowSprite;
         }
 
         /// <summary>
