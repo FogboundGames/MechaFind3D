@@ -690,37 +690,64 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (explicitAnchors.Count > 0)
             {
-                (side, pivot) = explicitAnchors[Random.Range(0, explicitAnchors.Count)];
-                return true;
-            }
-            // Auto: prefer the broad face on thin/flat items (a slice's front face dwarfs its edges), so
-            // the mecha lies against real surface area instead of balancing on a narrow rim.
-            if (facePivots.Count > 0 && IsFlatObject(host))
-            {
-                (side, pivot) = facePivots[Random.Range(0, facePivots.Count)];
-                return true;
-            }
-            if (topPivots.Count > 0)
-            {
-                (side, pivot) = topPivots[Random.Range(0, topPivots.Count)];
-                return true;
-            }
-            if (facePivots.Count > 0)
-            {
-                (side, pivot) = facePivots[Random.Range(0, facePivots.Count)];
-                return true;
-            }
-            if (sidePivots.Count > 0)
-            {
-                (side, pivot) = sidePivots[Random.Range(0, sidePivots.Count)];
-                return true;
-            }
-            if (bottomPivots.Count > 0)
-            {
-                (side, pivot) = bottomPivots[Random.Range(0, bottomPivots.Count)];
+                (side, pivot) = explicitAnchors[0];
                 return true;
             }
 
+            // Auto: lie against the object's broad face, and pick the same one every time.
+            //
+            // This used to Random.Range over the candidates, so an Auto mecha chose a different side on
+            // every spawn - a hand-tuned offset (authored against ONE side) then lined up only some of
+            // the time and the same level looked different each run. The side it reached for was wrong
+            // too: "flat" was taken to mean thin along Z and always yielded Front/Back, but most flat
+            // items here are thin along Y (a sandwich, a plate, a donut, a mushroom cap) and their broad
+            // face is the top - those mechas were left balancing on a narrow rim. The broad face is just
+            // the pair perpendicular to the THINNEST axis, so measure that.
+            var allPivots = new List<(ApproachSide side, Transform t)>();
+            allPivots.AddRange(topPivots);
+            allPivots.AddRange(facePivots);
+            allPivots.AddRange(sidePivots);
+            allPivots.AddRange(bottomPivots);
+
+            if (IsFlatObject(host))
+            {
+                Vector3 flatSize = GetCombinedBounds(host.gameObject).size;
+
+                ApproachSide broad, opposite;
+                if (flatSize.y <= flatSize.x && flatSize.y <= flatSize.z) { broad = ApproachSide.Top; opposite = ApproachSide.Bottom; }
+                else if (flatSize.z <= flatSize.x && flatSize.z <= flatSize.y) { broad = ApproachSide.Front; opposite = ApproachSide.Back; }
+                else { broad = ApproachSide.Right; opposite = ApproachSide.Left; }
+
+                // The two opposite faces are the same size, so the pick is fixed by order rather than
+                // measurement; the second one only covers prefabs carrying just one of the pair.
+                if (TryTakeSide(allPivots, broad, ref side, ref pivot)) return true;
+                if (TryTakeSide(allPivots, opposite, ref side, ref pivot)) return true;
+            }
+
+            // Anything chunky keeps its footing on top: the face that stays visible and reachable.
+            if (topPivots.Count > 0) { (side, pivot) = topPivots[0]; return true; }
+            if (TryTakeSide(allPivots, ApproachSide.Front, ref side, ref pivot)) return true;
+            if (TryTakeSide(allPivots, ApproachSide.Right, ref side, ref pivot)) return true;
+            if (facePivots.Count > 0) { (side, pivot) = facePivots[0]; return true; }
+            if (sidePivots.Count > 0) { (side, pivot) = sidePivots[0]; return true; }
+
+            // Bottom last: a mecha under the object is pressed into the table and unfindable.
+            if (bottomPivots.Count > 0) { (side, pivot) = bottomPivots[0]; return true; }
+
+            return false;
+        }
+
+        /// <summary>Takes the pivot for one specific side, when the host carries it.</summary>
+        private static bool TryTakeSide(List<(ApproachSide side, Transform t)> candidates, ApproachSide wanted,
+            ref ApproachSide side, ref Transform pivot)
+        {
+            foreach (var candidate in candidates)
+            {
+                if (candidate.side != wanted) continue;
+                side = candidate.side;
+                pivot = candidate.t;
+                return true;
+            }
             return false;
         }
 

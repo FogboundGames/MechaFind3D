@@ -10,31 +10,30 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
-  m_Name: balik1
+  m_Name: yumurta1
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
-  presetName: balik1
-  targetHostItem: {fileID: 11400000, guid: 9e8cf29f3edb35f4db129a6d25da0bda, type: 2}
-  targetPivot: 1
+  presetName: yumurta1
+  targetHostItem: {fileID: 11400000, guid: 1ff1e987514494a40a245a9633f8f1b0, type: 2}
+  targetPivot: 6
+  authoredHostSize: 0
   mechaScaleRatio: 0.5
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: 0, y: 0, z: 0}
+  mechaLocalOffset: {x: 0, y: 0.1687986, z: -0.021460041}
   mechaRotationOffset: {x: 0, y: 0, z: 0}
   boneOverrides:
   - boneKeyword: thigh_L
-    rotationOffset: {x: -38, y: -41, z: 54.7}
+    rotationOffset: {x: -0, y: -0, z: 45}
   - boneKeyword: thigh_R
-    rotationOffset: {x: -30.5, y: 68.9, z: -131.5}
-  - boneKeyword: shin_L
-    rotationOffset: {x: -57.8, y: 0, z: 0}
-  - boneKeyword: shin_R
-    rotationOffset: {x: -55.3, y: 0, z: -0}
-  - boneKeyword: forearm_R
-    rotationOffset: {x: 21, y: 0, z: 0}
-  - boneKeyword: upper_arm_L
-    rotationOffset: {x: -88, y: 0, z: -0}
+    rotationOffset: {x: 0, y: 0, z: -45}
   - boneKeyword: forearm_L
-    rotationOffset: {x: 21, y: -0, z: -0}
-  - boneKeyword: upper_arm_R
-    rotationOffset: {x: -88, y: 0, z: 0}
+    rotationOffset: {x: -35, y: -0, z: 0}
+  - boneKeyword: forearm_R
+    rotationOffset: {x: -35, y: 0, z: 0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -35, y: 0, z: 0}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -35, y: 0, z: 0}
+  - boneKeyword: spine_004
+    rotationOffset: {x: 31.1, y: -0, z: -0}

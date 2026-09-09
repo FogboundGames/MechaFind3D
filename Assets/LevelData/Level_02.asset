@@ -15,6 +15,7 @@ MonoBehaviour:
   levelNumber: 3
   levelTitle: Seviye 2
   timeLimit: 120
+  sourceTemplate: {fileID: 0}
   totalPileCount: 54
   foodTargetSize: 1.1
   targetGoals:
@@ -32,9 +33,11 @@ MonoBehaviour:
   - {fileID: 11400000, guid: b9ec21824735bc34da3685edb3d36a95, type: 2}
   - {fileID: 11400000, guid: 65755a1709534c34d9cfeb10c42668f0, type: 2}
   - {fileID: 11400000, guid: c3cbf892015195c468fc975fe80f5337, type: 2}
-  enableFrozenItems: 0
-  frozenItemCount: 3
-  defaultFreezeCount: 2
+  enableBlackLockedObjects: 0
+  blackObjectCount: 2
+  blackObjectUnlockCount: 3
+  unlockUndoBooster: 0
+  unlockRevealBooster: 0
   enableCamouflageMecha: 1
   targetPivot: 6
   customMechaPrefab: {fileID: 919132149155446097, guid: 879efff7d1187894d90433ff940dfe40, type: 3}
@@ -44,6 +47,18 @@ MonoBehaviour:
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: 0, y: 0.25, z: 0.2}
+  mechaLocalOffset: {x: 0, y: 0.47843325, z: 0.21756795}
   mechaRotationOffset: {x: 90, y: 0, z: 0}
+  boneOverrides:
+  - boneKeyword: thigh_L
+    rotationOffset: {x: -0, y: -0, z: 45}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 0, z: -45}
+  isStickyMecha: 0
+  stickyJumpInterval: 15
+  stickyMaxJumps: 2
+  isMagnetMecha: 0
+  magnetRadius: 1.5
+  magnetForce: 8
+  magnetMaxObjects: 4
   additionalMechas: []

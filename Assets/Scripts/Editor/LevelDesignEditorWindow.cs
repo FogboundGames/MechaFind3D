@@ -7,16 +7,81 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 {
     public class LevelDesignEditorWindow : EditorWindow
     {
-        private enum Tab { LevelManager, ItemLibrary, PrefabBatchImporter }
+        private enum Tab { LevelManager, Templates, ItemLibrary, PrefabBatchImporter }
         private Tab selectedTab = Tab.LevelManager;
 
         private Vector2 scrollPos;
         private LevelDataSO selectedLevel;
         private string itemSearchQuery = "";
 
+        // Template authoring state. Session-only: which template the "+ Yeni Seviye" button seeds from,
+        // which one the Templates tab is editing, and which one filters the item library grid.
+        private LevelTemplateSO newLevelTemplate;
+        private LevelTemplateSO selectedTemplate;
+        private LevelTemplateSO libraryFilterTemplate;
+
+        // ---- Asset lookup caches ----
+        // OnGUI runs for every repaint AND every input event, so anything it calls runs dozens of times
+        // per keystroke. An AssetDatabase.FindAssets sweep per call - times 100+ item cards, each also
+        // rebuilding a template's pool list and rescanning every pose preset - is what made this window
+        // lag behind typing. These caches turn all of that into dictionary lookups; they are dropped
+        // whenever the project changes or the window regains focus, so they cannot go stale.
+        private static readonly Dictionary<System.Type, UnityEngine.Object[]> assetCache =
+            new Dictionary<System.Type, UnityEngine.Object[]>();
+        private static readonly Dictionary<LevelTemplateSO, HashSet<ItemDataSO>> poolCache =
+            new Dictionary<LevelTemplateSO, HashSet<ItemDataSO>>();
+        private static HashSet<ItemDataSO> posePresetHosts;
+
+        // FindFirstObjectByType walks the whole scene, and OnGUI asked for the manager on every event.
+        // Unity's overloaded null check makes a destroyed/unloaded manager compare equal to null, so this
+        // re-finds itself automatically instead of handing back a dead reference.
+        private LevelManager cachedLevelManager;
+
+        private LevelManager GetLevelManager()
+        {
+            if (cachedLevelManager == null) cachedLevelManager = Object.FindFirstObjectByType<LevelManager>();
+            return cachedLevelManager;
+        }
+
+        private static void InvalidateAssetCaches()
+        {
+            assetCache.Clear();
+            poolCache.Clear();
+            posePresetHosts = null;
+        }
+
+        private void OnProjectChange() => InvalidateAssetCaches();
+        private void OnFocus() => InvalidateAssetCaches();
+
+        /// <summary>Cached membership test for a template's item pool.</summary>
+        private static bool PoolContains(LevelTemplateSO template, ItemDataSO item)
+        {
+            if (template == null || item == null) return false;
+            if (!poolCache.TryGetValue(template, out HashSet<ItemDataSO> set))
+            {
+                set = new HashSet<ItemDataSO>(template.GetValidPool());
+                poolCache[template] = set;
+            }
+            return set.Contains(item);
+        }
+
+        private static int PoolCount(LevelTemplateSO template)
+        {
+            if (template == null) return 0;
+            if (!poolCache.TryGetValue(template, out HashSet<ItemDataSO> set))
+            {
+                set = new HashSet<ItemDataSO>(template.GetValidPool());
+                poolCache[template] = set;
+            }
+            return set.Count;
+        }
+
         // Expand/collapse state per additionalMechas entry, keyed by list index. Session-only (not saved
         // with the asset) - purely so re-drawing the same OnGUI frame doesn't reset every foldout shut.
         private readonly Dictionary<int, bool> mechaEntryFoldouts = new Dictionary<int, bool>();
+
+        // Pivot is a re-basing switch, not a positioning knob, so it lives behind its own foldout.
+        private readonly Dictionary<int, bool> pivotFoldouts = new Dictionary<int, bool>();
 
         [MenuItem("Tools/Level Design Manager", false, 0)]
         public static void ShowWindow()
@@ -38,6 +103,9 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             {
                 case Tab.LevelManager:
                     DrawLevelManagerTab();
+                    break;
+                case Tab.Templates:
+                    DrawTemplatesTab();
                     break;
                 case Tab.ItemLibrary:
                     DrawItemLibraryTab();
@@ -68,6 +136,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             EditorGUILayout.BeginHorizontal();
             if (GUILayout.Toggle(selectedTab == Tab.LevelManager, "🎮 Seviye Yöneticisi (Levels)", "LargeButton", GUILayout.Height(35)))
                 selectedTab = Tab.LevelManager;
+            if (GUILayout.Toggle(selectedTab == Tab.Templates, "🍝 Şablonlar (Templates)", "LargeButton", GUILayout.Height(35)))
+                selectedTab = Tab.Templates;
             if (GUILayout.Toggle(selectedTab == Tab.ItemLibrary, "📦 Obje Kütüphanesi (Items)", "LargeButton", GUILayout.Height(35)))
                 selectedTab = Tab.ItemLibrary;
             if (GUILayout.Toggle(selectedTab == Tab.PrefabBatchImporter, "🚀 Toplu Prefab Yükleyici", "LargeButton", GUILayout.Height(35)))
@@ -86,9 +156,36 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             EditorGUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(240));
             GUILayout.Label("Seviyeler Listesi", EditorStyles.boldLabel);
 
-            if (GUILayout.Button("+ Yeni Seviye Oluştur", GUILayout.Height(30)))
+            // Seed picker for the create button. The level is filled from the template once and then goes
+            // its own way - it keeps no live link, so editing the template later leaves it alone.
+            LevelTemplateSO[] allTemplates = FindAllAssets<LevelTemplateSO>();
+            if (allTemplates != null && allTemplates.Length > 0)
             {
-                CreateNewLevelAsset();
+                var names = new List<string> { "Şablonsuz (boş seviye)" };
+                int chosenIdx = 0;
+                for (int t = 0; t < allTemplates.Length; t++)
+                {
+                    if (allTemplates[t] == null) continue;
+                    names.Add(allTemplates[t].GetDisplayName());
+                    if (allTemplates[t] == newLevelTemplate) chosenIdx = names.Count - 1;
+                }
+
+                int picked = EditorGUILayout.Popup("Şablon:", chosenIdx, names.ToArray());
+                newLevelTemplate = picked <= 0 ? null : allTemplates[picked - 1];
+            }
+            else
+            {
+                newLevelTemplate = null;
+                EditorGUILayout.HelpBox("Henüz şablon yok. 🍝 Şablonlar sekmesinden tema oluşturabilirsin.", MessageType.None);
+            }
+
+            string createLabel = newLevelTemplate != null
+                ? $"+ Yeni Seviye ({newLevelTemplate.GetDisplayName()})"
+                : "+ Yeni Seviye Oluştur";
+            if (GUILayout.Button(createLabel, GUILayout.Height(30)))
+            {
+                LevelDataSO created = CreateNewLevelAsset(newLevelTemplate);
+                if (created != null) selectedLevel = created;
             }
 
             EditorGUILayout.Space(5);
@@ -96,7 +193,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             LevelDataSO[] levels = FindAllAssets<LevelDataSO>();
             System.Array.Sort(levels, (a, b) => a.levelNumber.CompareTo(b.levelNumber));
 
-            LevelManager manager = Object.FindFirstObjectByType<LevelManager>();
+            LevelManager manager = GetLevelManager();
             int currentIndex = Application.isPlaying && manager != null
                 ? manager.currentLevelIndex
                 : PlayerPrefs.GetInt("SavedCurrentLevelIndex", manager != null ? manager.currentLevelIndex : 0);
@@ -208,7 +305,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             // The manager caches its own ordered list, so it has to be re-synced or it would keep playing
             // the old sequence until someone cleared it by hand.
-            LevelManager manager = Object.FindFirstObjectByType<LevelManager>();
+            LevelManager manager = GetLevelManager();
             if (manager != null)
             {
                 Undo.RecordObject(manager, "Seviye sırası değiştir");
@@ -263,6 +360,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space(5);
+
+            DrawLevelTemplateBox(so, level);
 
             EditorGUILayout.PropertyField(so.FindProperty("levelNumber"), new GUIContent("Seviye Numarası"));
             EditorGUILayout.PropertyField(so.FindProperty("levelTitle"), new GUIContent("Seviye Başlığı"));
@@ -583,7 +682,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 {
                     // Bind to Primary Mecha fields on LevelDataSO
                     EditorGUILayout.PropertyField(so.FindProperty("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
-                    EditorGUILayout.PropertyField(so.FindProperty("targetPivot"), new GUIContent("Yerleşeceği Pivot Noktası:"));
+                    DrawPivotField(so.FindProperty("targetPivot"), mechaIdx);
                     EditorGUILayout.PropertyField(so.FindProperty("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
                     EditorGUILayout.PropertyField(so.FindProperty("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
                     EditorGUILayout.PropertyField(so.FindProperty("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
@@ -620,7 +719,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                     {
                         SerializedProperty elem = mechasProp.GetArrayElementAtIndex(addIdx);
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
-                        EditorGUILayout.PropertyField(elem.FindPropertyRelative("targetPivot"), new GUIContent("Yerleşeceği Pivot Noktası:"));
+                        DrawPivotField(elem.FindPropertyRelative("targetPivot"), mechaIdx);
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
@@ -722,12 +821,382 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             so.ApplyModifiedProperties();
         }
 
+        // ====================================================================
+        // TAB 2: LEVEL TEMPLATES (THEMES)
+        // ====================================================================
+        private void DrawTemplatesTab()
+        {
+            EditorGUILayout.BeginHorizontal();
+
+            // Left sidebar: template list
+            EditorGUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(240));
+            GUILayout.Label("Şablonlar", EditorStyles.boldLabel);
+
+            if (GUILayout.Button("+ Yeni Şablon Oluştur", GUILayout.Height(30)))
+            {
+                LevelTemplateSO created = CreateNewTemplateAsset();
+                if (created != null) selectedTemplate = created;
+            }
+
+            EditorGUILayout.Space(5);
+
+            LevelTemplateSO[] templates = FindAllAssets<LevelTemplateSO>();
+            System.Array.Sort(templates, (a, b) => string.Compare(
+                a != null ? a.GetDisplayName() : "", b != null ? b.GetDisplayName() : "", System.StringComparison.OrdinalIgnoreCase));
+
+            foreach (LevelTemplateSO template in templates)
+            {
+                if (template == null) continue;
+
+                EditorGUILayout.BeginHorizontal();
+                Color prevBg = GUI.backgroundColor;
+                GUI.backgroundColor = (selectedTemplate == template) ? new Color(0.3f, 0.8f, 1.0f) : template.themeColor;
+                if (GUILayout.Button($"{template.GetDisplayName()}  ({PoolCount(template)})", GUILayout.Height(28)))
+                {
+                    selectedTemplate = template;
+                }
+                GUI.backgroundColor = prevBg;
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (templates.Length == 0)
+            {
+                EditorGUILayout.HelpBox("Henüz şablon yok. Yukarıdaki butonla ilk temanı oluştur (ör. İtalyan Mutfağı).", MessageType.Info);
+            }
+
+            EditorGUILayout.EndVertical();
+
+            // Right panel: selected template editor
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+            if (selectedTemplate != null)
+            {
+                DrawSelectedTemplateEditor(selectedTemplate);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "Şablon = bir temanın obje havuzu (ör. İtalyan Mutfağı, Abur Cubur). Yeni seviye " +
+                    "oluştururken şablonu seçersin, seviye o havuzdan hazır dolu gelir.\n\n" +
+                    "Şablon sadece BAŞLANGIÇ değeri verir: seviye oluştuktan sonra şablona bağlı kalmaz, " +
+                    "şablonu değiştirmek eski seviyeleri bozmaz.", MessageType.Info);
+            }
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawSelectedTemplateEditor(LevelTemplateSO template)
+        {
+            SerializedObject so = new SerializedObject(template);
+            so.Update();
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label($"🍝 {template.GetDisplayName()}", EditorStyles.boldLabel);
+            Color prevBg = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.2f, 0.9f, 0.4f);
+            if (GUILayout.Button("🎮 Bu Şablondan Seviye Oluştur", GUILayout.Width(240), GUILayout.Height(28)))
+            {
+                LevelDataSO created = CreateNewLevelAsset(template);
+                if (created != null)
+                {
+                    selectedLevel = created;
+                    newLevelTemplate = template;
+                    selectedTab = Tab.LevelManager;
+                    ShowNotification(new GUIContent($"🎮 Seviye {created.levelNumber} oluşturuldu!"));
+                }
+            }
+            GUI.backgroundColor = prevBg;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(5);
+
+            EditorGUILayout.PropertyField(so.FindProperty("templateName"), new GUIContent("Şablon Adı"));
+            EditorGUILayout.PropertyField(so.FindProperty("themeColor"), new GUIContent("Tema Rengi"));
+            EditorGUILayout.PropertyField(so.FindProperty("icon"), new GUIContent("Tema İkonu (opsiyonel)"));
+
+            EditorGUILayout.Space(8);
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label("⚙️ Tema Varsayılanları", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Bu değerler yeni seviyeye bir kez kopyalanır. Süre, siyah kilitli obje, booster, yapışkan/mıknatıs " +
+                "mecha gibi ZORLUK ayarları bilerek burada yok - onlar temaya değil, seviye ilerleyişine ait.",
+                MessageType.None);
+            EditorGUILayout.PropertyField(so.FindProperty("foodTargetSize"), new GUIContent("Obje Hedef Ölçeği"));
+            EditorGUILayout.PropertyField(so.FindProperty("defaultGoalVariety"), new GUIContent("Kaç Çeşit Hedef"));
+            EditorGUILayout.PropertyField(so.FindProperty("defaultCountPerGoal"), new GUIContent("Hedef Başına Adet (3'ün katı)"));
+            EditorGUILayout.PropertyField(so.FindProperty("defaultFillerCount"), new GUIContent("Dolgu Obje Sayısı"));
+            EditorGUILayout.EndVertical();
+
+            so.ApplyModifiedProperties();
+
+            EditorGUILayout.Space(8);
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+
+            List<ItemDataSO> pool = template.GetValidPool();
+            GUILayout.Label($"📦 Obje Havuzu ({pool.Count})", EditorStyles.boldLabel);
+
+            int needed = Mathf.Max(1, template.defaultGoalVariety) + Mathf.Max(0, template.defaultFillerCount);
+            if (pool.Count < needed)
+            {
+                EditorGUILayout.HelpBox(
+                    $"Havuzda {pool.Count} obje var ama bu ayarlarla bir seviye {needed} obje istiyor. " +
+                    "Eksik kalırsa seviye daha az hedefle oluşur.", MessageType.Warning);
+            }
+            else if (pool.Count == needed)
+            {
+                EditorGUILayout.HelpBox(
+                    "Havuz tam yeterli - bu şablondan üretilen her seviye aynı objelerden oluşur. " +
+                    "Çeşitlilik istiyorsan havuza birkaç obje daha ekle.", MessageType.None);
+            }
+
+            EditorGUILayout.BeginHorizontal();
+            ItemDataSO toAdd = (ItemDataSO)EditorGUILayout.ObjectField("Havuza Ekle:", null, typeof(ItemDataSO), false);
+            if (toAdd != null) AddItemToTemplatePool(template, toAdd);
+            if (GUILayout.Button("📚 Kütüphaneden Seç", GUILayout.Width(160), GUILayout.Height(18)))
+            {
+                selectedTab = Tab.ItemLibrary;
+                libraryFilterTemplate = null;
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(5);
+
+            if (pool.Count == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "Havuz boş. Obje Kütüphanesi sekmesinden 🍝 butonuyla toplu ekleyebilir veya yukarıdaki " +
+                    "alandan tek tek sürükleyebilirsin.", MessageType.Info);
+            }
+            else
+            {
+                const int columns = 4;
+                for (int i = 0; i < pool.Count; i += columns)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    for (int c = 0; c < columns; c++)
+                    {
+                        int idx = i + c;
+                        if (idx >= pool.Count)
+                        {
+                            GUILayout.Box("", GUIStyle.none, GUILayout.Width(150), GUILayout.Height(70));
+                            continue;
+                        }
+                        DrawTemplatePoolCard(template, pool[idx]);
+                    }
+                    EditorGUILayout.EndHorizontal();
+                }
+            }
+
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawTemplatePoolCard(LevelTemplateSO template, ItemDataSO item)
+        {
+            EditorGUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(150), GUILayout.Height(70));
+            EditorGUILayout.BeginHorizontal();
+
+            Texture2D preview = item.prefab != null ? AssetPreview.GetAssetPreview(item.prefab) : null;
+            if (preview != null) GUILayout.Label(preview, GUILayout.Width(40), GUILayout.Height(40));
+            else GUILayout.Label("3D", EditorStyles.centeredGreyMiniLabel, GUILayout.Width(40), GUILayout.Height(40));
+
+            EditorGUILayout.BeginVertical();
+            GUILayout.Label(item.displayName, EditorStyles.miniBoldLabel);
+
+            // A host with a saved pose preset is worth flagging: seeding a level off this template picks
+            // such an item as the mecha host, so its camouflage lands already dialed in.
+            if (HasPosePreset(item)) GUILayout.Label("🤖 poz var", EditorStyles.miniLabel);
+
+            Color prevBg = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.9f, 0.35f, 0.35f);
+            if (GUILayout.Button("✖ Çıkar", GUILayout.Height(18)))
+            {
+                Undo.RecordObject(template, "Havuzdan çıkar");
+                template.itemPool.Remove(item);
+                EditorUtility.SetDirty(template);
+                AssetDatabase.SaveAssets();
+                InvalidateAssetCaches();
+            }
+            GUI.backgroundColor = prevBg;
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndVertical();
+        }
+
+        private static bool HasPosePreset(ItemDataSO item)
+        {
+            if (item == null) return false;
+            if (posePresetHosts == null)
+            {
+                posePresetHosts = new HashSet<ItemDataSO>();
+                MechaPosePresetSO[] presets = FindAllAssets<MechaPosePresetSO>();
+                if (presets != null)
+                {
+                    foreach (MechaPosePresetSO preset in presets)
+                    {
+                        if (preset != null && preset.targetHostItem != null) posePresetHosts.Add(preset.targetHostItem);
+                    }
+                }
+            }
+            return posePresetHosts.Contains(item);
+        }
+
+        private void AddItemToTemplatePool(LevelTemplateSO template, ItemDataSO item)
+        {
+            if (template == null || item == null) return;
+            if (template.itemPool == null) template.itemPool = new List<ItemDataSO>();
+            if (template.itemPool.Contains(item)) return;
+
+            Undo.RecordObject(template, "Havuza obje ekle");
+            template.itemPool.Add(item);
+            EditorUtility.SetDirty(template);
+            AssetDatabase.SaveAssets();
+            InvalidateAssetCaches();
+            ShowNotification(new GUIContent($"🍝 {item.displayName} → {template.GetDisplayName()}"));
+        }
+
+        private static LevelTemplateSO CreateNewTemplateAsset()
+        {
+            string folderPath = "Assets/LevelData/Templates";
+            if (!Directory.Exists(folderPath))
+            {
+                Directory.CreateDirectory(folderPath);
+                AssetDatabase.Refresh();
+            }
+
+            int nextNumber = FindAllAssets<LevelTemplateSO>().Length + 1;
+            string assetPath = AssetDatabase.GenerateUniqueAssetPath($"{folderPath}/Template_{nextNumber:D2}.asset");
+
+            LevelTemplateSO template = ScriptableObject.CreateInstance<LevelTemplateSO>();
+            template.templateName = $"Yeni Şablon {nextNumber}";
+            template.themeColor = GetRandomPaletteColor();
+
+            AssetDatabase.CreateAsset(template, assetPath);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            InvalidateAssetCaches();
+            Selection.activeObject = template;
+            Debug.Log($"🍝 Yeni Şablon Oluşturuldu: {assetPath}");
+            return template;
+        }
+
+        /// <summary>
+        /// Theme row on the level editor: which template seeded this level, plus re-seeding controls.
+        ///
+        /// Re-seeding is destructive on purpose - it replaces goals and fillers outright, which is the
+        /// point of a re-roll - so it asks first.
+        /// </summary>
+        private void DrawLevelTemplateBox(SerializedObject so, LevelDataSO level)
+        {
+            EditorGUILayout.BeginVertical(GUI.skin.box);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label("🍝 Şablon (Tema)", EditorStyles.boldLabel, GUILayout.Width(110));
+            EditorGUILayout.PropertyField(so.FindProperty("sourceTemplate"), GUIContent.none);
+            EditorGUILayout.EndHorizontal();
+            so.ApplyModifiedProperties();
+
+            LevelTemplateSO template = level.sourceTemplate;
+            if (template == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "Bu seviye bir şablondan üretilmemiş. Yukarıdan bir şablon seçersen hedefleri o temanın " +
+                    "havuzundan yeniden doldurabilirsin.", MessageType.None);
+            }
+            else
+            {
+                EditorGUILayout.LabelField(
+                    $"Havuz: {PoolCount(template)} obje  •  {template.defaultGoalVariety} çeşit hedef  •  hedef başına {template.defaultCountPerGoal}",
+                    EditorStyles.miniLabel);
+
+                EditorGUILayout.BeginHorizontal();
+                Color oldBg = GUI.backgroundColor;
+                GUI.backgroundColor = new Color(0.95f, 0.75f, 0.25f);
+                if (GUILayout.Button("🎲 Şablondan Yeniden Karıştır", GUILayout.Height(24)))
+                {
+                    ReseedLevelFromTemplate(so, level, template, true);
+                }
+                GUI.backgroundColor = new Color(0.75f, 0.75f, 0.75f);
+                if (GUILayout.Button("📋 Havuz Sırasıyla Doldur", GUILayout.Width(180), GUILayout.Height(24)))
+                {
+                    ReseedLevelFromTemplate(so, level, template, false);
+                }
+                GUI.backgroundColor = oldBg;
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.LabelField(
+                    "Şablon sadece başlangıç değeri verir; seviye şablona bağlı kalmaz. Süre, siyah kilit, " +
+                    "booster gibi zorluk ayarları şablondan gelmez.", EditorStyles.miniLabel);
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.Space(5);
+        }
+
+        private void ReseedLevelFromTemplate(SerializedObject so, LevelDataSO level, LevelTemplateSO template, bool shuffle)
+        {
+            if (level == null || template == null) return;
+
+            if (template.GetValidPool().Count == 0)
+            {
+                EditorUtility.DisplayDialog("Boş havuz",
+                    $"'{template.GetDisplayName()}' şablonunun obje havuzu boş. Önce Şablonlar sekmesinden obje ekle.", "Tamam");
+                return;
+            }
+
+            bool hasContent = (level.targetGoals != null && level.targetGoals.Count > 0)
+                              || (level.fillerItems != null && level.fillerItems.Count > 0);
+            if (hasContent && !EditorUtility.DisplayDialog(
+                    "Hedefler değiştirilecek",
+                    $"Seviye {level.levelNumber} hedefleri ve dolguları '{template.GetDisplayName()}' havuzundan " +
+                    "yeniden doldurulacak. Mevcut hedef listesi silinecek. Devam edilsin mi?",
+                    "Evet, yeniden doldur", "Vazgeç"))
+            {
+                return;
+            }
+
+            Undo.RecordObject(level, "Şablondan yeniden doldur");
+            template.ApplyTo(level, shuffle);
+            AssignHostFromPresets(level);
+            EditorUtility.SetDirty(level);
+            AssetDatabase.SaveAssets();
+            so.Update();
+            ShowNotification(new GUIContent($"🎲 '{template.GetDisplayName()}' şablonundan yeniden dolduruldu!"));
+        }
+
+        // ====================================================================
+        // TAB 3: ITEM LIBRARY
+        // ====================================================================
         private void DrawItemLibraryTab()
         {
             EditorGUILayout.BeginHorizontal();
             GUILayout.Label("Kayıtlı Obje Prefab Kütüphanesi", EditorStyles.boldLabel);
             itemSearchQuery = EditorGUILayout.TextField("Ara:", itemSearchQuery, GUILayout.Width(250));
             EditorGUILayout.EndHorizontal();
+
+            // Theme filter. With 100+ items in one flat grid, authoring an Italian level means scrolling
+            // past every snack in the project; filtering to a template's pool is the whole point of themes.
+            LevelTemplateSO[] templates = FindAllAssets<LevelTemplateSO>();
+            if (templates != null && templates.Length > 0)
+            {
+                var filterNames = new List<string> { "Tüm objeler" };
+                int filterIdx = 0;
+                for (int t = 0; t < templates.Length; t++)
+                {
+                    if (templates[t] == null) continue;
+                    filterNames.Add($"{templates[t].GetDisplayName()} havuzu");
+                    if (templates[t] == libraryFilterTemplate) filterIdx = filterNames.Count - 1;
+                }
+
+                EditorGUILayout.BeginHorizontal();
+                int pickedFilter = EditorGUILayout.Popup("Şablon Filtresi:", filterIdx, filterNames.ToArray(), GUILayout.Width(380));
+                libraryFilterTemplate = pickedFilter <= 0 ? null : templates[pickedFilter - 1];
+
+                GUILayout.Label("Havuza eklenecek şablon:", GUILayout.Width(160));
+                selectedTemplate = (LevelTemplateSO)EditorGUILayout.ObjectField(selectedTemplate, typeof(LevelTemplateSO), false, GUILayout.Width(180));
+                EditorGUILayout.EndHorizontal();
+            }
 
             EditorGUILayout.Space(5);
 
@@ -753,6 +1222,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             {
                 if (item == null) continue;
                 if (!string.IsNullOrEmpty(itemSearchQuery) && !item.displayName.ToLower().Contains(itemSearchQuery.ToLower()))
+                    continue;
+                if (libraryFilterTemplate != null && !PoolContains(libraryFilterTemplate, item))
                     continue;
                 validItems.Add(item);
             }
@@ -818,6 +1289,23 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             if (GUILayout.Button($"📦 Dolgu", GUILayout.Height(24)))
             {
                 AddItemToSelectedLevelFillers(item);
+            }
+
+            if (selectedTemplate != null)
+            {
+                bool alreadyInPool = PoolContains(selectedTemplate, item);
+                GUI.backgroundColor = alreadyInPool ? new Color(0.45f, 0.45f, 0.45f) : new Color(0.75f, 0.45f, 0.95f);
+                var poolContent = new GUIContent(alreadyInPool ? "✓" : "🍝",
+                    alreadyInPool
+                        ? $"Zaten '{selectedTemplate.GetDisplayName()}' havuzunda"
+                        : $"'{selectedTemplate.GetDisplayName()}' havuzuna ekle");
+                using (new EditorGUI.DisabledScope(alreadyInPool))
+                {
+                    if (GUILayout.Button(poolContent, GUILayout.Width(34), GUILayout.Height(24)))
+                    {
+                        AddItemToTemplatePool(selectedTemplate, item);
+                    }
+                }
             }
             GUI.backgroundColor = prevBg;
             EditorGUILayout.EndHorizontal();
@@ -887,7 +1375,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         }
 
         // ====================================================================
-        // TAB 3: PREFAB BATCH IMPORTER
+        // TAB 4: PREFAB BATCH IMPORTER
         // ====================================================================
         private void DrawPrefabBatchImporterTab()
         {
@@ -987,6 +1475,60 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         /// all of them standing in the scene at once, next to each other, exactly what "mechaları nasıl
         /// duruyor görmek" (see how the mechas are positioned) needs.
         /// </summary>
+        /// <summary>
+        /// Finds the mecha model to preview with.
+        ///
+        /// The old lookup hardcoded "Assets/Prefabs/meccha chameleon.glb" and, when that missed, took the
+        /// first hit of an unscoped FindAssets("meccha"). The GLB has since been converted to FBX, so the
+        /// path always missed - and the first unscoped hit is "Assets/meccha chameleon@Running (1).fbx",
+        /// an ANIMATION-only file with a skeleton and no SkinnedMeshRenderer. Levels that left the custom
+        /// prefab empty therefore previewed as bare bone gizmos with no body. Runtime never had this
+        /// problem: MechaRagdollSpawner scopes its own search to Assets/Prefabs.
+        ///
+        /// So: scope the search the same way, and reject any candidate that carries no mesh, which keeps
+        /// this working through the next rename too.
+        /// </summary>
+        private static GameObject ResolveMechaModel(GameObject preferred)
+        {
+            if (preferred != null) return preferred;
+
+            foreach (string path in new[] { "Assets/Prefabs/meccha chameleon.fbx", "Assets/Prefabs/meccha chameleon.glb" })
+            {
+                GameObject direct = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (HasVisibleMesh(direct)) return direct;
+            }
+
+            foreach (string searchFolder in new[] { "Assets/Prefabs", "Assets" })
+            {
+                string[] guids = AssetDatabase.FindAssets("meccha t:Model", new[] { searchFolder });
+                if (guids == null) continue;
+
+                foreach (string guid in guids)
+                {
+                    GameObject candidate = AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(guid));
+                    if (HasVisibleMesh(candidate)) return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>True when the model actually has geometry to draw, not just a rig.</summary>
+        private static bool HasVisibleMesh(GameObject model)
+        {
+            if (model == null) return false;
+
+            foreach (SkinnedMeshRenderer smr in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr != null && smr.sharedMesh != null && smr.sharedMesh.vertexCount > 0) return true;
+            }
+            foreach (MeshFilter mf in model.GetComponentsInChildren<MeshFilter>(true))
+            {
+                if (mf != null && mf.sharedMesh != null && mf.sharedMesh.vertexCount > 0) return true;
+            }
+            return false;
+        }
+
         private static void GenerateScene3DPreview(LevelDataSO level, MechaSpawnEntry entry, int mechaIndex)
         {
             if (level == null || entry == null || entry.hostItemSO == null || entry.hostItemSO.prefab == null)
@@ -1007,24 +1549,13 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             hostInstance.transform.position = new Vector3(mechaIndex * 1.5f, 0f, 0f);
             hostInstance.transform.rotation = Quaternion.identity;
 
-            // Load mecha model robustly
-            GameObject mechaPrefab = entry.customMechaPrefab;
+            GameObject mechaPrefab = ResolveMechaModel(entry.customMechaPrefab);
             if (mechaPrefab == null)
             {
-                mechaPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/meccha chameleon.glb");
-            }
-            if (mechaPrefab == null)
-            {
-                string[] guids = AssetDatabase.FindAssets("meccha");
-                if (guids != null && guids.Length > 0)
-                {
-                    mechaPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(guids[0]));
-                }
-            }
-
-            if (mechaPrefab == null)
-            {
-                EditorUtility.DisplayDialog("Hata", "Mecha modeli 'Assets/Prefabs/meccha chameleon.glb' bulunamadı!", "Tamam");
+                EditorUtility.DisplayDialog("Hata",
+                    "Mecha modeli bulunamadı. 'Assets/Prefabs' altında gövdesi (mesh'i) olan bir meccha " +
+                    "modeli yok - ya da mecha kartındaki 'Özel Mecha Model Prefab'ı' alanına elle bir model seç.",
+                    "Tamam");
                 return;
             }
 
@@ -1088,6 +1619,19 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 if (window != null) return window.selectedLevel;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Rebuilds one mecha's scene preview from the level asset. Entry point for code outside this
+        /// window (the bone/root preview inspector) so the preview is always produced by the same
+        /// placement path as gameplay rather than by poking the preview's transform by hand.
+        /// </summary>
+        public static void RefreshScene3DPreview(LevelDataSO level, int mechaIndex)
+        {
+            if (level == null) return;
+            List<MechaSpawnEntry> entries = level.GetAllMechaEntries();
+            if (mechaIndex < 0 || mechaIndex >= entries.Count) return;
+            LiveUpdateScene3DPreview(level, entries[mechaIndex], mechaIndex);
         }
 
         private static void LiveUpdateScene3DPreview(LevelDataSO level, MechaSpawnEntry entry, int mechaIndex)
@@ -1248,6 +1792,28 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             string hostName = currentHost != null ? currentHost.displayName : "Objesiz";
 
+            // The pose lives on the LEVEL, not on the item, so swapping the host object leaves the old
+            // object's pose in place - a mecha tuned to curl around an avocado stays curled that way on a
+            // cookie. Nothing auto-corrects it (a host can have several saved poses, so there is no single
+            // right one to pick), but the mismatch is worth pointing at.
+            bool hostHasPreset = false;
+            bool poseMatchesHost = false;
+            foreach (MechaPosePresetSO p in matchingPresets)
+            {
+                if (p.targetHostItem == null) continue;   // generic presets say nothing about this host
+                hostHasPreset = true;
+                if (PoseMatchesPreset(mechaEntry, p, level.GetHostWorldSize())) { poseMatchesHost = true; break; }
+            }
+
+            if (hostHasPreset && !poseMatchesHost)
+            {
+                EditorGUILayout.HelpBox(
+                    $"⚠️ Mevcut poz '{hostName}' için kayıtlı şablonların hiçbiriyle eşleşmiyor - büyük " +
+                    $"ihtimalle başka bir objeden kalma. Bu mecha şu an '{PivotLabel(mechaEntry.targetPivot)}' " +
+                    "pivotunda; aşağıdan bu objeye ait bir şablonu uygula.",
+                    MessageType.Warning);
+            }
+
             if (matchingPresets.Count > 0)
             {
                 EditorGUILayout.HelpBox($"💡 '{hostName}' için kayıtlı {matchingPresets.Count} poz şablonu:", MessageType.Info);
@@ -1267,11 +1833,100 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             GUI.backgroundColor = new Color(0.2f, 0.85f, 0.4f);
             if (GUILayout.Button($"💾 Mevcut Pozu Şablon Olarak Kaydet ({hostName})", GUILayout.Height(26)))
             {
-                SaveCurrentPoseAsPreset(mechaEntry, currentHost);
+                SaveCurrentPoseAsPreset(mechaEntry, currentHost, level.GetHostWorldSize());
             }
             GUI.backgroundColor = oldBg;
 
             EditorGUILayout.EndVertical();
+        }
+
+        /// <summary>
+        /// Whether an entry's pose is the one this preset stores.
+        ///
+        /// Opacity is deliberately not compared: it is a per-level visibility tweak, not part of how the
+        /// mecha is folded onto the object, and comparing it would report a pose mismatch every time
+        /// someone dimmed a mecha.
+        /// </summary>
+        private static bool PoseMatchesPreset(MechaSpawnEntry entry, MechaPosePresetSO preset, float hostSize)
+        {
+            if (entry == null || preset == null) return false;
+
+            if (entry.targetPivot != preset.targetPivot) return false;
+
+            // Compare against what this preset WOULD produce here, not its raw numbers: on a level whose
+            // host is a different size the applied offset is scaled, and an unscaled comparison would
+            // report every such pose as a mismatch.
+            float scale = preset.GetHostSizeScale(hostSize);
+            Vector3 presetOffset = preset.mechaLocalOffset * scale;
+            float presetWorldSize = preset.mechaWorldSize * scale;
+
+            const float eps = 0.001f;
+            if (Mathf.Abs(entry.mechaWrapAmount - preset.mechaWrapAmount) > eps) return false;
+            if (Mathf.Abs(entry.mechaWorldSize - presetWorldSize) > eps) return false;
+            if (Mathf.Abs(entry.mechaScaleRatio - preset.mechaScaleRatio) > eps) return false;
+            if ((entry.mechaLocalOffset - presetOffset).sqrMagnitude > eps * eps) return false;
+            if ((entry.mechaRotationOffset - preset.mechaRotationOffset).sqrMagnitude > eps * eps) return false;
+
+            int entryBones = entry.boneOverrides != null ? entry.boneOverrides.Count : 0;
+            int presetBones = preset.boneOverrides != null ? preset.boneOverrides.Count : 0;
+            if (entryBones != presetBones) return false;
+
+            for (int i = 0; i < entryBones; i++)
+            {
+                MechaBoneOverride a = entry.boneOverrides[i];
+                MechaBoneOverride b = preset.boneOverrides[i];
+                if (a == null || b == null) return false;
+                if (a.boneKeyword != b.boneKeyword) return false;
+                if ((a.rotationOffset - b.rotationOffset).sqrMagnitude > eps * eps) return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Draws the pivot picker folded away.
+        ///
+        /// The pivot decides which face the mecha lies against, and every offset/rotation below it is
+        /// measured from that face - so touching it silently invalidates a pose that was already dialed
+        /// in. Everything reachable by changing it is also reachable from the offset and rotation fields,
+        /// which is why it is no longer part of the normal authoring flow.
+        /// </summary>
+        private void DrawPivotField(SerializedProperty pivotProp, int mechaIdx)
+        {
+            if (pivotProp == null) return;
+
+            bool open;
+            if (!pivotFoldouts.TryGetValue(mechaIdx, out open)) open = false;
+
+            string current = PivotLabel((MechaPivotSelection)pivotProp.enumValueIndex);
+            open = EditorGUILayout.Foldout(open, $"⚙️ Gelişmiş — Yerleşim Yüzeyi: {current}", true);
+            pivotFoldouts[mechaIdx] = open;
+            if (!open) return;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.HelpBox(
+                "Mecha'nın objenin hangi yüzeyine yaslanacağı. Offset ve dönüş açısı bu yüzeye GÖRE " +
+                "ölçülür - burayı değiştirirsen ayarlı poz başka bir yere kayar ve baştan ayarlaman " +
+                "gerekir. Normalde dokunma: konumu Offset ve Dönüş Açısı ile ayarla.\n\n" +
+                "Auto = en geniş yüzeyi kendisi seçer (her seferinde aynı sonucu verir).",
+                MessageType.None);
+            EditorGUILayout.PropertyField(pivotProp, new GUIContent("Yerleşeceği Pivot Noktası:"));
+            EditorGUI.indentLevel--;
+        }
+
+        private static string PivotLabel(MechaPivotSelection pivot)
+        {
+            switch (pivot)
+            {
+                case MechaPivotSelection.PivotTop: return "Üst";
+                case MechaPivotSelection.PivotBottom: return "Alt";
+                case MechaPivotSelection.PivotLeft: return "Sol";
+                case MechaPivotSelection.PivotRight: return "Sağ";
+                case MechaPivotSelection.PivotFront: return "Ön";
+                case MechaPivotSelection.PivotBack: return "Arka";
+                case MechaPivotSelection.MechaAnchor: return "Anchor";
+                default: return "Auto";
+            }
         }
 
         private void DrawPresetRow(MechaPosePresetSO preset, SerializedObject so, LevelDataSO level, int mechaIdx, MechaSpawnEntry mechaEntry)
@@ -1283,14 +1938,42 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             string hostTag = preset.targetHostItem != null ? $"[{preset.targetHostItem.displayName}] " : "[Genel] ";
             GUILayout.Label($"{hostTag}{preset.presetName}", EditorStyles.boldLabel, GUILayout.ExpandWidth(true));
 
+            // The pivot decides which face the mecha lies on, so a preset carrying the wrong one puts the
+            // mecha somewhere unexpected. Show it, and let it be corrected in place - older presets were
+            // saved before the pivot was stored at all and all default to "Üst".
+            using (new EditorGUI.DisabledScope(mechaEntry == null))
+            {
+                EditorGUI.BeginChangeCheck();
+                var newPivot = (MechaPivotSelection)EditorGUILayout.EnumPopup(
+                    new GUIContent(PivotLabel(preset.targetPivot), "Pozun yaslandığı yüzey. Yanlışsa mecha başka yere oturur."),
+                    preset.targetPivot, GUILayout.Width(110));
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(preset, "Poz şablonu pivotu");
+                    preset.targetPivot = newPivot;
+                    EditorUtility.SetDirty(preset);
+                    AssetDatabase.SaveAssets();
+                }
+            }
+
             Color oldBg = GUI.backgroundColor;
             GUI.backgroundColor = new Color(0.2f, 0.75f, 1f);
             if (GUILayout.Button("📋 Uygula", GUILayout.Width(75), GUILayout.Height(20)))
             {
                 Undo.RecordObject(level, "Apply Mecha Pose Preset");
-                preset.ApplyTo(mechaEntry);
+                preset.ApplyTo(mechaEntry, level.GetHostWorldSize());
+
+                // Mecha #1's entry is LevelDataSO._primaryEntry - a [NonSerialized] scratch copy that
+                // GetAllMechaEntries() refills from the level's own fields on every call. Without this
+                // write-back the preset landed only in that copy, and the GetAllMechaEntries() call four
+                // lines down re-synced it from the unchanged asset, so applying a preset to the level's
+                // main mecha silently did nothing (Mecha #2+ were fine - those entries are real
+                // serialized list elements).
+                if (mechaIdx == 0) level.WritePrimaryEntryBack();
+
                 so.Update();
                 EditorUtility.SetDirty(level);
+                AssetDatabase.SaveAssets();
                 var updatedEntries = level.GetAllMechaEntries();
                 if (mechaIdx < updatedEntries.Count)
                 {
@@ -1309,6 +1992,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                     {
                         AssetDatabase.DeleteAsset(path);
                         AssetDatabase.Refresh();
+                        InvalidateAssetCaches();
                     }
                 }
             }
@@ -1317,7 +2001,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             EditorGUILayout.EndHorizontal();
         }
 
-        public static void SaveCurrentPoseAsPreset(MechaSpawnEntry entry, ItemDataSO hostItem)
+        public static void SaveCurrentPoseAsPreset(MechaSpawnEntry entry, ItemDataSO hostItem, float hostSize = 0f)
         {
             if (entry == null) return;
 
@@ -1342,11 +2026,12 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             MechaPosePresetSO preset = ScriptableObject.CreateInstance<MechaPosePresetSO>();
             preset.presetName = System.IO.Path.GetFileNameWithoutExtension(path);
-            preset.CopyFrom(entry, hostItem);
+            preset.CopyFrom(entry, hostItem, hostSize);
 
             AssetDatabase.CreateAsset(preset, path);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+            InvalidateAssetCaches();
 
             Debug.Log($"💾 Yeni Mecha Poz Şablonu Oluşturuldu: {path}");
         }
@@ -1430,7 +2115,14 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             EditorGUILayout.EndHorizontal();
         }
 
-        private static void CreateNewLevelAsset()
+        /// <summary>
+        /// Creates the next Level_NN asset, optionally seeded from a theme template.
+        ///
+        /// The template is a SNAPSHOT source: its values are copied in here and the level never reads it
+        /// again at runtime. <see cref="LevelDataSO.sourceTemplate"/> is recorded purely so the editor can
+        /// offer a re-roll later.
+        /// </summary>
+        private static LevelDataSO CreateNewLevelAsset(LevelTemplateSO template = null)
         {
             string folderPath = "Assets/LevelData";
             if (!Directory.Exists(folderPath))
@@ -1448,25 +2140,99 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             newLevel.levelTitle = $"Seviye {nextNumber}";
             newLevel.enableCamouflageMecha = true;
 
-            ItemDataSO[] allItems = FindAllAssets<ItemDataSO>();
-            if (allItems != null && allItems.Length > 0)
+            bool seeded = template != null && template.ApplyTo(newLevel, true);
+            if (seeded)
             {
-                ItemDataSO defaultHost = allItems[0];
-                newLevel.hostItemSO = defaultHost;
-                newLevel.mechaHostKeyword = defaultHost.GetEffectiveItemId();
-                newLevel.targetGoals.Add(new LevelGoalRequirement
+                newLevel.sourceTemplate = template;
+                newLevel.levelTitle = $"Seviye {nextNumber} - {template.GetDisplayName()}";
+                AssignHostFromPresets(newLevel);
+            }
+            else
+            {
+                ItemDataSO[] allItems = FindAllAssets<ItemDataSO>();
+                if (allItems != null && allItems.Length > 0)
                 {
-                    itemData = defaultHost,
-                    requiredCount = 6
-                });
+                    ItemDataSO defaultHost = allItems[0];
+                    newLevel.hostItemSO = defaultHost;
+                    newLevel.mechaHostKeyword = defaultHost.GetEffectiveItemId();
+                    newLevel.targetGoals.Add(new LevelGoalRequirement
+                    {
+                        itemData = defaultHost,
+                        requiredCount = 6
+                    });
+                }
             }
 
             AssetDatabase.CreateAsset(newLevel, assetPath);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
+            InvalidateAssetCaches();
             Selection.activeObject = newLevel;
-            Debug.Log($"🎮 Yeni Seviye Varlığı Oluşturuldu: {assetPath}");
+            Debug.Log(seeded
+                ? $"🍝 '{template.GetDisplayName()}' şablonundan yeni seviye oluşturuldu: {assetPath}"
+                : $"🎮 Yeni Seviye Varlığı Oluşturuldu: {assetPath}");
+            return newLevel;
+        }
+
+        /// <summary>
+        /// Picks the level's mecha host from its own goal items and applies that host's pose preset.
+        ///
+        /// The host has to be a goal item: the mecha hides inside something that is actually in the pile.
+        /// Among those, a host with a saved <see cref="MechaPosePresetSO"/> wins - a pose is tuned per
+        /// object shape (a watermelon's spine bend is nothing like an avocado's curled limbs), so seeding
+        /// a host that already has one is the difference between a level that looks right immediately and
+        /// one that needs the pose dialed in by hand.
+        /// </summary>
+        private static void AssignHostFromPresets(LevelDataSO level)
+        {
+            if (level == null || level.targetGoals == null || level.targetGoals.Count == 0) return;
+
+            MechaPosePresetSO[] presets = FindAllAssets<MechaPosePresetSO>();
+            ItemDataSO chosenHost = null;
+            MechaPosePresetSO chosenPreset = null;
+
+            foreach (LevelGoalRequirement goal in level.targetGoals)
+            {
+                if (goal == null || goal.itemData == null) continue;
+                if (presets != null)
+                {
+                    foreach (MechaPosePresetSO preset in presets)
+                    {
+                        if (preset != null && preset.targetHostItem == goal.itemData)
+                        {
+                            chosenHost = goal.itemData;
+                            chosenPreset = preset;
+                            break;
+                        }
+                    }
+                }
+                if (chosenHost != null) break;
+            }
+
+            if (chosenHost == null)
+            {
+                foreach (LevelGoalRequirement goal in level.targetGoals)
+                {
+                    if (goal != null && goal.itemData != null) { chosenHost = goal.itemData; break; }
+                }
+            }
+            if (chosenHost == null) return;
+
+            level.hostItemSO = chosenHost;
+            level.mechaHostKeyword = chosenHost.GetEffectiveItemId();
+
+            if (chosenPreset != null)
+            {
+                List<MechaSpawnEntry> entries = level.GetAllMechaEntries();
+                if (entries.Count > 0)
+                {
+                    chosenPreset.ApplyTo(entries[0], level.GetHostWorldSize());
+                    // Entry 0 is a scratch copy of the level's own singular mecha fields, so the pose only
+                    // survives once it is written back onto the asset.
+                    level.WritePrimaryEntryBack();
+                }
+            }
         }
 
         private static void ApplyLevelToActiveScene(LevelDataSO level)
@@ -1506,6 +2272,18 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
         private static T[] FindAllAssets<T>() where T : UnityEngine.Object
         {
+            if (assetCache.TryGetValue(typeof(T), out UnityEngine.Object[] cached) && cached != null)
+            {
+                // A deleted asset leaves a null behind, which is the one thing the cache cannot notice on
+                // its own if the project-change callback was missed - rescan instead of handing it out.
+                bool stale = false;
+                foreach (UnityEngine.Object obj in cached)
+                {
+                    if (obj == null) { stale = true; break; }
+                }
+                if (!stale) return (T[])cached;
+            }
+
             string[] guids = AssetDatabase.FindAssets($"t:{typeof(T).Name}");
             T[] assets = new T[guids.Length];
             for (int i = 0; i < guids.Length; i++)
@@ -1513,6 +2291,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 string path = AssetDatabase.GUIDToAssetPath(guids[i]);
                 assets[i] = AssetDatabase.LoadAssetAtPath<T>(path);
             }
+            assetCache[typeof(T)] = assets;
             return assets;
         }
 

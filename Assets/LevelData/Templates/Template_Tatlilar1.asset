@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0b072cfc36bc799459211ee45e118e86, type: 3}
+  m_Name: Template_Tatlilar1
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelTemplateSO
+  templateName: Tatlilar1
+  themeColor: {r: 0.95, g: 0.55, b: 0.72, a: 1}
+  icon: {fileID: 0}
+  itemPool:
+  - {fileID: 11400000, guid: b9ec21824735bc34da3685edb3d36a95, type: 2}
+  - {fileID: 11400000, guid: 66dc5eb7e435de942817bca27b951238, type: 2}
+  - {fileID: 11400000, guid: 9f6b642d76a3f754ba349a194e7b013a, type: 2}
+  - {fileID: 11400000, guid: c3cbf892015195c468fc975fe80f5337, type: 2}
+  - {fileID: 11400000, guid: 6918bf24886eb804ca3e921b62e43dc1, type: 2}
+  - {fileID: 11400000, guid: 7b4286e1edc915c47b458c4273479366, type: 2}
+  - {fileID: 11400000, guid: 939451b88faded1498862c35f0fdba54, type: 2}
+  - {fileID: 11400000, guid: 492f9081f7156dc499af3b717e806317, type: 2}
+  - {fileID: 11400000, guid: 65755a1709534c34d9cfeb10c42668f0, type: 2}
+  - {fileID: 11400000, guid: b5ef4363a493f6447b0dc2bcd6dc730c, type: 2}
+  - {fileID: 11400000, guid: b835fae832844f7408641f08a1900fbf, type: 2}
+  foodTargetSize: 1.2
+  defaultGoalVariety: 5
+  defaultCountPerGoal: 6
+  defaultFillerCount: 2

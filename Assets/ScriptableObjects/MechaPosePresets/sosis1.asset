@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
   presetName: sosis1
   targetHostItem: {fileID: 11400000, guid: 42c04b3d918c0f94c80ee1aed6df68b9, type: 2}
+  targetPivot: 1
   mechaScaleRatio: 0.5
   mechaWrapAmount: 0.106
   mechaWorldSize: 1

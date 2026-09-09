@@ -10,19 +10,20 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
-  m_Name: yarimkarpuz1
+  m_Name: cilekpasta1
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
-  presetName: yarimkarpuz1
-  targetHostItem: {fileID: 11400000, guid: fccc954b5f90fbc498d16c8ae3251b45, type: 2}
-  targetPivot: 1
+  presetName: cilekpasta1
+  targetHostItem: {fileID: 11400000, guid: b9ec21824735bc34da3685edb3d36a95, type: 2}
+  targetPivot: 6
+  authoredHostSize: 0
   mechaScaleRatio: 0.5
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 0, y: 0, z: 0}
+  mechaLocalOffset: {x: -0.22638905, y: 0.0730288, z: 0.51834095}
+  mechaRotationOffset: {x: -0, y: 70.9, z: 0}
   boneOverrides:
   - boneKeyword: thigh_L
-    rotationOffset: {x: 0, y: 0, z: 40}
+    rotationOffset: {x: -0, y: -0, z: 45}
   - boneKeyword: thigh_R
-    rotationOffset: {x: 0, y: 0, z: -40}
+    rotationOffset: {x: 0, y: 0, z: -45}

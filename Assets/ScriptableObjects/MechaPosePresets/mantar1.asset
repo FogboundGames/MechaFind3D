@@ -14,12 +14,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
   presetName: mantar1
   targetHostItem: {fileID: 11400000, guid: ab68c81495a82e741b64e21a1a548533, type: 2}
+  targetPivot: 1
+  authoredHostSize: 0
   mechaScaleRatio: 0.25
   mechaWrapAmount: 0
   mechaWorldSize: 1
   mechaOpacity: 0.22
-  mechaLocalOffset: {x: 0.017310355, y: 0.03671166, z: 0.0012286839}
-  mechaRotationOffset: {x: 90, y: -0, z: 90}
+  mechaLocalOffset: {x: 0.3812307, y: 0.35772812, z: 0.023316406}
+  mechaRotationOffset: {x: -0, y: -3.5, z: 90}
   boneOverrides:
   - boneKeyword: forearm_L
     rotationOffset: {x: -50.5, y: -0, z: 0}

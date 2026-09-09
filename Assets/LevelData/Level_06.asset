@@ -15,7 +15,8 @@ MonoBehaviour:
   levelNumber: 1
   levelTitle: test
   timeLimit: 120
-  totalPileCount: 6
+  sourceTemplate: {fileID: 0}
+  totalPileCount: 9
   foodTargetSize: 1.2
   targetGoals:
   - itemData: {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
@@ -26,26 +27,34 @@ MonoBehaviour:
   enableBlackLockedObjects: 1
   blackObjectCount: 2
   blackObjectUnlockCount: 3
+  unlockUndoBooster: 0
+  unlockRevealBooster: 0
   enableCamouflageMecha: 1
-  targetPivot: 1
+  targetPivot: 6
   customMechaPrefab: {fileID: 919132149155446097, guid: 879efff7d1187894d90433ff940dfe40, type: 3}
-  hostItemSO: {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
-  mechaHostKeyword: avocado_001
-  mechaScaleRatio: 0.25
-  mechaWrapAmount: 0
+  hostItemSO: {fileID: 11400000, guid: 1ff1e987514494a40a245a9633f8f1b0, type: 2}
+  mechaHostKeyword: egg_002
+  mechaScaleRatio: 0.5
+  mechaWrapAmount: 0.106
   mechaWorldSize: 1
-  mechaOpacity: 0.22
-  mechaLocalOffset: {x: 0, y: 0.75, z: 0.25}
-  mechaRotationOffset: {x: 90, y: 0, z: 0}
+  mechaOpacity: 0.15
+  mechaLocalOffset: {x: 0, y: 0.1687986, z: -0.021460041}
+  mechaRotationOffset: {x: 0, y: 0, z: 0}
   boneOverrides:
-  - boneKeyword: thigh_R
-    rotationOffset: {x: -44.2, y: 21.3, z: -29.2}
   - boneKeyword: thigh_L
-    rotationOffset: {x: -45.8, y: -28.4, z: 37}
-  - boneKeyword: forearm_R
-    rotationOffset: {x: -38, y: 0, z: -0}
+    rotationOffset: {x: -0, y: -0, z: 45}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 0, z: -45}
   - boneKeyword: forearm_L
-    rotationOffset: {x: -38, y: 0, z: 0}
+    rotationOffset: {x: -35, y: -0, z: 0}
+  - boneKeyword: forearm_R
+    rotationOffset: {x: -35, y: 0, z: 0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -35, y: 0, z: 0}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -35, y: 0, z: 0}
+  - boneKeyword: spine_004
+    rotationOffset: {x: 31.1, y: -0, z: -0}
   isStickyMecha: 1
   stickyJumpInterval: 5
   stickyMaxJumps: 2

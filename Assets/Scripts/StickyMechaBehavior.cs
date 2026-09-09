@@ -179,6 +179,16 @@ namespace MechaFind3D.PhysicsInteraction
                 });
         }
 
+        /// <summary>Size the active level normalizes pile items to - what a pose has to be scaled against.</summary>
+        private static float CurrentHostWorldSize()
+        {
+            if (LevelManager.Instance != null && LevelManager.Instance.ActiveLevelData != null)
+            {
+                return LevelManager.Instance.ActiveLevelData.GetHostWorldSize();
+            }
+            return 0f;
+        }
+
         private void StickToHost(FindTargetObject target)
         {
             if (target == null)
@@ -198,14 +208,21 @@ namespace MechaFind3D.PhysicsInteraction
 
             if (chosenPreset != null)
             {
-                scaleRatio = chosenPreset.mechaScaleRatio;
-                opacity = chosenPreset.mechaOpacity;
-                worldSize = chosenPreset.mechaWorldSize;
-                wrapAmount = chosenPreset.mechaWrapAmount;
-                posOffset = chosenPreset.mechaLocalOffset;
-                rotOffset = chosenPreset.mechaRotationOffset;
-                pivot = MechaPivotSelection.Auto;
-                boneOvr = chosenPreset.boneOverrides;
+                // Go through ApplyTo rather than copying the fields out by hand: it is the one place that
+                // knows the pose also carries a pivot and is re-scaled for this level's host size. Reading
+                // the fields directly here is what pinned every jump to Auto, throwing away the surface
+                // the pose was actually authored against.
+                MechaSpawnEntry posed = new MechaSpawnEntry();
+                chosenPreset.ApplyTo(posed, CurrentHostWorldSize());
+
+                scaleRatio = posed.mechaScaleRatio;
+                opacity = posed.mechaOpacity;
+                worldSize = posed.mechaWorldSize;
+                wrapAmount = posed.mechaWrapAmount;
+                posOffset = posed.mechaLocalOffset;
+                rotOffset = posed.mechaRotationOffset;
+                pivot = posed.targetPivot;
+                boneOvr = posed.boneOverrides;
             }
             else
             {

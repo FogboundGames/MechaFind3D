@@ -111,6 +111,11 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Maksimum oynanış süresi (saniye).")]
         public float timeLimit = 120f;
 
+        [Tooltip("Bu seviyenin hangi şablondan üretildiği. SADECE editör bilgisi - oyun bu alanı hiç " +
+                 "okumaz. Seviye şablondan bir kez doldurulur (snapshot), şablonu sonradan değiştirmek " +
+                 "bu seviyeyi etkilemez; alan yalnızca 'şablondan yeniden karıştır' için tutulur.")]
+        public LevelTemplateSO sourceTemplate;
+
         [Header("Pile Physics Config")]
         [Tooltip("Total number of 3D objects spawned in the pile tray.")]
         public int totalPileCount = 30;
@@ -317,6 +322,17 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 totalPileCount = totalGoalItems;
             }
+        }
+
+        /// <summary>
+        /// World size the pile normalizes every item's largest dimension to.
+        ///
+        /// PhysicsObjectSpawner clamps foodTargetSize to a hard 1.10 floor, and the editor preview matches
+        /// it - so this, not the raw field, is the size a mecha pose was actually tuned against.
+        /// </summary>
+        public float GetHostWorldSize()
+        {
+            return Mathf.Max(1.10f, foodTargetSize);
         }
 
         public int GetTotalGoalRequiredCount()

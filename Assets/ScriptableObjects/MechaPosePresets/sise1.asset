@@ -10,31 +10,32 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
-  m_Name: balik1
+  m_Name: sise1
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
-  presetName: balik1
-  targetHostItem: {fileID: 11400000, guid: 9e8cf29f3edb35f4db129a6d25da0bda, type: 2}
+  presetName: sise1
+  targetHostItem: {fileID: 11400000, guid: 4ab0cb04f86f8a84bbda74e8eb76773a, type: 2}
   targetPivot: 1
+  authoredHostSize: 0
   mechaScaleRatio: 0.5
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 0, y: 0, z: 0}
+  mechaLocalOffset: {x: 0, y: 0.15609035, z: 1.0838914}
+  mechaRotationOffset: {x: -88.1, y: 90, z: -90}
   boneOverrides:
   - boneKeyword: thigh_L
-    rotationOffset: {x: -38, y: -41, z: 54.7}
+    rotationOffset: {x: -21, y: 18, z: 40}
   - boneKeyword: thigh_R
-    rotationOffset: {x: -30.5, y: 68.9, z: -131.5}
+    rotationOffset: {x: -21, y: 18.8, z: -43.5}
   - boneKeyword: shin_L
-    rotationOffset: {x: -57.8, y: 0, z: 0}
+    rotationOffset: {x: -58, y: -0, z: 0}
   - boneKeyword: shin_R
-    rotationOffset: {x: -55.3, y: 0, z: -0}
-  - boneKeyword: forearm_R
-    rotationOffset: {x: 21, y: 0, z: 0}
-  - boneKeyword: upper_arm_L
-    rotationOffset: {x: -88, y: 0, z: -0}
+    rotationOffset: {x: -28.6, y: -0, z: 0}
   - boneKeyword: forearm_L
-    rotationOffset: {x: 21, y: -0, z: -0}
+    rotationOffset: {x: -58, y: -0, z: 0}
+  - boneKeyword: forearm_R
+    rotationOffset: {x: -58, y: 0, z: 0}
   - boneKeyword: upper_arm_R
-    rotationOffset: {x: -88, y: 0, z: 0}
+    rotationOffset: {x: -13, y: 0, z: 0}
+  - boneKeyword: upper_arm_L
+    rotationOffset: {x: -13, y: 0, z: 0}

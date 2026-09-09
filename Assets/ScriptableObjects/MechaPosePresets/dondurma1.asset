@@ -10,23 +10,28 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
-  m_Name: avokado1
+  m_Name: dondurma1
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
-  presetName: avokado1
-  targetHostItem: {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
+  presetName: dondurma1
+  targetHostItem: {fileID: 11400000, guid: 7b4286e1edc915c47b458c4273479366, type: 2}
   targetPivot: 1
+  authoredHostSize: 0
   mechaScaleRatio: 0.25
   mechaWrapAmount: 0
   mechaWorldSize: 1
   mechaOpacity: 0.22
-  mechaLocalOffset: {x: 0, y: 0.75, z: 0.25}
-  mechaRotationOffset: {x: 90, y: 0, z: 0}
+  mechaLocalOffset: {x: 0, y: 0.10659811, z: 0.4995832}
+  mechaRotationOffset: {x: 79.6, y: 0, z: 0}
   boneOverrides:
-  - boneKeyword: thigh_R
-    rotationOffset: {x: -44.2, y: 21.3, z: -29.2}
-  - boneKeyword: thigh_L
-    rotationOffset: {x: -45.8, y: -28.4, z: 37}
+  - boneKeyword: upper_arm_R
+    rotationOffset: {x: 15, y: -0, z: -0}
   - boneKeyword: forearm_R
-    rotationOffset: {x: -38, y: 0, z: -0}
+    rotationOffset: {x: 70, y: -0, z: -0}
+  - boneKeyword: upper_arm_L
+    rotationOffset: {x: 15, y: 0, z: 0}
   - boneKeyword: forearm_L
-    rotationOffset: {x: -38, y: 0, z: 0}
+    rotationOffset: {x: 70, y: 0, z: 0}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: -0, y: -0, z: -35}
+  - boneKeyword: thigh_L
+    rotationOffset: {x: 0, y: 0, z: 35}

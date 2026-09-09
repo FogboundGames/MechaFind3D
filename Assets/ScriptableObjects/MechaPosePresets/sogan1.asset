@@ -14,11 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
   presetName: sogan1
   targetHostItem: {fileID: 11400000, guid: 035c14ba91471994ea6c8aa409c2e0dc, type: 2}
+  targetPivot: 1
+  authoredHostSize: 0
   mechaScaleRatio: 0.5
   mechaWrapAmount: 0.106
   mechaWorldSize: 1
   mechaOpacity: 0.15
-  mechaLocalOffset: {x: -0.00013848017, y: -0.16076626, z: 0.002854369}
+  mechaLocalOffset: {x: 0.011293975, y: 0.0045183646, z: 1.2941573}
   mechaRotationOffset: {x: -90.2, y: 0.2, z: 0.3}
   boneOverrides:
   - boneKeyword: thigh_L

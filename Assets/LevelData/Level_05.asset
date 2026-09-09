@@ -15,6 +15,7 @@ MonoBehaviour:
   levelNumber: 6
   levelTitle: Seviye 5
   timeLimit: 130
+  sourceTemplate: {fileID: 0}
   totalPileCount: 36
   foodTargetSize: 1.2
   targetGoals:
@@ -31,9 +32,11 @@ MonoBehaviour:
   fillerItems:
   - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
   - {fileID: 11400000, guid: 4ab0cb04f86f8a84bbda74e8eb76773a, type: 2}
-  enableFrozenItems: 0
-  frozenItemCount: 3
-  defaultFreezeCount: 2
+  enableBlackLockedObjects: 0
+  blackObjectCount: 2
+  blackObjectUnlockCount: 3
+  unlockUndoBooster: 0
+  unlockRevealBooster: 0
   enableCamouflageMecha: 1
   targetPivot: 1
   customMechaPrefab: {fileID: 0}
@@ -41,18 +44,44 @@ MonoBehaviour:
   mechaHostKeyword: burger_001
   mechaScaleRatio: 0.25
   mechaWrapAmount: 0
-  mechaWorldSize: 0.5
+  mechaWorldSize: 1
   mechaOpacity: 0.22
-  mechaLocalOffset: {x: 0, y: 0, z: 0}
-  mechaRotationOffset: {x: 90, y: 0, z: 0}
+  mechaLocalOffset: {x: 0, y: 0.00000047869503, z: 0.01558465}
+  mechaRotationOffset: {x: 0, y: 0, z: 0}
+  boneOverrides:
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 0, z: -35}
+  - boneKeyword: thigh_L
+    rotationOffset: {x: 0, y: 0, z: 35}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -15, y: -0, z: -0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -15, y: 0, z: 0}
+  isStickyMecha: 0
+  stickyJumpInterval: 15
+  stickyMaxJumps: 2
+  isMagnetMecha: 0
+  magnetRadius: 1.5
+  magnetForce: 8
+  magnetMaxObjects: 4
   additionalMechas:
   - targetPivot: 1
     customMechaPrefab: {fileID: 0}
-    hostItemSO: {fileID: 11400000, guid: 1279d126a7522994a9163643d1b2965c, type: 2}
-    mechaHostKeyword: soda_002
+    hostItemSO: {fileID: 11400000, guid: 11b43e6e978f862448e09e41524f9f6c, type: 2}
+    mechaHostKeyword: chips_008
     mechaScaleRatio: 0.25
     mechaWrapAmount: 0
-    mechaWorldSize: 0.5
+    mechaWorldSize: 1
     mechaOpacity: 0.22
-    mechaLocalOffset: {x: 0, y: 0, z: 0}
-    mechaRotationOffset: {x: 90, y: 0, z: 0}
+    mechaLocalOffset: {x: 0, y: 0.13241625, z: 0.9154987}
+    mechaRotationOffset: {x: -90, y: 0, z: 0}
+    boneOverrides:
+    - boneKeyword: spine_001
+      rotationOffset: {x: 24.7, y: 0, z: 0}
+    isStickyMecha: 0
+    stickyJumpInterval: 15
+    stickyMaxJumps: 2
+    isMagnetMecha: 0
+    magnetRadius: 1.5
+    magnetForce: 8
+    magnetMaxObjects: 4

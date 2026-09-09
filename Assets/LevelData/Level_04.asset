@@ -15,6 +15,7 @@ MonoBehaviour:
   levelNumber: 5
   levelTitle: Seviye 4
   timeLimit: 120
+  sourceTemplate: {fileID: 0}
   totalPileCount: 36
   foodTargetSize: 1.2
   targetGoals:
@@ -31,35 +32,46 @@ MonoBehaviour:
   fillerItems:
   - {fileID: 11400000, guid: 492f9081f7156dc499af3b717e806317, type: 2}
   - {fileID: 11400000, guid: 65755a1709534c34d9cfeb10c42668f0, type: 2}
-  enableFrozenItems: 0
-  frozenItemCount: 3
-  defaultFreezeCount: 2
+  enableBlackLockedObjects: 0
+  blackObjectCount: 2
+  blackObjectUnlockCount: 3
+  unlockUndoBooster: 0
+  unlockRevealBooster: 0
   enableCamouflageMecha: 1
-  targetPivot: 1
+  targetPivot: 6
   customMechaPrefab: {fileID: 0}
   hostItemSO: {fileID: 11400000, guid: 66dc5eb7e435de942817bca27b951238, type: 2}
   mechaHostKeyword: donut_002
-  mechaScaleRatio: 0.25
-  mechaWrapAmount: 0
-  mechaWorldSize: 0.5
-  mechaOpacity: 0.22
-  mechaLocalOffset: {x: 0.01867983, y: 0.03671166, z: 0}
-  mechaRotationOffset: {x: 90, y: 0, z: 90}
+  mechaScaleRatio: 0.5
+  mechaWrapAmount: 0.106
+  mechaWorldSize: 1
+  mechaOpacity: 0.15
+  mechaLocalOffset: {x: 0, y: 0.6603999, z: -0.20616661}
+  mechaRotationOffset: {x: 90, y: 0, z: 0}
   boneOverrides:
-  - boneKeyword: forearm_L
-    rotationOffset: {x: -50.5, y: -0, z: 0}
-  - boneKeyword: thigh_L
-    rotationOffset: {x: -0, y: 0, z: 37.8}
   - boneKeyword: thigh_R
-    rotationOffset: {x: 0, y: 0, z: -37.8}
+    rotationOffset: {x: -57.7, y: 26.9, z: -50}
+  - boneKeyword: thigh_L
+    rotationOffset: {x: -35, y: -46.4, z: 60.8}
   - boneKeyword: shin_L
-    rotationOffset: {x: -50, y: -0, z: 0}
+    rotationOffset: {x: -20, y: 0, z: 0}
   - boneKeyword: shin_R
-    rotationOffset: {x: -50, y: 0, z: 0}
+    rotationOffset: {x: -26, y: 0, z: -0}
+  - boneKeyword: spine_002
+    rotationOffset: {x: 5.6, y: -0, z: 0}
   - boneKeyword: spine_006
-    rotationOffset: {x: 25.3, y: 0, z: -0}
-  - boneKeyword: forearm_R
-    rotationOffset: {x: -50, y: 0, z: 0}
+    rotationOffset: {x: 56.4, y: 0, z: 0}
+  - boneKeyword: spine_004
+    rotationOffset: {x: 20.4, y: -0, z: -0}
+  - boneKeyword: spine_003
+    rotationOffset: {x: 19.4, y: 0, z: -0}
+  isStickyMecha: 0
+  stickyJumpInterval: 15
+  stickyMaxJumps: 2
+  isMagnetMecha: 0
+  magnetRadius: 1.5
+  magnetForce: 8
+  magnetMaxObjects: 4
   additionalMechas:
   - targetPivot: 1
     customMechaPrefab: {fileID: 0}
@@ -67,7 +79,27 @@ MonoBehaviour:
     mechaHostKeyword: coffee_005
     mechaScaleRatio: 0.25
     mechaWrapAmount: 0
-    mechaWorldSize: 0.5
+    mechaWorldSize: 1
     mechaOpacity: 0.22
-    mechaLocalOffset: {x: 0, y: 0, z: 0}
+    mechaLocalOffset: {x: 0, y: 0.26883453, z: 0.05074148}
     mechaRotationOffset: {x: 90, y: 0, z: 0}
+    boneOverrides:
+    - boneKeyword: upper_arm_R
+      rotationOffset: {x: 15, y: -0, z: -0}
+    - boneKeyword: forearm_R
+      rotationOffset: {x: 50, y: -0, z: -0}
+    - boneKeyword: upper_arm_L
+      rotationOffset: {x: 15, y: 0, z: 0}
+    - boneKeyword: forearm_L
+      rotationOffset: {x: 50, y: 0, z: 0}
+    - boneKeyword: thigh_R
+      rotationOffset: {x: -0, y: -0, z: -35}
+    - boneKeyword: thigh_L
+      rotationOffset: {x: 0, y: 0, z: 35}
+    isStickyMecha: 0
+    stickyJumpInterval: 15
+    stickyMaxJumps: 2
+    isMagnetMecha: 0
+    magnetRadius: 1.5
+    magnetForce: 8
+    magnetMaxObjects: 4

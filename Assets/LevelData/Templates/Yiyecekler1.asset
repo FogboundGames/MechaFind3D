@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0b072cfc36bc799459211ee45e118e86, type: 3}
+  m_Name: Yiyecekler1
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelTemplateSO
+  templateName: Yiyecekler1
+  themeColor: {r: 0.42, g: 0.65, b: 0.3, a: 1}
+  icon: {fileID: 0}
+  itemPool:
+  - {fileID: 11400000, guid: 3c2770a9d935bf5469a066695de886e4, type: 2}
+  - {fileID: 11400000, guid: 9e8cf29f3edb35f4db129a6d25da0bda, type: 2}
+  - {fileID: 11400000, guid: ab68c81495a82e741b64e21a1a548533, type: 2}
+  - {fileID: 11400000, guid: 035c14ba91471994ea6c8aa409c2e0dc, type: 2}
+  - {fileID: 11400000, guid: 42c04b3d918c0f94c80ee1aed6df68b9, type: 2}
+  - {fileID: 11400000, guid: fccc954b5f90fbc498d16c8ae3251b45, type: 2}
+  - {fileID: 11400000, guid: b6b0b655f74da75498f0b2aa38c30be3, type: 2}
+  - {fileID: 11400000, guid: b36aea7825f6ee14db9f500e66ecc329, type: 2}
+  - {fileID: 11400000, guid: f45eb5c77ff950f4e98b1d1115fdcf6e, type: 2}
+  - {fileID: 11400000, guid: 01973999aff496146869ac7313dbbc16, type: 2}
+  - {fileID: 11400000, guid: 02c57fdbf9bf018419030b586d5f4362, type: 2}
+  - {fileID: 11400000, guid: e1e91384208b2394394cb7f5c48929b1, type: 2}
+  - {fileID: 11400000, guid: c07ad42b66ee7bd4f9e816039ca72300, type: 2}
+  - {fileID: 11400000, guid: 1ff1e987514494a40a245a9633f8f1b0, type: 2}
+  foodTargetSize: 1.2
+  defaultGoalVariety: 5
+  defaultCountPerGoal: 6
+  defaultFillerCount: 2

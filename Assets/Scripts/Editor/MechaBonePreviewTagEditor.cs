@@ -63,11 +63,16 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                         if (tagComponent.mechaIndex == 0) tagComponent.levelData.WritePrimaryEntryBack();
                         EditorUtility.SetDirty(tagComponent.levelData);
 
-                        if (tagComponent.mechaInstance != null)
-                        {
-                            tagComponent.mechaInstance.transform.localPosition = newOffset;
-                            tagComponent.mechaInstance.transform.localRotation = Quaternion.Euler(newRot);
-                        }
+                        // mechaLocalOffset is NOT the mecha's local position: placement puts the mecha on
+                        // the host's surface first and only then adds the offset, along the mecha's own
+                        // axes. Writing it straight into localPosition/localRotation teleported the preview
+                        // somewhere the real placement would never put it, so rebuild through the actual
+                        // placement code instead. Deferred, because this runs mid-inspector and the rebuild
+                        // destroys the very object being inspected.
+                        LevelDataSO previewLevel = tagComponent.levelData;
+                        int previewIdx = tagComponent.mechaIndex;
+                        EditorApplication.delayCall += () => LevelDesignEditorWindow.RefreshScene3DPreview(previewLevel, previewIdx);
+
                         LevelDesignEditorWindow.RepaintWindow();
                         SceneView.RepaintAll();
                     }
@@ -254,6 +259,24 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             SceneView.RepaintAll();
         }
 
+        /// <summary>
+        /// The frame <see cref="MechaSpawnEntry.mechaLocalOffset"/> is measured in.
+        ///
+        /// ChameleonCamouflage.EmbedMechaInHostObject adds the offset as
+        /// <c>position += mecha.transform.TransformDirection(offset)</c> and only rotates the mecha by
+        /// mechaRotationOffset AFTERWARDS - so the offset lives in the mecha's surface-derived BASE
+        /// rotation, with no scale of any kind.
+        ///
+        /// The scene gizmo used to convert the drag with <c>parent.InverseTransformVector</c> instead:
+        /// the wrong frame (the host's, not the mecha's) and, worse, scale-divided - the preview host is
+        /// scaled ~22x, so a drag was written back ~22x too small and the mecha barely moved when the
+        /// preview was rebuilt.
+        /// </summary>
+        private static Quaternion OffsetFrame(Transform mecha, MechaSpawnEntry entry)
+        {
+            return mecha.rotation * Quaternion.Inverse(Quaternion.Euler(entry.mechaRotationOffset));
+        }
+
         private void OnSceneGUI()
         {
             if (tagComponent == null || tagComponent.boneDataList == null || tagComponent.boneDataList.Count == 0) return;
@@ -304,8 +327,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                             if (EditorGUI.EndChangeCheck())
                             {
                                 Vector3 deltaWorld = newWorldPos - rootPos;
-                                Transform parentTrans = tagComponent.mechaInstance.transform.parent;
-                                Vector3 deltaLocal = parentTrans != null ? parentTrans.InverseTransformVector(deltaWorld) : deltaWorld;
+                                Vector3 deltaLocal = Quaternion.Inverse(OffsetFrame(tagComponent.mechaInstance.transform, entry)) * deltaWorld;
 
                                 Undo.RecordObject(tagComponent.levelData, "Move Mecha Root Position");
                                 entry.mechaLocalOffset += deltaLocal;
@@ -322,9 +344,13 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                             Quaternion newRot = Handles.RotationHandle(currentRot, rootPos);
                             if (EditorGUI.EndChangeCheck())
                             {
-                                Quaternion deltaRot = newRot * Quaternion.Inverse(currentRot);
+                                // Compose in quaternion space. Adding the delta's Euler angles onto the
+                                // stored ones only agrees with the real composition when both turn about
+                                // the same axis, so dragging the rotation ring around any other axis wrote
+                                // back an orientation that was never the one on screen.
+                                Quaternion baseRot = OffsetFrame(tagComponent.mechaInstance.transform, entry);
                                 Undo.RecordObject(tagComponent.levelData, "Rotate Mecha Root Orientation");
-                                entry.mechaRotationOffset = NormalizeEulerAngles(entry.mechaRotationOffset + deltaRot.eulerAngles);
+                                entry.mechaRotationOffset = NormalizeEulerAngles((Quaternion.Inverse(baseRot) * newRot).eulerAngles);
                                 if (tagComponent.mechaIndex == 0) tagComponent.levelData.WritePrimaryEntryBack();
                                 EditorUtility.SetDirty(tagComponent.levelData);
 
