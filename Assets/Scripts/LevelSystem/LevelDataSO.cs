@@ -47,7 +47,7 @@ namespace MechaFind3D.PhysicsInteraction
         public float mechaWrapAmount = 0f;
 
         [Tooltip("ABSOLUTE mecha size in world units. If > 0, the mecha is exactly this size regardless of host scale. Set to 0 to use Mecha Scale Ratio (host-relative) instead.")]
-        public float mechaWorldSize = 0.5f;
+        public float mechaWorldSize = 1f;
 
         [Range(0.1f, 1.0f)]
         [Tooltip("Opacity/Transparency of the mecha's white glass silhouette (0.22 = light, subtle white haze; the host object underneath stays clearly visible).")]
@@ -173,7 +173,7 @@ namespace MechaFind3D.PhysicsInteraction
         public float mechaWrapAmount = 0f;
 
         [Tooltip("ABSOLUTE mecha size in world units. If > 0, the mecha is exactly this size regardless of host scale, so the tool preview and gameplay match AND you tune the size from one place. Set to 0 to use Mecha Scale Ratio (host-relative) instead.")]
-        public float mechaWorldSize = 0.5f;
+        public float mechaWorldSize = 1f;
 
         [Range(0.1f, 1.0f)]
         [Tooltip("Opacity/Transparency of the mecha's white glass silhouette (0.22 = light, subtle white haze; the host object underneath stays clearly visible).")]

@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
+  m_Name: kbiber1
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
+  presetName: kbiber1
+  targetHostItem: {fileID: 11400000, guid: c07ad42b66ee7bd4f9e816039ca72300, type: 2}
+  targetPivot: 1
+  authoredHostSize: 0
+  mechaScaleRatio: 0.25
+  mechaWrapAmount: 0
+  mechaWorldSize: 1
+  mechaOpacity: 0.22
+  mechaLocalOffset: {x: 0.13456213, y: 0.05015689, z: 0.000000075977226}
+  mechaRotationOffset: {x: -0, y: 0, z: 0}
+  boneOverrides:
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 21.3, z: -15}
+  - boneKeyword: thigh_L
+    rotationOffset: {x: 0, y: -28.4, z: 15}
+  - boneKeyword: forearm_R
+    rotationOffset: {x: -44.8, y: 180, z: -180}
+  - boneKeyword: forearm_L
+    rotationOffset: {x: -38, y: 0, z: 0}
+  - boneKeyword: upper_arm_L
+    rotationOffset: {x: -0, y: -0, z: -55}
+  - boneKeyword: upper_arm_R
+    rotationOffset: {x: 0, y: 0, z: 55}
+  - boneKeyword: spine_002
+    rotationOffset: {x: -0, y: -0, z: 31.6}

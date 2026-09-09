@@ -10,24 +10,24 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
-  m_Name: karpuz1
+  m_Name: kutukola1
   m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
-  presetName: karpuz1
-  targetHostItem: {fileID: 11400000, guid: 66167c16f5e145743b6eb3dd723a1af8, type: 2}
-  targetPivot: 0
+  presetName: kutukola1
+  targetHostItem: {fileID: 11400000, guid: 02e09499aa2816648b21eb7eeafa0af3, type: 2}
+  targetPivot: 1
   authoredHostSize: 0
-  mechaScaleRatio: 0.5
-  mechaWrapAmount: 0.106
+  mechaScaleRatio: 1
+  mechaWrapAmount: 0.439
   mechaWorldSize: 1
-  mechaOpacity: 0.15
-  mechaLocalOffset: {x: -0.001113325, y: 0.009477821, z: -0.021048501}
-  mechaRotationOffset: {x: 0, y: 0.2, z: 0.3}
+  mechaOpacity: 0.22
+  mechaLocalOffset: {x: -0.003248019, y: -0.07710497, z: 0.9999335}
+  mechaRotationOffset: {x: -90, y: 1.5, z: 0}
   boneOverrides:
   - boneKeyword: upper_arm_L
-    rotationOffset: {x: 0, y: 0, z: -45}
+    rotationOffset: {x: 0, y: -0, z: -15}
   - boneKeyword: upper_arm_R
-    rotationOffset: {x: 0, y: 0, z: 45}
+    rotationOffset: {x: 0, y: 0, z: 15}
   - boneKeyword: thigh_L
-    rotationOffset: {x: 0, y: 0, z: 30}
+    rotationOffset: {x: 0, y: 0, z: 45}
   - boneKeyword: thigh_R
-    rotationOffset: {x: 0, y: 0, z: -30}
+    rotationOffset: {x: 0, y: 0, z: -45}

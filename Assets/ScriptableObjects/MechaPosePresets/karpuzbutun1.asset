@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2116f8b5453aab703bfc8a84abcd105d, type: 3}
+  m_Name: karpuzbutun1
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.MechaPosePresetSO
+  presetName: karpuzbutun1
+  targetHostItem: {fileID: 11400000, guid: 1ecb8a9232f246e42a69d0cf4c5c8747, type: 2}
+  targetPivot: 1
+  authoredHostSize: 0
+  mechaScaleRatio: 1
+  mechaWrapAmount: 0.439
+  mechaWorldSize: 1
+  mechaOpacity: 0.22
+  mechaLocalOffset: {x: -0.0032480187, y: -0.27246475, z: 0.9999335}
+  mechaRotationOffset: {x: -86.9, y: -178.5, z: 180}
+  boneOverrides:
+  - boneKeyword: upper_arm_L
+    rotationOffset: {x: 0, y: -0, z: -15}
+  - boneKeyword: upper_arm_R
+    rotationOffset: {x: 0, y: 0, z: 15}
+  - boneKeyword: thigh_L
+    rotationOffset: {x: 0, y: 0, z: 45}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 0, z: -45}
+  - boneKeyword: spine_006
+    rotationOffset: {x: 24.1, y: 0, z: -0}
+  - boneKeyword: spine_001
+    rotationOffset: {x: 13.7, y: 0, z: 0}
+  - boneKeyword: shin_L
+    rotationOffset: {x: -10, y: -0, z: -0}
+  - boneKeyword: shin_R
+    rotationOffset: {x: -10, y: 0, z: 0}

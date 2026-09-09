@@ -228,7 +228,7 @@ namespace MechaFind3D.PhysicsInteraction
             {
                 scaleRatio = spawnEntry != null ? spawnEntry.mechaScaleRatio : 0.25f;
                 opacity = spawnEntry != null ? spawnEntry.mechaOpacity : 0.22f;
-                worldSize = spawnEntry != null ? spawnEntry.mechaWorldSize : 0.5f;
+                worldSize = spawnEntry != null ? spawnEntry.mechaWorldSize : 1f;
                 wrapAmount = spawnEntry != null ? spawnEntry.mechaWrapAmount : 0f;
                 posOffset = spawnEntry != null ? spawnEntry.mechaLocalOffset : Vector3.zero;
                 rotOffset = spawnEntry != null ? spawnEntry.mechaRotationOffset : Vector3.zero;

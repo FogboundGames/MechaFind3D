@@ -28,7 +28,7 @@ namespace MechaFind3D.PhysicsInteraction
         [Range(0f, 1f)]
         public float mechaWrapAmount = 0f;
 
-        public float mechaWorldSize = 0.5f;
+        public float mechaWorldSize = 1f;
 
         [Range(0.1f, 1.0f)]
         public float mechaOpacity = 0.22f;
@@ -52,17 +52,19 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (entry == null) return;
 
-            // Offset and mecha size are ABSOLUTE world units, but the host they were authored against is
-            // sized by the level's foodTargetSize - so the identical numbers sit differently on a level
-            // whose host is 1.10 wide than on the 1.20 one the pose was tuned on. Re-scale both by the
-            // size ratio and the pose reproduces proportionally, which is what "restore what I saved"
-            // has to mean. Presets saved before this was recorded carry 0 and are left untouched.
+            // The offset is in ABSOLUTE world units, but the host it was authored against is sized by the
+            // level's foodTargetSize - so the identical numbers sit differently on a level whose host is
+            // 1.10 wide than on the 1.20 one the pose was tuned on. Re-scaling the offset by the size
+            // ratio lands the mecha on the same spot of the object. Presets saved before this was
+            // recorded carry 0 and are left untouched.
             float sizeScale = GetHostSizeScale(targetHostSize);
 
             entry.targetPivot = targetPivot;
             entry.mechaScaleRatio = mechaScaleRatio;   // already host-relative, nothing to scale
             entry.mechaWrapAmount = mechaWrapAmount;
-            entry.mechaWorldSize = mechaWorldSize * sizeScale;
+            // The mecha keeps ONE physical size everywhere by design, so only where it sits is re-scaled
+            // for a differently sized host - not how big it is.
+            entry.mechaWorldSize = mechaWorldSize;
             entry.mechaOpacity = mechaOpacity;
             entry.mechaLocalOffset = mechaLocalOffset * sizeScale;
             entry.mechaRotationOffset = mechaRotationOffset;

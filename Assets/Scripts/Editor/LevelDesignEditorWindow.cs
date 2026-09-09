@@ -683,7 +683,9 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                     // Bind to Primary Mecha fields on LevelDataSO
                     EditorGUILayout.PropertyField(so.FindProperty("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
                     DrawPivotField(so.FindProperty("targetPivot"), mechaIdx);
+                    EditorGUI.BeginChangeCheck();
                     EditorGUILayout.PropertyField(so.FindProperty("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
+                    if (EditorGUI.EndChangeCheck()) AutoApplyHostPreset(so, level, mechaIdx);
                     EditorGUILayout.PropertyField(so.FindProperty("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
                     EditorGUILayout.PropertyField(so.FindProperty("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
                     EditorGUILayout.PropertyField(so.FindProperty("mechaScaleRatio"), new GUIContent("Mecha Ölçek Oranı (yalnızca Boy=0 ise):"));
@@ -720,7 +722,9 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                         SerializedProperty elem = mechasProp.GetArrayElementAtIndex(addIdx);
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("customMechaPrefab"), new GUIContent("Özel Mecha Model Prefab'ı:"));
                         DrawPivotField(elem.FindPropertyRelative("targetPivot"), mechaIdx);
+                        EditorGUI.BeginChangeCheck();
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("hostItemSO"), new GUIContent("Yapışacağı Hedef Obje (ItemData):"));
+                        if (EditorGUI.EndChangeCheck()) AutoApplyHostPreset(so, level, mechaIdx);
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaHostKeyword"), new GUIContent("Hedef Obje Arama İnce Ayarı:"));
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaWorldSize"), new GUIContent("Mecha Boyu (dünya birimi, 0=oran kullan):"));
                         EditorGUILayout.PropertyField(elem.FindPropertyRelative("mechaScaleRatio"), new GUIContent("Mecha Ölçek Oranı (yalnızca Boy=0 ise):"));
@@ -811,7 +815,7 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
             newElem.FindPropertyRelative("mechaHostKeyword").stringValue = "";
             newElem.FindPropertyRelative("mechaScaleRatio").floatValue = 0.25f;
             newElem.FindPropertyRelative("mechaWrapAmount").floatValue = 0f;
-            newElem.FindPropertyRelative("mechaWorldSize").floatValue = 0.5f;
+            newElem.FindPropertyRelative("mechaWorldSize").floatValue = 1f;
             newElem.FindPropertyRelative("mechaOpacity").floatValue = 0.22f;
             newElem.FindPropertyRelative("mechaLocalOffset").vector3Value = Vector3.zero;
             newElem.FindPropertyRelative("mechaRotationOffset").vector3Value = new Vector3(90f, 0f, 0f);
@@ -1790,6 +1794,8 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
                 }
             }
 
+            SortPresets(matchingPresets);
+
             string hostName = currentHost != null ? currentHost.displayName : "Objesiz";
 
             // The pose lives on the LEVEL, not on the item, so swapping the host object leaves the old
@@ -1841,6 +1847,85 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
         }
 
         /// <summary>
+        /// Applies the new host's top pose preset the moment the host object is swapped.
+        ///
+        /// The pose lives on the LEVEL, so changing the host used to leave the previous object's pose
+        /// behind - a mecha curled around an avocado stayed curled that way on a cookie. Only presets
+        /// bound to this exact host are considered: a generic preset says nothing about how to sit on
+        /// this particular object, and letting one win just because it sorted first would overwrite a
+        /// tuned pose with a meaningless one.
+        /// </summary>
+        private void AutoApplyHostPreset(SerializedObject so, LevelDataSO level, int mechaIdx)
+        {
+            if (so == null || level == null) return;
+
+            so.ApplyModifiedProperties();   // commit the new host before reading it back
+
+            List<MechaSpawnEntry> entries = level.GetAllMechaEntries();
+            if (mechaIdx < 0 || mechaIdx >= entries.Count) return;
+
+            MechaSpawnEntry entry = entries[mechaIdx];
+            ItemDataSO host = entry != null ? entry.hostItemSO : null;
+            if (host == null) return;
+
+            MechaPosePresetSO preset = FindTopPresetForHost(host);
+            if (preset == null)
+            {
+                ShowNotification(new GUIContent($"'{host.displayName}' için kayıtlı poz yok - poz olduğu gibi kaldı"));
+                return;
+            }
+
+            Undo.RecordObject(level, "Host değişti - poz şablonu uygula");
+            preset.ApplyTo(entry, level.GetHostWorldSize());
+            if (mechaIdx == 0) level.WritePrimaryEntryBack();
+            EditorUtility.SetDirty(level);
+            AssetDatabase.SaveAssets();
+            so.Update();
+
+            // Only refresh a preview that is already on screen - never conjure scene objects the user
+            // did not ask for.
+            string previewName = mechaIdx == 0 ? "Mecha_3D_Preview_Instance" : $"Mecha_3D_Preview_Instance_{mechaIdx}";
+            if (GameObject.Find(previewName) != null) RefreshScene3DPreview(level, mechaIdx);
+
+            ShowNotification(new GUIContent($"📋 '{preset.presetName}' otomatik uygulandı ({host.displayName})"));
+        }
+
+        /// <summary>
+        /// The preset that sits at the top of the list for this host - the one auto-applied on a host
+        /// swap. Sorted by name rather than by AssetDatabase search order, so which preset counts as
+        /// "the top one" is something the author controls by naming, not a coincidence of GUIDs.
+        /// </summary>
+        private static MechaPosePresetSO FindTopPresetForHost(ItemDataSO host)
+        {
+            if (host == null) return null;
+
+            List<MechaPosePresetSO> matches = new List<MechaPosePresetSO>();
+            foreach (MechaPosePresetSO preset in FindAllAssets<MechaPosePresetSO>())
+            {
+                if (preset != null && preset.targetHostItem == host) matches.Add(preset);
+            }
+            if (matches.Count == 0) return null;
+
+            SortPresets(matches);
+            return matches[0];
+        }
+
+        /// <summary>Host-specific presets first (by name), generic ones after.</summary>
+        private static void SortPresets(List<MechaPosePresetSO> presets)
+        {
+            presets.Sort((a, b) =>
+            {
+                bool aGeneric = a == null || a.targetHostItem == null;
+                bool bGeneric = b == null || b.targetHostItem == null;
+                if (aGeneric != bGeneric) return aGeneric ? 1 : -1;
+
+                string an = a != null ? (!string.IsNullOrEmpty(a.presetName) ? a.presetName : a.name) : "";
+                string bn = b != null ? (!string.IsNullOrEmpty(b.presetName) ? b.presetName : b.name) : "";
+                return string.Compare(an, bn, System.StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        /// <summary>
         /// Whether an entry's pose is the one this preset stores.
         ///
         /// Opacity is deliberately not compared: it is a per-level visibility tweak, not part of how the
@@ -1853,16 +1938,15 @@ namespace MechaFind3D.PhysicsInteraction.EditorTools
 
             if (entry.targetPivot != preset.targetPivot) return false;
 
-            // Compare against what this preset WOULD produce here, not its raw numbers: on a level whose
+            // Compare against what this preset WOULD produce here, not its raw offset: on a level whose
             // host is a different size the applied offset is scaled, and an unscaled comparison would
             // report every such pose as a mismatch.
             float scale = preset.GetHostSizeScale(hostSize);
             Vector3 presetOffset = preset.mechaLocalOffset * scale;
-            float presetWorldSize = preset.mechaWorldSize * scale;
 
             const float eps = 0.001f;
             if (Mathf.Abs(entry.mechaWrapAmount - preset.mechaWrapAmount) > eps) return false;
-            if (Mathf.Abs(entry.mechaWorldSize - presetWorldSize) > eps) return false;
+            if (Mathf.Abs(entry.mechaWorldSize - preset.mechaWorldSize) > eps) return false;
             if (Mathf.Abs(entry.mechaScaleRatio - preset.mechaScaleRatio) > eps) return false;
             if ((entry.mechaLocalOffset - presetOffset).sqrMagnitude > eps * eps) return false;
             if ((entry.mechaRotationOffset - preset.mechaRotationOffset).sqrMagnitude > eps * eps) return false;
