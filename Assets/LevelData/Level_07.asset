@@ -1,0 +1,63 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a864202d3e27464ba58b8fad0a86a44, type: 3}
+  m_Name: Level_07
+  m_EditorClassIdentifier: Assembly-CSharp::MechaFind3D.PhysicsInteraction.LevelDataSO
+  levelNumber: 7
+  levelTitle: Seviye 7
+  timeLimit: 120
+  sourceTemplate: {fileID: 11400000, guid: ed9cb6aafe6a51f26e6babb7c78193e5, type: 2}
+  totalPileCount: 36
+  foodTargetSize: 1.2
+  targetGoals:
+  - itemData: {fileID: 11400000, guid: b9ec21824735bc34da3685edb3d36a95, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 66dc5eb7e435de942817bca27b951238, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 9f6b642d76a3f754ba349a194e7b013a, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: c3cbf892015195c468fc975fe80f5337, type: 2}
+    requiredCount: 6
+  - itemData: {fileID: 11400000, guid: 6918bf24886eb804ca3e921b62e43dc1, type: 2}
+    requiredCount: 6
+  fillerItems:
+  - {fileID: 11400000, guid: 7b4286e1edc915c47b458c4273479366, type: 2}
+  - {fileID: 11400000, guid: 939451b88faded1498862c35f0fdba54, type: 2}
+  enableBlackLockedObjects: 0
+  blackObjectCount: 2
+  blackObjectUnlockCount: 3
+  unlockUndoBooster: 0
+  unlockRevealBooster: 0
+  enableCamouflageMecha: 1
+  targetPivot: 6
+  customMechaPrefab: {fileID: 0}
+  hostItemSO: {fileID: 11400000, guid: b9ec21824735bc34da3685edb3d36a95, type: 2}
+  mechaHostKeyword: cheesecake_001
+  mechaScaleRatio: 0.5
+  mechaWrapAmount: 0.106
+  mechaWorldSize: 1
+  mechaOpacity: 0.15
+  mechaLocalOffset: {x: -0.22638905, y: 0.0730288, z: 0.51834095}
+  mechaRotationOffset: {x: -0, y: 70.9, z: 0}
+  boneOverrides:
+  - boneKeyword: thigh_L
+    rotationOffset: {x: -0, y: -0, z: 45}
+  - boneKeyword: thigh_R
+    rotationOffset: {x: 0, y: 0, z: -45}
+  isStickyMecha: 1
+  stickyJumpInterval: 15
+  stickyMaxJumps: 2
+  isMagnetMecha: 0
+  magnetRadius: 1.5
+  magnetForce: 8
+  magnetMaxObjects: 4
+  additionalMechas: []
