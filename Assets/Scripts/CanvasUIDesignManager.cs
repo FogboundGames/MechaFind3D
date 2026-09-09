@@ -55,11 +55,30 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private float goalTickTextPunchStrength = 0.45f;
         [SerializeField] private float goalTickTextPunchDuration = 0.35f;
 
+        [Header("Elle Tasarım Modu")]
+        [Tooltip("Açıkken Play'e basıldığında sahnedeki TÜM konveyörlerin AutoScroll'u zorla açılır. " +
+                 "Kapalıyken her konveyör kendi Inspector ayarına uyar.")]
+        [SerializeField] private bool forceConveyorAutoScroll = false;
+        [Tooltip("Slot dolduğunda slot materyalinin koyulaşması. Kapatırsan slot renkleri sahnede verdiğin gibi sabit kalır.")]
+        [SerializeField] private bool darkenFilledDockSlots = true;
+        [Tooltip("Dolu slotun renk çarpanı. 1 = hiç koyulaşma.")]
+        [SerializeField, Range(0.3f, 1f)] private float filledSlotDarkenFactor = 0.72f;
+
         [Header("Bottom Dock Tray")]
         [Tooltip("Kaç kare slot olsun. Slotlar dolar ve hiçbir sipariş tamamlanmazsa oyun biter.")]
         [Min(1)]
         [SerializeField] private int dockCapacity = 5;
         [SerializeField] private Vector3 dockItemDefaultRotation = new Vector3(0f, 15f, 0f);
+        [Tooltip("Açıkken dock'taki obje slotun rotasyonunu miras alır. Slotlar kameraya baksın diye " +
+                 "(326, 180, 180) gibi yatırılmış ve ters çevrilmiş olduğundan objeler de ters/yatık " +
+                 "duruyordu. KAPALI iken obje dünya ekseninde dimdik durur ve yalnızca " +
+                 "Dock Item Default Rotation uygulanır.")]
+        [SerializeField] private bool dockItemsFollowSlotRotation = false;
+        [Tooltip("Objenin slot yüzeyinden ne kadar yukarı kaldırılacağı (dünya birimi). " +
+                 "Plakalar yatık olduğu için kameraya bakan ön dudakları merkezden yüksekte kalır; " +
+                 "0 iken obje plakanın EN ÜST noktasına oturur, negatif değer içeri gömer. " +
+                 "Objeler havada duruyor gibiyse küçült, gömülü duruyorsa büyült.")]
+        [SerializeField] private float dockItemSurfaceOffset = 0f;
 
         [Header("Item Collection Flight")]
         [SerializeField] private float collectFlightDuration = 0.38f;
@@ -510,6 +529,10 @@ namespace MechaFind3D.PhysicsInteraction
         /// <summary>The belt is scene decor now that nothing rides it, but it should still be moving.</summary>
         private void StartConveyorDecor()
         {
+            // Opt-in: this used to force AutoScroll on for every belt in the scene, so a belt switched off
+            // in its own Inspector started running anyway the moment Play began.
+            if (!forceConveyorAutoScroll) return;
+
             foreach (ConveyorBelt tile in Object.FindObjectsByType<ConveyorBelt>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
                 if (tile != null) tile.AutoScroll = true;
@@ -1501,13 +1524,8 @@ namespace MechaFind3D.PhysicsInteraction
                     if (c != null) c.enabled = true;
                 }
 
-                // Re-enable shadows
-                foreach (Renderer r in item.GetComponentsInChildren<Renderer>(true))
-                {
-                    if (r == null) continue;
-                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-                    r.receiveShadows = true;
-                }
+                // Restore the shadow settings the item actually had before it was docked
+                item.RestoreShadowsAfterDock();
 
                 // Calculate safe target position inside boundary tray area
                 Vector3 targetPos;
@@ -2540,12 +2558,7 @@ namespace MechaFind3D.PhysicsInteraction
                 rb.isKinematic = true;
             }
 
-            foreach (Renderer r in item.GetComponentsInChildren<Renderer>())
-            {
-                if (r == null) continue;
-                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                r.receiveShadows = false;
-            }
+            item.SuppressShadowsForDock();
 
             foreach (Collider c in item.GetComponentsInChildren<Collider>())
             {
@@ -2948,8 +2961,7 @@ namespace MechaFind3D.PhysicsInteraction
             if (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)
             {
                 Transform t = slot3DTransforms[slotIndex];
-                float tileHalfHeight = Mathf.Max(0.04f, t.localScale.y * 0.5f);
-                float cubeTopY = t.position.y + tileHalfHeight;
+                float cubeTopY = GetSlotSurfaceY(t);
 
                 if (obj3D == null)
                 {
@@ -2969,15 +2981,8 @@ namespace MechaFind3D.PhysicsInteraction
                 obj3D.transform.localScale = targetScale;
                 obj3D.transform.rotation = targetRot;
 
-                Renderer[] rends = obj3D.GetComponentsInChildren<Renderer>();
-                if (rends != null && rends.Length > 0)
+                if (TryGetVisualBounds(obj3D, out Bounds b))
                 {
-                    Bounds b = rends[0].bounds;
-                    for (int i = 1; i < rends.Length; i++)
-                    {
-                        if (rends[i] != null && rends[i].enabled) b.Encapsulate(rends[i].bounds);
-                    }
-
                     // Restore original transform values
                     obj3D.transform.localScale = origScale;
                     obj3D.transform.rotation = origRot;
@@ -2986,8 +2991,8 @@ namespace MechaFind3D.PhysicsInteraction
                     float pivotToBottomDistanceY = origPos.y - b.min.y;
                     Vector3 centerOffset = origPos - b.center;
 
-                    // Place target Y so that b.min.y sits exactly 0.005f (0.5mm) above cubeTopY
-                    float targetY = cubeTopY + pivotToBottomDistanceY + 0.005f;
+                    // Place target Y so that b.min.y sits just above the slot's real top surface
+                    float targetY = cubeTopY + pivotToBottomDistanceY + 0.005f + dockItemSurfaceOffset;
                     float targetX = t.position.x + centerOffset.x;
                     float targetZ = t.position.z + centerOffset.z;
 
@@ -3006,6 +3011,45 @@ namespace MechaFind3D.PhysicsInteraction
                 pos += mainCamera.transform.up * 0.02f;
             }
             return pos;
+        }
+
+        /// <summary>
+        /// The world Y an item should rest on for this slot.
+        ///
+        /// The old math was `position.y + localScale.y * 0.5f`, which silently assumed the plate was
+        /// axis-aligned. The dock plates are tilted ~34 degrees so their camera-facing lip sits well above
+        /// the plate's centre, and an item placed at that centre height was occluded by the lip - the
+        /// "sunk into the tray" look. The renderer's world bounds already account for the rotation, so the
+        /// plate's true highest point is used instead.
+        /// </summary>
+        private static float GetSlotSurfaceY(Transform slot)
+        {
+            Renderer slotRend = slot.GetComponent<Renderer>();
+            if (slotRend != null) return slotRend.bounds.max.y;
+
+            return slot.position.y + Mathf.Max(0.04f, slot.lossyScale.y * 0.5f);
+        }
+
+        /// <summary>
+        /// World bounds of an object's VISIBLE geometry. Disabled renderers and the outline shells
+        /// ItemOutlineHighlighter parents onto each mesh are skipped, so a selected item - which always has
+        /// those shells - measures the same as an unselected one.
+        /// </summary>
+        private static bool TryGetVisualBounds(GameObject obj, out Bounds bounds)
+        {
+            bounds = default;
+            if (obj == null) return false;
+
+            bool has = false;
+            foreach (Renderer r in obj.GetComponentsInChildren<Renderer>())
+            {
+                if (r == null || !r.enabled) continue;
+                if (r.gameObject.name.StartsWith("Outline_Pass_")) continue;
+
+                if (!has) { bounds = r.bounds; has = true; }
+                else bounds.Encapsulate(r.bounds);
+            }
+            return has;
         }
 
         private float GetObjectBottomOffset(GameObject obj)
@@ -3076,14 +3120,7 @@ namespace MechaFind3D.PhysicsInteraction
         private static float GetCurrentWorldMaxExtent(GameObject obj)
         {
             if (obj == null) return 1f;
-            Renderer[] rends = obj.GetComponentsInChildren<Renderer>();
-            if (rends == null || rends.Length == 0) return 1f;
-
-            Bounds b = rends[0].bounds;
-            for (int i = 1; i < rends.Length; i++)
-            {
-                if (rends[i] != null && rends[i].enabled) b.Encapsulate(rends[i].bounds);
-            }
+            if (!TryGetVisualBounds(obj, out Bounds b)) return 1f;
 
             float maxExtent = Mathf.Max(b.size.x, b.size.y, b.size.z);
             return maxExtent > 1e-4f ? maxExtent : 1f;
@@ -3091,9 +3128,17 @@ namespace MechaFind3D.PhysicsInteraction
 
         private Quaternion GetDockItemRotation(int slotIndex = 0, GameObject obj3D = null)
         {
-            Quaternion slotRot = (slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count && slot3DTransforms[slotIndex] != null)
-                ? slot3DTransforms[slotIndex].rotation
-                : Quaternion.identity;
+            // The slot plates are tilted and flipped so their TOP FACE points at the camera - useful for the
+            // plate, useless for what stands on it. Inheriting that rotation is what laid the docked items
+            // on their backs. By default the item now stands upright in world space and only the authored
+            // offset below is applied.
+            Quaternion slotRot = Quaternion.identity;
+            if (dockItemsFollowSlotRotation
+                && slot3DTransforms != null && slotIndex >= 0 && slotIndex < slot3DTransforms.Count
+                && slot3DTransforms[slotIndex] != null)
+            {
+                slotRot = slot3DTransforms[slotIndex].rotation;
+            }
 
             if (obj3D != null)
             {
@@ -3169,6 +3214,12 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void UpdateSlotVisuals()
         {
+            if (!darkenFilledDockSlots) return;
+
+            // Edit mode writes would land on `sharedMaterial`, which permanently darkens the material ASSET
+            // every time this runs. Only the play-mode instance is ever tinted.
+            if (!Application.isPlaying) return;
+
             for (int i = 0; i < slot3DTransforms.Count; i++)
             {
                 Transform t = slot3DTransforms[i];
@@ -3177,26 +3228,20 @@ namespace MechaFind3D.PhysicsInteraction
                 Renderer rend = t.GetComponent<Renderer>();
                 if (rend == null) continue;
 
-                Material mat = Application.isPlaying ? rend.material : rend.sharedMaterial;
+                Material mat = rend.material;
                 if (mat == null) continue;
 
                 bool isFilled = i < dockItems.Count;
                 Color baseColor = i < initialSlotColors.Count ? initialSlotColors[i] : (rend.sharedMaterial != null ? rend.sharedMaterial.color : Color.white);
 
                 // Obje geldiğinde sinematik olarak hafif gölgelendir (koyulaştır), boşalınca orijinal renge yumuşakça dön
+                float k = filledSlotDarkenFactor;
                 Color targetColor = isFilled
-                    ? new Color(baseColor.r * 0.72f, baseColor.g * 0.72f, baseColor.b * 0.72f, baseColor.a)
+                    ? new Color(baseColor.r * k, baseColor.g * k, baseColor.b * k, baseColor.a)
                     : baseColor;
 
-                if (Application.isPlaying)
-                {
-                    mat.DOKill();
-                    mat.DOColor(targetColor, 0.28f).SetEase(Ease.OutQuad);
-                }
-                else
-                {
-                    mat.color = targetColor;
-                }
+                mat.DOKill();
+                mat.DOColor(targetColor, 0.28f).SetEase(Ease.OutQuad);
             }
         }
 

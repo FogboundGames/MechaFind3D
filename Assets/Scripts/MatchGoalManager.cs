@@ -36,6 +36,21 @@ namespace MechaFind3D.PhysicsInteraction
         private GameObject cachedTimerBadgeObj;
         private UnityEngine.UI.Image cachedTimerBadgeImage;
         private RectTransform cachedTimerBadgeRect;
+        [Header("Sayaç Renkleri")]
+        [Tooltip("Normal durumdaki sayaç yazı rengi.")]
+        [SerializeField] private Color timerNormalTextColor = Color.white;
+        [Tooltip("Sayaç rozetinin normal rengi. Sahnedeki rozet rengini kullanmak için " +
+                 "Use Scene Badge Color'ı aç.")]
+        [SerializeField] private Color timerNormalBadgeColor = new Color(0.20f, 0.25f, 0.32f, 0.98f);
+        [Tooltip("Açıkken rozet, sahnede verdiğin rengi normal renk olarak kabul eder.")]
+        [SerializeField] private bool useSceneBadgeColor = true;
+        [Tooltip("Son 20 saniyede yazının yanıp söndüğü ikinci renk.")]
+        [SerializeField] private Color timerUrgentTextColor = new Color(1.0f, 0.85f, 0.20f);
+        [SerializeField] private Color timerUrgentBadgeColor = new Color(0.90f, 0.30f, 0.15f, 0.98f);
+        [Tooltip("Mecha kaçarken sayacın aldığı iki renk arasında gidip gelir.")]
+        [SerializeField] private Color timerFastDrainColorA = new Color(1f, 0.45f, 0.15f);
+        [SerializeField] private Color timerFastDrainColorB = new Color(1f, 0.65f, 0.20f);
+
         private Color defaultBadgeColor = new Color(0.20f, 0.25f, 0.32f, 0.98f);
         private Vector2 initialTimerTextPos;
         private Vector3 initialTimerTextScale = Vector3.one;
@@ -328,7 +343,9 @@ namespace MechaFind3D.PhysicsInteraction
                     cachedTimerBadgeRect = cachedTimerBadgeObj.GetComponent<RectTransform>();
                     if (cachedTimerBadgeImage != null)
                     {
-                        defaultBadgeColor = cachedTimerBadgeImage.color;
+                        // The badge's own colour in the scene is the normal state by default, so recolouring
+                        // it by hand just works; the Inspector field takes over when that is switched off.
+                        defaultBadgeColor = useSceneBadgeColor ? cachedTimerBadgeImage.color : timerNormalBadgeColor;
                     }
                 }
             }
@@ -359,7 +376,7 @@ namespace MechaFind3D.PhysicsInteraction
 
                     // Hızlı ilerlediğini gösteren belirgin canlı renk (kehribar/turuncu)
                     float pingPong = Mathf.PingPong(Time.time * 3.5f, 1f);
-                    Color fastDrainColor = Color.Lerp(new Color(1f, 0.45f, 0.15f), new Color(1f, 0.65f, 0.20f), pingPong);
+                    Color fastDrainColor = Color.Lerp(timerFastDrainColorA, timerFastDrainColorB, pingPong);
                     cachedTimerText.color = fastDrainColor;
 
                     if (cachedTimerBadgeImage != null)
@@ -409,17 +426,17 @@ namespace MechaFind3D.PhysicsInteraction
                     {
                         cachedTimerText.text = string.Format("⏱️ {0:00}:{1:00}", minutes, seconds);
                         float pingPong = Mathf.PingPong(Time.time * 6f, 1f);
-                        cachedTimerText.color = Color.Lerp(Color.white, new Color(1.0f, 0.85f, 0.20f), pingPong);
+                        cachedTimerText.color = Color.Lerp(timerNormalTextColor, timerUrgentTextColor, pingPong);
 
                         if (cachedTimerBadgeImage != null)
                         {
-                            cachedTimerBadgeImage.color = Color.Lerp(defaultBadgeColor, new Color(0.90f, 0.30f, 0.15f, 0.98f), pingPong);
+                            cachedTimerBadgeImage.color = Color.Lerp(defaultBadgeColor, timerUrgentBadgeColor, pingPong);
                         }
                     }
                     else
                     {
                         cachedTimerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
-                        cachedTimerText.color = Color.white;
+                        cachedTimerText.color = timerNormalTextColor;
 
                         if (cachedTimerBadgeImage != null)
                         {

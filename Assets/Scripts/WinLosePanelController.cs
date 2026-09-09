@@ -35,6 +35,37 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Bölüm kazanıldığında oyuncuya verilecek coin miktarı.")]
         [SerializeField] private int winCoinReward = 5;
 
+        [Header("Lose Panel")]
+        [Tooltip("Lose panelindeki Subtitle yazısı. {0} = seviye numarası. " +
+                 "Boş bırakırsan Subtitle'a hiç dokunulmaz - yazıyı sahnede elle yazarsın.")]
+        [SerializeField] private string loseSubtitleFormat = "SEVİYE {0}";
+        [Tooltip("Panel açılırken arka planın üç kez çaktığı renk.")]
+        [SerializeField] private Color loseFlashColor = new Color(0.8f, 0.1f, 0.08f, 0.55f);
+        [Tooltip("Açıkken çakma rengi panelin KENDİ saydamlığını korur. LosePanel kökü opak bir kartsa " +
+                 "bunu açık bırak, yoksa panel çakma sırasında yarı saydam olur.")]
+        [SerializeField] private bool loseFlashPreservesAlpha = true;
+        [Tooltip("Kaç kez çaksın. 0 = çakma efekti kapalı.")]
+        [SerializeField, Min(0)] private int loseFlashCount = 3;
+
+        [Header("Win Panel Seviye Yıldızı Renkleri")]
+        [Tooltip("Daha önce tamamlanmış seviyelerin yıldız rengi.")]
+        [SerializeField] private Color completedStarColor = new Color(1.0f, 0.88f, 0.10f, 1.0f);
+        [SerializeField] private Color completedLevelTextColor = Color.white;
+        [Tooltip("Bu turda kazanılan seviyenin yıldız rengi.")]
+        [SerializeField] private Color justWonStarColor = new Color(1.0f, 0.95f, 0.15f, 1.0f);
+        [SerializeField] private Color justWonLevelTextColor = new Color(1f, 0.96f, 0.35f, 1f);
+        [Tooltip("Sıradaki (henüz oynanmamış) seviyenin yıldız rengi.")]
+        [SerializeField] private Color nextStarColor = new Color(0.95f, 0.95f, 1.0f, 0.95f);
+        [SerializeField] private Color nextLevelTextColor = Color.white;
+        [Tooltip("Kilitli gelecek seviyelerin yıldız rengi.")]
+        [SerializeField] private Color lockedStarColor = new Color(0.35f, 0.38f, 0.45f, 0.55f);
+        [SerializeField] private Color lockedLevelTextColor = new Color(0.65f, 0.7f, 0.8f, 0.55f);
+        [Tooltip("Yeni kazanılan seviyenin yıldızından fışkıran parıltı rengi.")]
+        [SerializeField] private Color justWonSparkleColor = new Color(1f, 0.95f, 0.2f, 1f);
+        [Tooltip("Coin ödülü yazısının rengi ve punto'su.")]
+        [SerializeField] private Color coinRewardTextColor = new Color(1f, 0.85f, 0.2f, 1f);
+        [SerializeField] private int coinRewardFontSize = 48;
+
         [Header("Coin & Konfeti Efekti")]
         [Tooltip("Konfeti olarak yağacak coin sprite'ı (boşsa AssetDatabase'den otomatik yüklenir).")]
         [SerializeField] private Sprite coinSprite;
@@ -307,7 +338,39 @@ namespace MechaFind3D.PhysicsInteraction
         {
             if (winPanel != null) winPanel.SetActive(false);
             HideTimerUI();
+            ApplyLoseSubtitle();
             AnimateIn(losePanel, 0, false);
+        }
+
+        /// <summary>
+        /// Fills the lose panel's "Subtitle" text, mirroring what LevelProgressController does for the win
+        /// panel. Only the TEXT is written - placement, font, colour and size stay exactly as authored in
+        /// the scene. An empty format string means the subtitle is left completely alone.
+        /// </summary>
+        private void ApplyLoseSubtitle()
+        {
+            if (losePanel == null || string.IsNullOrEmpty(loseSubtitleFormat)) return;
+
+            Transform popupT = GetPopupTransform(losePanel.transform) ?? losePanel.transform;
+            Transform subtitleT = popupT.Find("Subtitle") ?? losePanel.transform.Find("Subtitle");
+            if (subtitleT == null) return;
+
+            int levelNumber = 1;
+            if (LevelManager.Instance != null)
+            {
+                LevelDataSO active = LevelManager.Instance.ActiveLevelData;
+                levelNumber = active != null && active.levelNumber > 0
+                    ? active.levelNumber
+                    : LevelManager.Instance.currentLevelIndex + 1;
+            }
+
+            string text = string.Format(loseSubtitleFormat, levelNumber);
+
+            Text uiTxt = subtitleT.GetComponent<Text>();
+            if (uiTxt != null) { uiTxt.text = text; return; }
+
+            TMPro.TMP_Text tmpTxt = subtitleT.GetComponent<TMPro.TMP_Text>();
+            if (tmpTxt != null) tmpTxt.text = text;
         }
 
         private void HideTimerUI()
@@ -524,9 +587,9 @@ namespace MechaFind3D.PhysicsInteraction
                     if (row.starImg != null)
                     {
                         row.starImg.enabled = true;
-                        row.starImg.color = new Color(1.0f, 0.88f, 0.10f, 1.0f);
+                        row.starImg.color = completedStarColor;
                     }
-                    SetTextColor(row.levelTextComp, Color.white);
+                    SetTextColor(row.levelTextComp, completedLevelTextColor);
 
                     row.starT.localScale = Vector3.zero;
                     row.starT.localRotation = Quaternion.Euler(0f, 0f, -20f);
@@ -539,9 +602,9 @@ namespace MechaFind3D.PhysicsInteraction
                     if (row.starImg != null)
                     {
                         row.starImg.enabled = true;
-                        row.starImg.color = new Color(1.0f, 0.95f, 0.15f, 1.0f);
+                        row.starImg.color = justWonStarColor;
                     }
-                    SetTextColor(row.levelTextComp, new Color(1f, 0.96f, 0.35f, 1f));
+                    SetTextColor(row.levelTextComp, justWonLevelTextColor);
 
                     row.starT.localScale = Vector3.zero;
                     row.starT.localRotation = Quaternion.Euler(0f, 0f, -40f);
@@ -554,7 +617,7 @@ namespace MechaFind3D.PhysicsInteraction
                         if (row.starT != null)
                         {
                             row.starT.DOPunchScale(Vector3.one * 0.45f, 0.32f, 8, 0.6f).SetUpdate(true);
-                            SpawnSparkleBurst(row.starT.position, 12, new Color(1f, 0.95f, 0.2f, 1f));
+                            SpawnSparkleBurst(row.starT.position, 12, justWonSparkleColor);
                         }
                         if (row.levelTextComp != null)
                         {
@@ -573,9 +636,9 @@ namespace MechaFind3D.PhysicsInteraction
                     if (row.starImg != null)
                     {
                         row.starImg.enabled = true;
-                        row.starImg.color = new Color(0.95f, 0.95f, 1.0f, 0.95f);
+                        row.starImg.color = nextStarColor;
                     }
-                    SetTextColor(row.levelTextComp, Color.white);
+                    SetTextColor(row.levelTextComp, nextLevelTextColor);
 
                     row.starT.localScale = Vector3.zero;
                     seq.Insert(delay, row.starT.DOScale(Vector3.one, 0.28f).SetEase(Ease.OutBack, 2.0f));
@@ -603,9 +666,9 @@ namespace MechaFind3D.PhysicsInteraction
                     if (row.starImg != null)
                     {
                         row.starImg.enabled = true;
-                        row.starImg.color = new Color(0.35f, 0.38f, 0.45f, 0.55f);
+                        row.starImg.color = lockedStarColor;
                     }
-                    SetTextColor(row.levelTextComp, new Color(0.65f, 0.7f, 0.8f, 0.55f));
+                    SetTextColor(row.levelTextComp, lockedLevelTextColor);
 
                     row.starT.localScale = Vector3.zero;
                     seq.Insert(delay, row.starT.DOScale(Vector3.one * 0.85f, 0.22f).SetEase(Ease.OutQuad));
@@ -910,8 +973,8 @@ namespace MechaFind3D.PhysicsInteraction
             textRT.anchoredPosition = new Vector2(35f, 0f);
             Text txt = textGO.GetComponent<Text>();
             txt.alignment = TextAnchor.MiddleLeft;
-            txt.fontSize = 48;
-            txt.color = new Color(1f, 0.85f, 0.2f, 1f);
+            txt.fontSize = coinRewardFontSize;
+            txt.color = coinRewardTextColor;
             txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Font.CreateDynamicFontFromOSFont("Arial", 48);
 
             Outline ol = textGO.AddComponent<Outline>();
@@ -1038,13 +1101,21 @@ namespace MechaFind3D.PhysicsInteraction
 
                 seq.InsertCallback(0f, () =>
                 {
+                    if (loseFlashCount <= 0) return;
+
                     Image bgImg = panel.GetComponent<Image>();
                     if (bgImg != null)
                     {
                         Color origColor = bgImg.color;
-                        Color redFlash = new Color(0.8f, 0.1f, 0.08f, 0.55f);
+
+                        // The flash colour used to carry its own alpha (0.55), which was fine while the lose
+                        // panel root was a translucent dim backdrop. If the root is an opaque card instead,
+                        // borrowing that alpha makes the whole card go see-through mid-flash.
+                        Color redFlash = loseFlashColor;
+                        if (loseFlashPreservesAlpha) redFlash.a = origColor.a;
+
                         Sequence flashSeq = DOTween.Sequence().SetUpdate(true);
-                        for (int f = 0; f < 3; f++)
+                        for (int f = 0; f < loseFlashCount; f++)
                         {
                             flashSeq.Append(bgImg.DOColor(redFlash, 0.12f).SetEase(Ease.OutQuad));
                             flashSeq.Append(bgImg.DOColor(origColor, 0.18f).SetEase(Ease.InQuad));

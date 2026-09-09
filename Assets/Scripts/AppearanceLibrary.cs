@@ -24,8 +24,26 @@ namespace MechaFind3D.PhysicsInteraction
         private const float Smoothness = 0.65f;
 
         private static List<Entry> _entries;
+        private static Color[] _paletteOverride;
+        private static float _smoothness = Smoothness;
 
         private static List<Entry> Entries => _entries ?? (_entries = Build());
+
+        /// <summary>
+        /// Replaces the palette these materials are generated from, so the pile, the camouflage and this
+        /// library all read from one place the designer controls (PhysicsObjectSpawner's palette list)
+        /// instead of three separate hard-coded copies. Clears the cache so the next access rebuilds.
+        /// Pass null to fall back to <see cref="ChameleonCamouflage.DefaultPalette"/>.
+        /// </summary>
+        public static void SetPalette(Color[] colors, float smoothness = Smoothness)
+        {
+            _paletteOverride = (colors != null && colors.Length > 0) ? colors : null;
+            _smoothness = smoothness;
+            _entries = null;
+        }
+
+        /// <summary>The palette currently in use - the override if one was set, otherwise the default.</summary>
+        public static Color[] ActivePalette => _paletteOverride ?? ChameleonCamouflage.DefaultPalette;
 
         /// <summary>All generated materials (color × pattern combinations).</summary>
         public static IReadOnlyList<Material> All
@@ -62,7 +80,7 @@ namespace MechaFind3D.PhysicsInteraction
             Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             var entries = new List<Entry>();
 
-            foreach (Color baseColor in ChameleonCamouflage.DefaultPalette)
+            foreach (Color baseColor in ActivePalette)
             {
                 foreach (Pattern pattern in (Pattern[])System.Enum.GetValues(typeof(Pattern)))
                 {
@@ -75,8 +93,8 @@ namespace MechaFind3D.PhysicsInteraction
                     mat.mainTexture = tex;
                     if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
                     if (mat.HasProperty("_Color")) mat.SetColor("_Color", Color.white);
-                    if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", Smoothness);
-                    if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", Smoothness);
+                    if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", _smoothness);
+                    if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", _smoothness);
 
                     entries.Add(new Entry { color = baseColor, material = mat });
                 }

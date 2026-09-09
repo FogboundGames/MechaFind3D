@@ -40,6 +40,40 @@ namespace MechaFind3D.PhysicsInteraction
         [SerializeField] private Shader objectShader;
         [Tooltip("Give pile objects procedural pattern textures from AppearanceLibrary (color/match-3 identity is preserved). Turn off for plain flat colors. Ignored when food models are used.")]
         [SerializeField] private bool useTexturedAppearance = true;
+        [Tooltip("Spawn edilen objelerin gölge davranışını koddan zorla. KAPALI bırakırsan prefabında ne " +
+                 "ayarladıysan o kalır - gölge düşürme/alma ayarlarını elle yönetmek istiyorsan kapat.")]
+        [SerializeField] private bool overrideSpawnedShadows = true;
+        [Tooltip("Sadece Override Spawned Shadows açıkken geçerli.")]
+        [SerializeField] private UnityEngine.Rendering.ShadowCastingMode spawnedShadowCasting = UnityEngine.Rendering.ShadowCastingMode.Off;
+        [Tooltip("Sadece Override Spawned Shadows açıkken geçerli.")]
+        [SerializeField] private bool spawnedReceiveShadows = false;
+
+        [Header("Spawn Yerleşimi")]
+        [Tooltip("Açıkken her obje rastgele bir Y açısıyla düşer. Kapatırsan prefabın kendi rotasyonu korunur.")]
+        [SerializeField] private bool randomizeSpawnRotation = true;
+        [Tooltip("Açıkken her modelin ölçeği mesh boyutuna göre hedef boyuta normalize edilir. " +
+                 "Kapatırsan prefabında elle verdiğin scale aynen kullanılır.")]
+        [SerializeField] private bool normalizeItemScale = true;
+
+        [Header("Global Fizik Ayarları")]
+        [Tooltip("Açıkken Project Settings yerine aşağıdaki değerler Awake'te uygulanır. " +
+                 "ScenePhysicsSetup da aynı ayarları yazıyor - ikisinden yalnızca birini açık bırak.")]
+        [SerializeField] private bool applyGlobalPhysicsSettings = false;
+        [SerializeField] private int targetFrameRate = 60;
+        [SerializeField] private int vSyncCount = 0;
+        [SerializeField] private Vector3 gravity = new Vector3(0f, -15.0f, 0f);
+        [SerializeField] private int solverIterations = 8;
+        [SerializeField] private int solverVelocityIterations = 2;
+        [SerializeField] private float contactOffset = 0.008f;
+
+        [Header("Oyun Renk Paleti")]
+        [Tooltip("Primitive (küp/küre) modundaki eşleşme renkleri ve isimleri. " +
+                 "Boş bırakırsan varsayılan 8 renklik palet kullanılır. " +
+                 "Buraya yazdığın palet AppearanceLibrary'ye de aktarılır, böylece yığın ve " +
+                 "kamuflaj tek bir renk kaynağından beslenir.")]
+        [SerializeField] private List<NamedColor> paletteColors = new List<NamedColor>();
+        [Tooltip("Desenli materyallerin parlaklığı (AppearanceLibrary).")]
+        [SerializeField, Range(0f, 1f)] private float appearanceSmoothness = 0.65f;
 
         [Header("Food Models (Match Factory items)")]
         [Tooltip("When on, the pile spawns these food models instead of primitive cubes/spheres. Match-3 identity becomes the food TYPE. Keep the set small (~6-10) so 3-of-a-kind matches happen.")]
@@ -48,7 +82,8 @@ namespace MechaFind3D.PhysicsInteraction
         [Tooltip("Every food is scaled so its largest dimension is about this many world units, so wildly different source sizes (a berry vs a cake) become a consistent pile.")]
         [SerializeField] private float foodTargetSize = 0.22f;
 
-        private struct NamedColor
+        [System.Serializable]
+        public struct NamedColor
         {
             public string name;
             public Color color;
@@ -72,14 +107,18 @@ namespace MechaFind3D.PhysicsInteraction
             Instance = this;
 
             // Frame Rate & Mobile VSync Optimization
-            Application.targetFrameRate = 60;
-            QualitySettings.vSyncCount = 0;
+            if (applyGlobalPhysicsSettings)
+            {
+                Application.targetFrameRate = targetFrameRate;
+                QualitySettings.vSyncCount = vSyncCount;
 
-            Physics.gravity = new Vector3(0f, -15.0f, 0f);
-            Physics.defaultSolverIterations = 8;
-            Physics.defaultSolverVelocityIterations = 2;
-            Physics.defaultContactOffset = 0.008f;
+                Physics.gravity = gravity;
+                Physics.defaultSolverIterations = solverIterations;
+                Physics.defaultSolverVelocityIterations = solverVelocityIterations;
+                Physics.defaultContactOffset = contactOffset;
+            }
             InitializeNamedColors();
+            PushPaletteToAppearanceLibrary();
             InitializePhysicsMaterial();
             CreateColorMaterials();
         }
@@ -111,6 +150,12 @@ namespace MechaFind3D.PhysicsInteraction
 
         private void InitializeNamedColors()
         {
+            if (paletteColors != null && paletteColors.Count > 0)
+            {
+                namedColors = new List<NamedColor>(paletteColors);
+                return;
+            }
+
             namedColors = new List<NamedColor>
             {
                 new NamedColor("Kırmızı", new Color(0.95f, 0.2f, 0.2f)),
@@ -122,6 +167,24 @@ namespace MechaFind3D.PhysicsInteraction
                 new NamedColor("Turkuaz", new Color(0.15f, 0.85f, 0.85f)),
                 new NamedColor("Pembe", new Color(0.95f, 0.4f, 0.7f))
             };
+        }
+
+        /// <summary>
+        /// Feeds the Inspector palette into <see cref="AppearanceLibrary"/> so the textured pile materials
+        /// and the chameleon camouflage are generated from the same colours shown here, instead of the
+        /// library's own separate hard-coded copy.
+        /// </summary>
+        private void PushPaletteToAppearanceLibrary()
+        {
+            if (paletteColors == null || paletteColors.Count == 0)
+            {
+                AppearanceLibrary.SetPalette(null, appearanceSmoothness);
+                return;
+            }
+
+            Color[] colors = new Color[paletteColors.Count];
+            for (int i = 0; i < paletteColors.Count; i++) colors[i] = paletteColors[i].color;
+            AppearanceLibrary.SetPalette(colors, appearanceSmoothness);
         }
 
         private void InitializePhysicsMaterial()
@@ -309,8 +372,15 @@ namespace MechaFind3D.PhysicsInteraction
                 float posZ = Random.Range(-spawnAreaSize.y * 0.45f, spawnAreaSize.y * 0.45f);
                 float posY = Random.Range(spawnHeightMin, spawnHeightMax);
                 obj.transform.position = new Vector3(posX, posY, posZ);
-                obj.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
-                obj.transform.localScale = Vector3.one * scale;
+                if (randomizeSpawnRotation)
+                {
+                    obj.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+                }
+                // With normalisation off, `scale` is left at the prefab's own authored value below.
+                if (normalizeItemScale)
+                {
+                    obj.transform.localScale = Vector3.one * scale;
+                }
 
                 if (isCustomModel)
                 {
@@ -321,12 +391,15 @@ namespace MechaFind3D.PhysicsInteraction
                     AddOptimalCollider(obj);
                 }
 
-                foreach (Renderer r in obj.GetComponentsInChildren<Renderer>())
+                if (overrideSpawnedShadows)
                 {
-                    if (r != null)
+                    foreach (Renderer r in obj.GetComponentsInChildren<Renderer>())
                     {
-                        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                        r.receiveShadows = false;
+                        if (r != null)
+                        {
+                            r.shadowCastingMode = spawnedShadowCasting;
+                            r.receiveShadows = spawnedReceiveShadows;
+                        }
                     }
                 }
 

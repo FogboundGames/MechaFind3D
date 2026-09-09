@@ -26,6 +26,14 @@ namespace MechaFind3D.PhysicsInteraction
 
         private ItemOutlineHighlighter outlineHighlighter;
 
+        // Whatever the renderers were set to before docking hid their shadows. Restoring these exactly is
+        // what keeps a hand-authored shadow setup intact: the dock used to blanket-restore ShadowCastingMode.On
+        // and receiveShadows = true, so any item that had been docked once came back with different shadow
+        // settings from an identical item still sitting in the pile.
+        private Renderer[] shadowRenderers;
+        private UnityEngine.Rendering.ShadowCastingMode[] savedShadowCasting;
+        private bool[] savedReceiveShadows;
+
         public Vector3 OriginalScale => (originalScale != Vector3.zero ? originalScale : Vector3.one);
 
         private void Awake()
@@ -53,6 +61,50 @@ namespace MechaFind3D.PhysicsInteraction
             transform.DOKill();
             transform.localScale = originalScale;
             transform.DOPunchScale(originalScale * 0.4f, 0.5f, 8, 1f);
+        }
+
+        /// <summary>
+        /// Records every renderer's current shadow settings, then turns shadows off while the item sits in
+        /// the dock. Safe to call twice - a second call will not overwrite the saved state.
+        /// </summary>
+        public void SuppressShadowsForDock()
+        {
+            if (shadowRenderers != null) return;
+
+            shadowRenderers = GetComponentsInChildren<Renderer>(true);
+            savedShadowCasting = new UnityEngine.Rendering.ShadowCastingMode[shadowRenderers.Length];
+            savedReceiveShadows = new bool[shadowRenderers.Length];
+
+            for (int i = 0; i < shadowRenderers.Length; i++)
+            {
+                Renderer r = shadowRenderers[i];
+                if (r == null) continue;
+
+                savedShadowCasting[i] = r.shadowCastingMode;
+                savedReceiveShadows[i] = r.receiveShadows;
+
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+            }
+        }
+
+        /// <summary>Puts back exactly the shadow settings <see cref="SuppressShadowsForDock"/> recorded.</summary>
+        public void RestoreShadowsAfterDock()
+        {
+            if (shadowRenderers == null) return;
+
+            for (int i = 0; i < shadowRenderers.Length; i++)
+            {
+                Renderer r = shadowRenderers[i];
+                if (r == null) continue;
+
+                r.shadowCastingMode = savedShadowCasting[i];
+                r.receiveShadows = savedReceiveShadows[i];
+            }
+
+            shadowRenderers = null;
+            savedShadowCasting = null;
+            savedReceiveShadows = null;
         }
 
         /// <summary>

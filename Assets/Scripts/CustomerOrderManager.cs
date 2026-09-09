@@ -58,6 +58,12 @@ namespace MechaFind3D.PhysicsInteraction
 
         public IReadOnlyList<CustomerOrder> ActiveOrders => activeOrders;
 
+        [Header("Elle Tasarım Modu")]
+        [Tooltip("Açıkken Inspector'da bir değeri değiştirdiğin an sipariş kartları EDIT MODDA silinip " +
+                 "yeniden kurulur. Kartlar üzerinde elle çalışıyorsan KAPALI bırak - " +
+                 "sağ tık > Setup Customer Orders ile istediğinde kendin yenileyebilirsin.")]
+        [SerializeField] private bool autoRebuildCardsInEditMode = false;
+
         private void Awake()
         {
             Instance = this;
@@ -68,6 +74,7 @@ namespace MechaFind3D.PhysicsInteraction
             if (Instance == null) Instance = this;
             if (!Application.isPlaying)
             {
+                // Data only - this fills the order list, it does not touch scene objects.
                 SetupCustomerOrders();
             }
         }
@@ -75,6 +82,11 @@ namespace MechaFind3D.PhysicsInteraction
 #if UNITY_EDITOR
         private void OnValidate()
         {
+            // Off by default: this used to tear down and rebuild every order card in EDIT mode whenever any
+            // Inspector value changed, so a card being designed by hand vanished mid-edit. The
+            // "Setup Customer Orders" context menu still rebuilds them on demand.
+            if (!autoRebuildCardsInEditMode) return;
+
             if (!Application.isPlaying)
             {
                 UnityEditor.EditorApplication.delayCall -= EditorRefresh;

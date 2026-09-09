@@ -16,6 +16,26 @@ namespace MechaFind3D.LevelSystem
     {
         public static LevelProgressController Instance { get; private set; }
 
+        [Header("Elle Tasarım Modu")]
+        [Tooltip("Açıkken sahnede ZATEN VAR OLAN Title / Subtitle / ActionButton / Viewport ögelerinin " +
+                 "anchor, pozisyon, boyut, font ve renk ayarlarına dokunulmaz - Win panelini elinle " +
+                 "dizebilirsin. Kod yalnızca eksik ögeyi sıfırdan kurarken aşağıdaki değerleri kullanır.")]
+        [SerializeField] private bool respectSceneLayout = true;
+
+        [Header("Otomatik Kurulan Ögelerin Varsayılanları")]
+        [SerializeField] private Vector2 titleAnchoredPosition = new Vector2(0f, -230f);
+        [SerializeField] private Vector2 titleSize = new Vector2(800f, 120f);
+        [SerializeField] private Vector2 subtitleAnchoredPosition = new Vector2(0f, -365f);
+        [SerializeField] private Vector2 subtitleSize = new Vector2(700f, 60f);
+        [SerializeField] private int subtitleFontSize = 32;
+        [SerializeField] private Color subtitleColor = new Color(0.75f, 0.82f, 0.92f, 0.85f);
+        [SerializeField] private Vector2 actionButtonAnchoredPosition = new Vector2(0f, 140f);
+        [SerializeField] private Vector2 actionButtonSize = new Vector2(600f, 160f);
+        [SerializeField] private Vector2 contentSize = new Vector2(700f, 1500f);
+        [Tooltip("Win panelindeki Subtitle yazısı. {0} = tamamlanan seviye numarası. " +
+                 "Boş bırakırsan Subtitle'a hiç dokunulmaz.")]
+        [SerializeField] private string winSubtitleFormat = "LEVEL {0} TAMAMLANDI!";
+
         [Header("Layout Ayarları")]
         [Tooltip("Seviye ögeleri arasındaki sabit dikey mesafe (px).")]
         [SerializeField] private float levelSpacing = 260f;
@@ -83,7 +103,7 @@ namespace MechaFind3D.LevelSystem
             {
                 // Title'ı üst nota (Top-Center) sabitle (X:0, Y:-140)
                 Transform titleT = popupPanelRect.Find("Title") ?? popupPanelRect.Find("TitleText");
-                if (titleT != null)
+                if (titleT != null && !respectSceneLayout)
                 {
                     RectTransform titleRT = titleT as RectTransform;
                     if (titleRT != null)
@@ -91,30 +111,40 @@ namespace MechaFind3D.LevelSystem
                         titleRT.anchorMin = new Vector2(0.5f, 1.0f);
                         titleRT.anchorMax = new Vector2(0.5f, 1.0f);
                         titleRT.pivot = new Vector2(0.5f, 1.0f);
-                        titleRT.anchoredPosition = new Vector2(0f, -230f);
-                        titleRT.sizeDelta = new Vector2(800f, 120f);
+                        titleRT.anchoredPosition = titleAnchoredPosition;
+                        titleRT.sizeDelta = titleSize;
                     }
                 }
 
                 // Subtitle: Title'ın hemen altında, hangi levelin tamamlandığını belirten bağlam yazısı
                 Transform subtitleT = popupPanelRect.Find("Subtitle");
-                GameObject subtitleGO = subtitleT != null ? subtitleT.gameObject : new GameObject("Subtitle", typeof(RectTransform), typeof(Text));
-                if (subtitleT == null) subtitleGO.transform.SetParent(popupPanelRect, false);
-                RectTransform subtitleRT = subtitleGO.GetComponent<RectTransform>();
-                subtitleRT.anchorMin = new Vector2(0.5f, 1.0f);
-                subtitleRT.anchorMax = new Vector2(0.5f, 1.0f);
-                subtitleRT.pivot = new Vector2(0.5f, 1.0f);
-                subtitleRT.anchoredPosition = new Vector2(0f, -365f);
-                subtitleRT.sizeDelta = new Vector2(700f, 60f);
+                bool subtitleIsNew = subtitleT == null;
+                GameObject subtitleGO = subtitleIsNew ? new GameObject("Subtitle", typeof(RectTransform), typeof(Text)) : subtitleT.gameObject;
+                if (subtitleIsNew) subtitleGO.transform.SetParent(popupPanelRect, false);
                 subtitleText = subtitleGO.GetComponent<Text>();
-                subtitleText.alignment = TextAnchor.MiddleCenter;
-                subtitleText.fontSize = 32;
-                subtitleText.color = new Color(0.75f, 0.82f, 0.92f, 0.85f);
-                subtitleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Font.CreateDynamicFontFromOSFont("Arial", 32);
+
+                // A subtitle already sitting in the scene keeps its own placement and styling.
+                if (subtitleIsNew || !respectSceneLayout)
+                {
+                    RectTransform subtitleRT = subtitleGO.GetComponent<RectTransform>();
+                    subtitleRT.anchorMin = new Vector2(0.5f, 1.0f);
+                    subtitleRT.anchorMax = new Vector2(0.5f, 1.0f);
+                    subtitleRT.pivot = new Vector2(0.5f, 1.0f);
+                    subtitleRT.anchoredPosition = subtitleAnchoredPosition;
+                    subtitleRT.sizeDelta = subtitleSize;
+
+                    if (subtitleText != null)
+                    {
+                        subtitleText.alignment = TextAnchor.MiddleCenter;
+                        subtitleText.fontSize = subtitleFontSize;
+                        subtitleText.color = subtitleColor;
+                        subtitleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Font.CreateDynamicFontFromOSFont("Arial", subtitleFontSize);
+                    }
+                }
 
                 // ActionButton'ı alt nota (Bottom-Center) sabitle (X:0, Y:140)
                 Transform actionBtnT = popupPanelRect.Find("ActionButton") ?? popupPanelRect.Find("NextButton");
-                if (actionBtnT != null)
+                if (actionBtnT != null && !respectSceneLayout)
                 {
                     RectTransform btnRT = actionBtnT as RectTransform;
                     if (btnRT != null)
@@ -122,12 +152,13 @@ namespace MechaFind3D.LevelSystem
                         btnRT.anchorMin = new Vector2(0.5f, 0.0f);
                         btnRT.anchorMax = new Vector2(0.5f, 0.0f);
                         btnRT.pivot = new Vector2(0.5f, 0.0f);
-                        btnRT.anchoredPosition = new Vector2(0f, 140f);
-                        btnRT.sizeDelta = new Vector2(600f, 160f);
+                        btnRT.anchoredPosition = actionButtonAnchoredPosition;
+                        btnRT.sizeDelta = actionButtonSize;
                     }
                 }
             }
 
+            bool viewportIsNew = false;
             if (viewportRect == null && popupPanelRect != null)
             {
                 Transform vp = popupPanelRect.Find("Viewport");
@@ -138,16 +169,22 @@ namespace MechaFind3D.LevelSystem
                     GameObject vpGO = new GameObject("Viewport", typeof(RectTransform));
                     vpGO.transform.SetParent(popupPanelRect, false);
                     viewportRect = vpGO.GetComponent<RectTransform>();
+                    viewportIsNew = true;
                 }
             }
 
             if (viewportRect != null)
             {
-                viewportRect.anchorMin = new Vector2(0.5f, 0.5f);
-                viewportRect.anchorMax = new Vector2(0.5f, 0.5f);
-                viewportRect.pivot = new Vector2(0.5f, 0.5f);
-                viewportRect.sizeDelta = new Vector2(700f, levelSpacing * visibleLevelCount);
-                viewportRect.anchoredPosition = Vector2.zero;
+                // Placement only for a viewport this code invented; the masking components below are
+                // functional (the level list will not clip without them) so they are always ensured.
+                if (viewportIsNew || !respectSceneLayout)
+                {
+                    viewportRect.anchorMin = new Vector2(0.5f, 0.5f);
+                    viewportRect.anchorMax = new Vector2(0.5f, 0.5f);
+                    viewportRect.pivot = new Vector2(0.5f, 0.5f);
+                    viewportRect.sizeDelta = new Vector2(contentSize.x, levelSpacing * visibleLevelCount);
+                    viewportRect.anchoredPosition = Vector2.zero;
+                }
 
                 var mask2D = viewportRect.GetComponent<RectMask2D>();
                 if (mask2D == null) viewportRect.gameObject.AddComponent<RectMask2D>();
@@ -167,6 +204,7 @@ namespace MechaFind3D.LevelSystem
                 EnsureEdgeFade(false);
             }
 
+            bool contentIsNew = false;
             if (contentRect == null && viewportRect != null)
             {
                 Transform cnt = viewportRect.Find("LevelContent");
@@ -176,15 +214,16 @@ namespace MechaFind3D.LevelSystem
                     GameObject cntGO = new GameObject("LevelContent", typeof(RectTransform));
                     cntGO.transform.SetParent(viewportRect, false);
                     contentRect = cntGO.GetComponent<RectTransform>();
+                    contentIsNew = true;
                 }
             }
 
-            if (contentRect != null)
+            if (contentRect != null && (contentIsNew || !respectSceneLayout))
             {
                 contentRect.anchorMin = new Vector2(0.5f, 0.5f);
                 contentRect.anchorMax = new Vector2(0.5f, 0.5f);
                 contentRect.pivot = new Vector2(0.5f, 0.5f);
-                contentRect.sizeDelta = new Vector2(700f, 1500f);
+                contentRect.sizeDelta = contentSize;
             }
         }
 
@@ -214,7 +253,10 @@ namespace MechaFind3D.LevelSystem
             int count = Mathf.Max(visibleLevelCount + 2, totalLevels);
             int currentLvlNumber = currentLevelIndex + 1;
 
-            if (subtitleText != null) subtitleText.text = $"LEVEL {currentLvlNumber} TAMAMLANDI!";
+            if (subtitleText != null && !string.IsNullOrEmpty(winSubtitleFormat))
+            {
+                subtitleText.text = string.Format(winSubtitleFormat, currentLvlNumber);
+            }
 
             for (int i = 0; i < count; i++)
             {
